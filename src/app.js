@@ -319,7 +319,7 @@ async function runPlanner(button) {
     const own = state.demo ? 'you@example.com' : state.account?.username;
     if (/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(own || '')) emails.push(own.toLowerCase());
     const unique = [...new Set(emails)];
-    
+
     const from = new Date(start); from.setHours(0, 0, 0, 0);
     const to = new Date(end); to.setHours(0, 0, 0, 0); to.setDate(to.getDate() + 1);
     const people = unique.length ? await fetchAvailability(unique, from, to) : [];
