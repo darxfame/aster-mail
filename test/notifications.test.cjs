@@ -46,3 +46,10 @@ test('both original notification sounds are valid, different PCM WAV assets', ()
   }
   assert.ok(!sounds[0].equals(sounds[1]));
 });
+test('server reminder settings override the default and can disable a single meeting reminder', () => {
+  const now = Date.now(), tracker = new NotificationTracker();
+  const start = new Date(now + 10 * 60000).toISOString();
+  assert.equal(tracker.reminders([{ id: 'disabled', start, hasReminderSettings: true, reminderSet: false, reminder: 15 }], 15, now).length, 0);
+  assert.equal(tracker.reminders([{ id: 'later', start, hasReminderSettings: true, reminderSet: true, reminder: 5 }], 15, now).length, 0);
+  assert.equal(tracker.reminders([{ id: 'earlier', start, hasReminderSettings: true, reminderSet: true, reminder: 30 }], 5, now).length, 1);
+});

@@ -73,6 +73,8 @@ function clearError() { $('#error').hidden = true; }
 function modal(title, description, body) {
   if (modalBusy) return;
   delete $('#modal').dataset.eventId;
+  delete $('#modal').dataset.meetingCard;
+  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog');
   $('#modal-content').innerHTML = `<div class="modal-header"><div><h2>${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button class="icon-button" data-action="close" aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
   if (!$('#modal').open) $('#modal').showModal();
 }
@@ -87,10 +89,9 @@ function renderSidebar() {
   $('.statusbar').prepend(dock);
   const isMail = state.view === 'mail';
   const unreadCount = state.demo ? window.asterDemo.messages.filter(m => m.folder === 'inbox' && !m.read).length : null;
-  const folderButtons = systemFolders.map(([id, name, symbol]) => `<button class="folder ${isMail && state.folder === id ? 'active' : ''}" data-action="folder" data-folder="${id}" title="${name}" aria-label="${name}">${icon(symbol)}<span class="folder-label">${name}</span>${id === 'inbox' && unreadCount ? `<span class="count">${unreadCount}</span>` : ''}</button>`).join('');
-  const custom = state.folders.map(f => `<button class="folder ${isMail && state.folder === f.id ? 'active' : ''}" data-action="folder" data-folder="${esc(f.id)}" title="${esc(f.name)}" aria-label="${esc(f.name)}">${icon('folder')}<span class="folder-label">${esc(f.name)}</span>${f.unread ? `<span class="count">${f.unread}</span>` : ''}</button>`).join('');
-  $('#sidebar').innerHTML = `<div class="wordmark"><span class="brand-star" aria-hidden="true">✳</span><span class="brand-text">aster<span> mail</span></span></div><button class="primary sidebar-compose" data-action="compose" aria-label="Написать письмо" title="Написать письмо">${icon('plus')}<span>Написать письмо</span></button>
-    <div class="sidebar-scroll"><div class="nav-caption">Почта</div><nav class="folder-list" aria-label="Папки почты">${folderButtons}</nav><div class="sidebar-divider"></div><div class="nav-caption">Папки Exchange</div><div class="custom-folders">${custom || '<div class="folder muted sidebar-placeholder">Появятся после подключения</div>'}</div>
+  const folderButtons = renderFolderTree(unreadCount);
+  $('#sidebar').innerHTML = `<div class="wordmark"><span class="brand-star" aria-hidden="true">✳</span><span class="brand-text">aster<span> mail</span></span></div><button class="primary sidebar-compose" data-action="${state.view === 'calendar' ? 'new-event' : 'compose'}" aria-label="${state.view === 'calendar' ? 'Создать встречу' : 'Написать письмо'}" title="${state.view === 'calendar' ? 'Создать встречу' : 'Написать письмо'}">${icon('plus')}<span>${state.view === 'calendar' ? 'Новая встреча' : 'Написать письмо'}</span></button>
+    <div class="sidebar-scroll">${state.view === 'calendar' ? miniMonthHTML() : `<div class="nav-caption">Почта</div><nav class="folder-list folder-tree" aria-label="Папки почты">${folderButtons}</nav>`}
     </div><div id="sidebar-dock"></div><button class="account-card" data-action="settings" title="Настройки аккаунта" aria-label="Настройки аккаунта"><div class="account-avatar">${esc(initials(state.account?.username || 'Aster'))}</div><div class="account-info"><strong>${esc(state.account?.username || (state.demo ? 'Демоаккаунт' : 'Ваш аккаунт'))}</strong><small>${state.account ? esc(new URL(state.account.server).hostname) : state.demo ? 'Вымышленные данные' : 'Подключить Exchange'}</small></div></button>`;
   document.body.classList.toggle('navigation-sidebar', navigationPlacement === 'sidebar');
   if (navigationPlacement === 'sidebar') $('#sidebar-dock').append(dock);
@@ -243,9 +244,9 @@ function renderCalendar() {
   const grid = mode === 'quarter' ? quarterMarkup(start, events) : `<div class="week ${mode === 'day' ? 'day-view' : ''}">${Array.from({ length: mode === 'day' ? 1 : 7 }, (_, i) => {
     const day = new Date(start); day.setDate(day.getDate() + i);
     const daily = calendarEvents(events, day);
-    return `<div class="week-day ${dayKey(day) === dayKey(new Date()) ? 'today' : ''}"><div class="day-heading">${esc(dateFormat(day, { weekday: mode === 'day' ? 'long' : 'short' }))}<span class="day-number">${day.getDate()}</span></div>${daily.map(e => `<button class="event-card" data-action="event" data-id="${esc(e.id)}"><time>${e.allDay ? 'Весь день' : `${esc(time(e.start))} — ${esc(time(e.end))}`}</time><strong>${esc(e.title)}</strong><small>${esc(e.location || 'Рабочий календарь')}</small></button>`).join('') || '<div class="no-events">Нет встреч</div>'}</div>`;
+    return `<div class="week-day ${dayKey(day) === dayKey(new Date()) ? 'today' : ''}"><div class="day-heading">${esc(dateFormat(day, { weekday: mode === 'day' ? 'long' : 'short' }))}<span class="day-number">${day.getDate()}</span></div>${daily.map(e => `<button class="event-card event-${window.asterEvents.kind(e, state.account?.username || '')}" data-action="event" data-id="${esc(e.id)}"><time>${e.allDay ? 'Весь день' : `${esc(time(e.start))} — ${esc(time(e.end))}`}</time><strong>${esc(e.title)}</strong><small>${esc(e.location || 'Рабочий календарь')}</small></button>`).join('') || '<div class="no-events">Нет встреч</div>'}</div>`;
   }).join('')}</div>`;
-  $('#workspace').innerHTML = `<div class="calendar-view"><div class="page-header"><div><h1>${esc(title)}</h1><p>${mode === 'day' ? 'Встречи выбранного дня.' : 'Ваши встречи в удобном масштабе.'}</p></div><div class="calendar-controls"><select id="calendar-mode" aria-label="Вид календаря">${[['auto', `Авто · ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? 'день' : 'неделя'}`], ['day', 'День'], ['week', 'Неделя'], ['quarter', 'Квартал']].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">Сегодня</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? 'Предыдущая неделя' : `Предыдущий ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? 'Следующая неделя' : `Следующий ${period}`}">${icon('chevron')}</button></div><button class="primary" data-action="new-event">${icon('plus')}Встреча</button></div></div>${grid}<div class="calendar-caption"><span>${icon('clock')} ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</span><span>${events.length} встреч за ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
+  $('#workspace').innerHTML = `<div class="calendar-view"><div class="page-header"><div><h1>${esc(title)}</h1><p>${mode === 'day' ? 'Встречи выбранного дня.' : 'Ваши встречи в удобном масштабе.'}</p></div><div class="calendar-controls"><select id="calendar-mode" aria-label="Вид календаря">${[['auto', `Авто · ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? 'день' : 'неделя'}`], ['day', 'День'], ['week', 'Неделя'], ['quarter', 'Квартал']].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">Сегодня</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? 'Предыдущая неделя' : `Предыдущий ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? 'Следующая неделя' : `Следующий ${period}`}">${icon('chevron')}</button></div><button class="primary" data-action="new-event">${icon('plus')}Встреча</button></div></div>${grid}<div class="calendar-legend" aria-label="Цвета встреч"><span class="pending">Без ответа / под вопросом</span><span class="accepted">Принято</span><span class="organized">Вы организатор</span></div><div class="calendar-caption"><span>${icon('clock')} ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</span><span>${events.length} встреч за ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
 }
 function colleaguesKey() { return `aster-colleagues:${state.demo ? 'demo' : `${state.account?.server || ''}|${state.account?.username || ''}`}`; }
 function colleagues() {
@@ -420,6 +421,8 @@ async function sendCompose(save) {
 }
 async function handleAction(button) {
   const { action } = button.dataset;
+  if (action.startsWith('mini-') || action === 'folder-branch') return handleSidebarAction(button);
+  if (action.startsWith('meeting-')) return handleMeetingAction(button);
   if (action === 'back-to-list') { state.selected = null; renderMail(); return; }
   if (action === 'toggle-sidebar') {
     sidebarCollapsed = !sidebarCollapsed;
@@ -465,18 +468,7 @@ async function handleAction(button) {
     } else state.week = window.asterCalendar.move(state.week, calendarMode(), action === 'calendar-next' ? 1 : -1);
     return loadView();
   }
-  if (action === 'event') {
-    const e = state.events.find(e => e.id === button.dataset.id); if (!e) return;
-    modal(e.title, `${dateFormat(e.start, { weekday: 'long', day: 'numeric', month: 'long' })} · ${time(e.start)}–${time(e.end)}`, `<div class="event-details"><p>${esc(e.location)}</p><p>Организатор: ${esc(e.organizer?.name || e.organizer?.email || 'Не указан')}</p><div id="event-body">Загружаем описание…</div></div><div id="event-rsvp">${rsvpButtons(e.id, e.changeKey, e.cancelled)}</div>${formError()}`);
-    $('#modal').dataset.eventId = e.id;
-    const detail = state.demo ? { body: e.preview, attendees: [] } : await api('event', ref(e));
-    if ($('#event-body') && $('#modal').dataset.eventId === e.id) {
-      $('#event-body').innerHTML = `<pre>${esc(detail.body || 'Нет описания')}</pre>${detail.attendees.length ? `<p>Участники: ${esc(detail.attendees.map(a => a.name || a.email).join(', '))}</p>` : ''}`;
-      e.cancelled ||= detail.cancelled;
-      $('#event-rsvp').innerHTML = rsvpButtons(e.id, detail.ref?.changeKey || e.changeKey, e.cancelled);
-    }
-    return;
-  }
+  if (action === 'event') { const e = state.events.find(e => e.id === button.dataset.id); if (e) return openMeeting(e); return; }
   if (action === 'directory') return directoryModal();
   if (action === 'add-colleague' || action === 'pin-contact') {
     const c = action === 'add-colleague' ? directoryResults[Number(button.dataset.index)] : state.contacts.find(c => c.id === button.dataset.id);
@@ -508,14 +500,20 @@ async function handleAction(button) {
     const buttons = [...button.closest('.rsvp').querySelectorAll('button')];
     buttons.forEach(b => { b.disabled = true; });
     try {
-      const result = state.demo ? { status: 'sent' } : await api('respond', { ref: { id: button.dataset.id, changeKey: button.dataset.key }, response: button.dataset.response });
+      const scope = $('#modal').dataset.meetingCard === 'true' ? meetingScope() : 'single';
+      const result = state.demo ? { status: 'sent' } : await api('respond', { ref: { id: button.dataset.id, changeKey: button.dataset.key }, response: button.dataset.response, scope });
       if (result.status === 'cancelled') {
         const event = state.events.find(e => e.id === button.dataset.id); if (event) event.cancelled = true;
         if (state.selected?.meeting?.id === button.dataset.id) state.selected.meeting.cancelled = true;
         button.closest('.rsvp').outerHTML = rsvpButtons(button.dataset.id, '', true);
         toast('Встреча отменена организатором. Ответ не отправлен.');
       } else {
+        const response = { AcceptItem: 'Accept', TentativelyAcceptItem: 'Tentative', DeclineItem: 'Decline' }[button.dataset.response];
+        const selected = state.events.find(e => e.id === button.dataset.id);
+        if (selected) selected.response = response;
+        if (state.demo) for (const e of window.asterDemo.events.filter(e => scope === 'series' && selected?.seriesId ? e.seriesId === selected.seriesId : e.id === button.dataset.id)) e.response = response;
         if ($('#modal').open) $('#modal').close();
+        if (state.view === 'calendar') await loadView();
         toast(state.demo ? 'Демо: ответ на приглашение принят' : 'Ответ отправлен организатору');
       }
     } catch (error) {
@@ -581,6 +579,14 @@ document.addEventListener('input', event => {
   if (form && ['start', 'end', 'attendees'].includes(event.target.name)) $('#planner-results').innerHTML = '<p class="form-note">Данные изменились. Проверьте занятость повторно.</p>';
 });
 document.addEventListener('change', event => {
+  if (event.target.name === 'allDay' && event.target.closest('#event-form')) {
+    const form = $('#event-form'), start = new Date(form.elements.start.value);
+    if (event.target.checked) {
+      start.setHours(0, 0, 0, 0); const end = new Date(start); end.setDate(end.getDate() + 1);
+      form.elements.start.value = localDate(start); form.elements.end.value = localDate(end);
+    }
+    if ($('#planner-results')) $('#planner-results').textContent = 'Время изменилось. Проверьте занятость повторно.';
+  }
   if (event.target.name !== 'planner-person') return;
   const form = $('#event-form'), input = form.elements.attendees;
   const emails = input.value.split(/[,;\n]/).map(s => s.trim()).filter(Boolean).filter(email => email.toLowerCase() !== event.target.value.toLowerCase());
@@ -593,6 +599,8 @@ document.addEventListener('change', event => { if (event.target.name === 'syncSi
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target;
   if (form.id === 'search-form') { state.query = $('#search').value.trim(); if (state.view === 'calendar') renderCalendar(); else loadView(); return; }
+  if (form.id === 'meeting-message-form') { submitMeetingMessage(form); return; }
+  if (form.id === 'event-form' && form.dataset.editing === 'true') { submitMeetingEdit(form); return; }
   if (form.id === 'directory-form') { searchDirectory(form); return; }
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {

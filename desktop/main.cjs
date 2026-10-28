@@ -180,11 +180,13 @@ async function connect(data, remember, restoring = false) {
   void pollNotifications();
   return { server: account.server, username: account.username };
 }
-const methods = new Set(['folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'availability']);
+const methods = new Set(['folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
-  if (['message', 'event'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
+  if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
   if (['change', 'move', 'respond'].includes(operation) && typeof data.ref?.id !== 'string') throw new Error('Invalid item reference');
+  if (['updateEvent', 'eventMessage', 'eventImage'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid meeting reference');
+  if (data.scope !== undefined && !['single', 'series'].includes(data.scope)) throw new Error('Invalid meeting scope');
   if (operation === 'change' && typeof data.value !== 'boolean') throw new Error('Invalid value');
   if (operation === 'messages' && (typeof data.folder !== 'string' || !Number.isInteger(data.offset || 0) || (data.offset || 0) < 0)) throw new Error('Invalid folder or offset');
 }
@@ -249,6 +251,12 @@ app.whenReady().then(async () => {
         return { ok: true, value: true };
       }
       if (!client) throw new Error('Сначала подключите аккаунт OWA');
+      if (operation === 'joinEvent') {
+        const event = await client.eventDetails(data);
+        const url = meetingLink(event);
+        if (!url || event.cancelled) throw new Error('Ссылка на созвон недоступна');
+        await shell.openExternal(url); return { ok: true, value: true };
+      }
       if (operation === 'attachment') {
         if (typeof data.id !== 'string' || typeof data.name !== 'string') throw new Error('Invalid attachment');
         const result = await dialog.showSaveDialog(window, { defaultPath: path.basename(data.name).replace(/[\\/:]/g, '_') });

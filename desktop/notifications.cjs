@@ -22,10 +22,12 @@ class NotificationTracker {
   reminders(events, minutes, now = Date.now()) {
     for (const [key, date] of this.meetingSeen) if (date < now - 86400000) this.meetingSeen.delete(key);
     return events.filter(event => {
+      if (event.hasReminderSettings && event.reminderSet === false) return false;
+      const lead = event.hasReminderSettings && Number.isInteger(event.reminder) && event.reminder >= 0 ? event.reminder : minutes;
       if (event.allDay || event.cancelled || ['Decline', 'Declined'].includes(event.response)) return false;
       const start = new Date(event.start).getTime(), key = `${event.id}:${event.start}`;
       // Grace allows the first poll after waking from sleep to remind about a meeting just started.
-      if (!Number.isFinite(start) || start < now - 60000 || start > now + minutes * 60000 || this.meetingSeen.has(key)) return false;
+      if (!Number.isFinite(start) || start < now - 60000 || start > now + lead * 60000 || this.meetingSeen.has(key)) return false;
       this.meetingSeen.set(key, start); return true;
     });
   }

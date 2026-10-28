@@ -26,5 +26,23 @@ window.asterDemo = (() => {
     { id: 'c5', name: 'Алексей Морозов', email: 'alex@example.com', company: 'Разработка', phone: '' },
     { id: 'c6', name: 'Команда поддержки', email: 'support@example.com', company: 'IT', phone: '' },
   ];
-  return { messages, events, contacts };
+  events.forEach((event, i) => {
+    Object.assign(event, { changeKey: 'demo-version', response: i === 0 ? 'Unknown' : i === 1 ? 'Accept' : i === 2 || i === 3 ? 'Organizer' : 'Tentative', isOrganizer: i === 2 || i === 3, reminder: 15, reminderSet: true, showAs: 'Busy', sensitivity: 'Normal', attendees: contacts.slice(0, 4).map((c, n) => ({ ...c, role: n === 3 ? 'optional' : 'required', response: n === 0 ? 'Accept' : n === 1 ? 'Tentative' : 'Unknown' })), attachments: [] });
+    if (event.isOrganizer) event.organizer = person('Вы', 'you@example.com');
+  });
+  for (const event of [events[0], events[2]]) {
+    event.recurring = true; event.calendarType = 'Occurrence'; event.seriesId = `series-${event.id}`;
+    event.location = 'https://calls.example.com/aster-project'; event.joinUrl = event.location;
+    event.html = '<p>Коллеги, привет!</p><p>Обсудим <strong>следующие шаги проекта</strong>, сроки и ответственных.</p><ul><li>Текущий статус</li><li>Вопросы команды</li><li>План на неделю</li></ul><p><a href="https://example.com/project">Материалы проекта</a></p>';
+    event.attachments = [{ id: 'demo-image', name: 'Aster — иллюстрация.png', type: 'image/png', size: 21952, contentId: 'demo-aster', previewUrl: '../assets/icon.png' }, { id: 'demo-document', name: 'Повестка встречи.txt', type: 'text/plain', size: 2048 }];
+    const next = structuredClone(event); next.id += '-next'; next.start = new Date(Date.parse(event.start) + 7 * 86400000).toISOString(); next.end = new Date(Date.parse(event.end) + 7 * 86400000).toISOString(); events.push(next);
+  }
+  const folders = [
+    ...[['inbox', 'Входящие'], ['sentitems', 'Отправленные'], ['drafts', 'Черновики'], ['archive', 'Архив'], ['deleteditems', 'Корзина'], ['junkemail', 'Нежелательная почта']].map(([wellKnown, name]) => ({ id: `folder-${wellKnown}`, wellKnown, name, parentId: 'mail-root', unread: 0 })),
+    { id: 'demo-projects', name: 'Проекты', parentId: 'folder-inbox', unread: 2 },
+    { id: 'demo-design', name: 'Дизайн', parentId: 'demo-projects', unread: 1 },
+    { id: 'demo-team', name: 'Команда', parentId: 'folder-inbox', unread: 0 },
+    { id: 'demo-docs', name: 'Документы', parentId: 'mail-root', unread: 0 },
+  ];
+  return { messages, events, contacts, folders };
 })();

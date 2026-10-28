@@ -14,6 +14,10 @@ ignored `release/`.
 normalizes menu-bar meeting links and countdowns; `src/calendar.js` holds shared
 calendar date arithmetic. `desktop/availability.cjs` adapts OWA free/busy responses; `src/availability.js`
 calculates status and common slots. Never treat unknown availability as free.
+`desktop/calendar-events.cjs` handles calendar details, scoped updates and safe
+image previews. `src/meeting-ui.js` owns the meeting dialog; `src/sidebar-ui.js`
+owns folder trees and the mini month picker. Never overwrite a stale meeting
+or replay an invitation update after an uncertain response.
 The isolated widget uses `src/widget.*`. Sound assets and their
 generator are CC0; preserve their separate license.
 

@@ -8,7 +8,9 @@
 Откройте **Actions → Windows installer → Run workflow**. Задача на Windows
 установит зависимости, выполнит проверки и соберёт NSIS-установщик x64.
 Скачайте `aster-mail-windows-x64-unsigned` из Artifacts завершённого запуска.
-Автоматической публикации GitHub Release нет. Артефакт хранится 14 дней.
+Отдельно теги `v<версия>` запускают workflow **Publish installers**: он
+собирает macOS и Windows и публикует DMG и EXE в GitHub Releases после успеха
+обоих заданий. Артефакт хранится 14 дней.
 
 ## Локальная сборка
 

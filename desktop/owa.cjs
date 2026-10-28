@@ -1,4 +1,5 @@
 const P = require('./protocol.cjs');
+const calendarEvents = require('./calendar-events.cjs');
 const availability = require('./availability.cjs');
 
 function attributes(tag) {
@@ -94,12 +95,28 @@ class OWAClient {
     return P.parseSOAP(response.text);
   }
   async folders() {
-    const result = await this.call('FindFolder', P.request('FindFolder', {
-      FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }),
-      ParentFolderIds: [P.folder('msgfolderroot')], Traversal: 'Deep', Paging: P.paging(0),
+    const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
+    const known = await Promise.allSettled(aliases.map(async alias => {
+      const result = await this.call('GetFolder', P.request('GetFolder', { FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }), FolderIds: [P.folder(alias)] }));
+      const folder = P.walk(result, o => o.FolderId?.Id && typeof o.DisplayName === 'string')[0];
+      return folder ? { ...folder, wellKnown: alias } : null;
     }));
-    return P.walk(result, o => o.FolderId?.Id && typeof o.DisplayName === 'string' && (!o.FolderClass || o.FolderClass === 'IPF.Note'))
-      .map(o => ({ id: o.FolderId.Id, name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
+    const folders = new Map();
+    for (const result of known) if (result.status === 'fulfilled' && result.value) folders.set(result.value.FolderId.Id, result.value);
+    let offset = 0;
+    while (offset < 1000) {
+      const result = await this.call('FindFolder', P.request('FindFolder', {
+        FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }),
+        ParentFolderIds: [P.folder('msgfolderroot')], Traversal: 'Deep', Paging: P.paging(offset),
+      }));
+      const page = P.walk(result, o => o.FolderId?.Id && typeof o.DisplayName === 'string');
+      for (const folder of page.filter(o => !o.FolderClass || o.FolderClass === 'IPF.Note')) folders.set(folder.FolderId.Id, { ...folder, wellKnown: folders.get(folder.FolderId.Id)?.wellKnown });
+      const root = P.walk(result, o => o.RootFolder)[0]?.RootFolder;
+      if (!root || root.IncludesLastItemInRange !== false || !page.length) break;
+      const next = Number(root.IndexedPagingOffset);
+      offset = Number.isFinite(next) && next > offset ? next : offset + 50;
+    }
+    return [...folders.values()].map(o => ({ id: o.FolderId.Id, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
   }
   async messages({ folder = 'inbox', offset = 0 }) {
     const json = await this.call('FindItem', P.findItems(folder, offset));
@@ -170,27 +187,58 @@ class OWAClient {
       CalendarId: P.target('calendar'), RangeStart: new Date(start).toISOString(), RangeEnd: new Date(end).toISOString(),
     }, 'V2017_08_18'), { headerBody: true });
     if (!Array.isArray(json.Body.Items)) throw new Error('OWA GetCalendarView: неподдерживаемый формат календаря');
-    return json.Body.Items.filter(o => o.ItemId?.Id).map(o => ({
-      id: o.ItemId.Id, changeKey: o.ItemId.ChangeKey, title: o.Subject || '(Без названия)',
-      start: o.Start, end: o.End, allDay: Boolean(o.IsAllDayEvent),
-      location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName || '',
-      organizer: P.address(o.Organizer?.Mailbox || o.Organizer), preview: o.Preview || '',
-      cancelled: Boolean(o.IsCancelled), response: o.MyResponseType || '', showAs: o.LegacyFreeBusyStatus || o.FreeBusyStatus || '',
-      joinUrl: o.OnlineMeetingJoinUrl || o.OnlineMeeting?.JoinUrl || '',
-    }));
+    return json.Body.Items.filter(o => o.ItemId?.Id).map(calendarEvents.normalize);
   }
+
   async event(ref) {
     const json = await this.call('GetCalendarEvent', P.request('GetCalendarEvent', {
       EventIds: [P.item(ref)], ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties', BodyType: 'Text', MaximumBodySize: 65536 }),
     }, 'V2017_08_18'));
     const o = P.walk(json, o => o.ItemId?.Id && o.Subject !== undefined)[0];
     if (!o) throw new Error('Встреча не найдена');
-    return { body: (o.Body || o.NormalizedBody)?.Value || o.Preview || '', attendees: (o.RequiredAttendees || []).map(a => P.address(a.Mailbox || a)), response: o.MyResponseType || '', cancelled: o.IsCancelled === true, joinUrl: o.OnlineMeetingJoinUrl || o.OnlineMeeting?.JoinUrl || '', ref: { id: o.ItemId.Id, changeKey: o.ItemId.ChangeKey } };
+    const detail = calendarEvents.normalize(o);
+    return { ...detail, ref: { id: detail.id, changeKey: detail.changeKey } };
   }
+  async eventDetails(data) {
+    const scope = data.scope || 'single';
+    if (scope === 'series') {
+      const occurrence = await this.eventDetails({ ...data, scope: 'single' });
+      if (occurrence.calendarType === 'RecurringMaster') return occurrence;
+      if (!occurrence.recurring) throw new Error('Эта встреча не является частью ряда');
+    }
+    const response = await this.ews('GetItem', calendarEvents.getSOAP(data, scope));
+    const o = P.walk(response, o => o.ItemId?.['@_Id'] && o.Start !== undefined)[0];
+    if (!o) throw new Error('Exchange не вернул карточку календаря');
+    const detail = calendarEvents.normalize(o);
+    if (!detail.changeKey) throw new Error('Exchange не вернул версию встречи');
+    return { ...detail, ref: { id: detail.id, changeKey: detail.changeKey } };
+  }
+  async updateEvent(data) {
+    const current = await this.eventDetails({ ...data.ref, scope: data.scope || 'single' });
+    if (!data.expectedChangeKey || current.changeKey !== data.expectedChangeKey) throw new Error('Встреча изменилась на сервере. Откройте карточку заново перед сохранением.');
+    await this.ews('UpdateItem', calendarEvents.updateSOAP(current, data.changes));
+    return true;
+  }
+  async eventMessage(data) {
+    const current = await this.eventDetails({ ...data.ref, scope: data.scope || 'single' });
+    await this.ews('CreateItem', calendarEvents.messageSOAP(current, data));
+    return true;
+  }
+  async eventImage(data) {
+    const current = await this.eventDetails(data.ref);
+    const attachment = current.attachments.find(a => a.id === data.id);
+    if (!attachment || attachment.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.type)) throw new Error('Недоступное изображение');
+    const response = await this.ews('GetAttachment', P.soap(`<m:GetAttachment><m:AttachmentIds><t:AttachmentId Id="${P.escapeXML(data.id)}"/></m:AttachmentIds></m:GetAttachment>`));
+    const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
+    if (!image) throw new Error('Exchange не вернул изображение');
+    return calendarEvents.imageData(image);
+  }
+
   async createEvent(data) { await this.ews('CreateItem', P.eventSOAP(data)); return true; }
   async respond(data) {
     if (!['AcceptItem', 'TentativelyAcceptItem', 'DeclineItem'].includes(data.response)) throw new Error('Invalid RSVP');
-    const current = await this.event(data.ref);
+    const current = data.scope === 'series' ? await this.eventDetails({ ...data.ref, scope: 'series' }) : await this.event(data.ref);
+    if (current.isOrganizer === true) throw new Error('Организатор не отвечает на собственное приглашение');
     if (current.cancelled) return { status: 'cancelled' };
     const latest = current.ref;
     const ref = `<t:ReferenceItemId Id="${P.escapeXML(latest.id)}"${latest.changeKey ? ` ChangeKey="${P.escapeXML(latest.changeKey)}"` : ''}/>`;
