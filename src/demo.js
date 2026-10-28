@@ -1,0 +1,30 @@
+// Explicitly fictional data. Never mixed with a connected mailbox.
+window.asterDemo = (() => {
+  const at = (days, hours, minutes = 0) => { const date = new Date(); date.setDate(date.getDate() + days); date.setHours(hours, minutes, 0, 0); return date.toISOString(); };
+  const person = (name, email) => ({ name, email });
+  const messages = [
+    { id: 'demo-1', subject: 'Новый взгляд на привычные вещи', from: person('Анна Смирнова', 'anna@example.com'), date: at(0, 10, 42), read: false, flagged: true, preview: 'Собрала мысли по новому направлению. Кажется, мы нашли тот самый баланс.', html: '<p>Привет!</p><p>Собрала мысли по новому направлению. Кажется, мы нашли тот самый баланс между простотой и возможностями.</p><p>Хочется, чтобы рабочие инструменты оставляли больше пространства для самого важного. Меньше визуального шума, больше внимания к деталям.</p><h3>Что предлагаю обсудить</h3><ul><li>Единую структуру для почты, встреч и контактов</li><li>Спокойные цвета и понятную навигацию</li><li>Маленькие детали, которые делают день проще</li></ul><p>Первые наброски — во вложении. Посмотри, когда будет свободная минутка, и давай обсудим на встрече завтра.</p><p>Хорошего дня!<br>Анна</p>', attachments: [{ id: 'demo-attachment', name: 'Направление проекта.txt', size: 1850 }], hasAttachments: true, folder: 'inbox' },
+    { id: 'demo-2', subject: 'Приглашение: обсуждение проекта', from: person('Михаил Волков', 'mikhail@example.com'), date: at(0, 10, 15), read: false, preview: 'Завтра, 11:00–11:45 · Обсудим идеи и договоримся о следующих шагах.', text: 'Приглашаю обсудить новый проект и следующие шаги. Повестка: идеи, приоритеты, сроки.', meeting: { id: 'demo-event-1', start: at(1, 11), end: at(1, 11, 45), location: 'Переговорная «Кедр»' }, folder: 'inbox' },
+    { id: 'demo-3', subject: 'Материалы к следующей встрече', from: person('Елена Козлова', 'elena@example.com'), date: at(0, 9, 48), read: true, preview: 'Все материалы собраны в одном месте. Добавила комментарии и открытые вопросы.', hasAttachments: true, text: 'Доброе утро!\n\nВсе материалы собраны в одном месте. Добавила комментарии и открытые вопросы.\n\nБуду рада вашим замечаниям.\nЕлена', folder: 'inbox' },
+    { id: 'demo-4', subject: 'Планы на неделю', from: person('Дмитрий Соколов', 'dmitry@example.com'), date: at(0, 9, 20), read: true, preview: 'Коллеги, доброе утро! Коротко о приоритетах на эту неделю и важных датах.', text: 'Коллеги, доброе утро!\n\nНа этой неделе фокусируемся на первой версии и обратной связи. В пятницу подведём итоги.\n\nСпасибо!\nДмитрий', folder: 'inbox' },
+    { id: 'demo-5', subject: 'Re: Обратная связь по прототипу', from: person('Алексей Морозов', 'alex@example.com'), date: at(-1, 17, 35), read: true, flagged: true, preview: 'Спасибо за обновление! Новая навигация стала заметно понятнее.', text: 'Спасибо за обновление! Новая навигация стала заметно понятнее.\n\nПредлагаю сохранить это направление и проверить его на остальных экранах.', folder: 'inbox' },
+    { id: 'demo-6', subject: 'Итоги встречи и следующие шаги', from: person('Анна Смирнова', 'anna@example.com'), date: at(-1, 15, 10), read: true, preview: 'Зафиксировала договорённости. Начнём с самого важного, остальное добавим по мере необходимости.', text: 'Зафиксировала договорённости.\n\n1. Проверяем подключение.\n2. Дорабатываем почту.\n3. Собираем обратную связь.\n\nАнна', folder: 'inbox' },
+    { id: 'demo-7', subject: 'Доступ к рабочим инструментам', from: person('Команда поддержки', 'support@example.com'), date: at(-1, 12), read: true, preview: 'Добро пожаловать! Всё, что нужно для комфортного начала работы.', text: 'Добро пожаловать!\n\nПо вопросам подключения обратитесь к вашему администратору Exchange.', folder: 'inbox' },
+  ].map(m => ({ ...m, to: [person('Вы', 'you@example.com')], cc: [], attachments: m.attachments || [] }));
+  const events = [
+    { id: 'demo-event-1', title: 'Обсуждение проекта', start: at(1, 11), end: at(1, 11, 45), location: 'Переговорная «Кедр»', preview: 'Идеи, приоритеты и следующие шаги', organizer: person('Михаил Волков', 'mikhail@example.com') },
+    { id: 'demo-event-2', title: 'Командная встреча', start: at(0, 10), end: at(0, 10, 30), location: 'Онлайн', preview: 'Сверим планы на сегодня', organizer: person('Анна Смирнова', 'anna@example.com') },
+    { id: 'demo-event-3', title: 'Обзор дизайна', start: at(0, 14), end: at(0, 15), location: 'Дизайн-студия', preview: 'Обратная связь по новой версии', organizer: person('Елена Козлова', 'elena@example.com') },
+    { id: 'demo-event-4', title: 'Время для фокуса', start: at(2, 9), end: at(2, 11), location: '', preview: 'Без встреч и отвлечений', organizer: person('Вы', 'you@example.com') },
+    { id: 'demo-event-5', title: 'Итоги недели', start: at(2, 16), end: at(2, 16, 45), location: 'Переговорная «Сосна»', preview: 'Что получилось и что можно улучшить', organizer: person('Дмитрий Соколов', 'dmitry@example.com') },
+  ];
+  const contacts = [
+    { id: 'c1', name: 'Анна Смирнова', email: 'anna@example.com', company: 'Продуктовая команда', phone: '+7 000 000-00-01' },
+    { id: 'c2', name: 'Михаил Волков', email: 'mikhail@example.com', company: 'Разработка', phone: '+7 000 000-00-02' },
+    { id: 'c3', name: 'Елена Козлова', email: 'elena@example.com', company: 'Дизайн', phone: '' },
+    { id: 'c4', name: 'Дмитрий Соколов', email: 'dmitry@example.com', company: 'Продуктовая команда', phone: '' },
+    { id: 'c5', name: 'Алексей Морозов', email: 'alex@example.com', company: 'Разработка', phone: '' },
+    { id: 'c6', name: 'Команда поддержки', email: 'support@example.com', company: 'IT', phone: '' },
+  ];
+  return { messages, events, contacts };
+})();

@@ -1,0 +1,66 @@
+{
+  "name": "aster-mail",
+  "version": "0.1.4",
+  "private": true,
+  "description": "A calm desktop home for Exchange mail, calendar and people",
+  "author": "Aster Mail contributors",
+  "license": "MIT",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "preview": "node scripts/preview.cjs",
+    "test": "node --test test/*.test.cjs",
+    "check": "node --check desktop/main.cjs && node --check desktop/owa.cjs && node --check desktop/protocol.cjs && node --check src/app.js && node --check desktop/meetings.cjs && node --check desktop/widget-preload.cjs && node --check src/widget.js && node --check src/calendar.js && node --check desktop/availability.cjs && node --check src/availability.js",
+    "pack:mac": "electron-builder --mac --arm64 --dir",
+    "dist:mac": "electron-builder --mac dmg --arm64",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.1",
+    "fast-xml-parser": "^5.3.0"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "app.astermail.desktop",
+    "productName": "Aster Mail",
+    "icon": "assets/icon.png",
+    "extraResources": [
+      {
+        "from": "assets/sounds",
+        "to": ".",
+        "filter": [
+          "*.wav",
+          "LICENSE.md"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**",
+      "src/**",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "assets/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "darkModeSupport": true,
+      "identity": "-"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

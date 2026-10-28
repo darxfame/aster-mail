@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'none'; frame-src 'self' about:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Aster Mail</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h1m6 0h1m-8 3h1"/></symbol>
+    <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m2-16a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="m3 13 3-9h12l3 9v7H3Zm0 0h5l2 3h4l2-3h5"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9L2 9Zm0 0L11 13"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H5v20h14V7Zm0 0v5h5M8 12h8m-8 4h6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 9v12h16V9M3 3h18v6H3Zm6 10h6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 20V4h7l2 3h9v13Z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="m10 3-1 3-3 1-3 3 2 2-1 4 3 2 3-1 3 4 3-2 1-4 4-2-1-4-4-1-2-3Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 7M20 4v7h-7"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-reply" viewBox="0 0 24 24"><path d="m9 4-7 7 7 7M2 11h11a8 8 0 0 1 8 8"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="m9 15 8-8a3 3 0 0 1 4 4L10 22a6 6 0 0 1-8-8L13 3a4 4 0 0 1 6 6L8 20"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13A9 9 0 0 1 11 3 9 9 0 1 0 21 13Z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6Zm-4 9 3 3 5-6"/></symbol>
+  </defs></svg>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Почтовые папки"></aside>
+    <div class="sidebar-edge">
+      <div id="sidebar-resize" class="sidebar-resize" role="separator" tabindex="0" aria-label="Ширина меню папок" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"></div>
+      <button class="sidebar-toggle" id="sidebar-toggle" data-action="toggle-sidebar" aria-label="Раскрыть меню папок" aria-controls="sidebar" aria-expanded="false" title="Раскрыть меню папок"><svg class="sidebar-chevron"><use href="#i-chevron"/></svg></button>
+    </div>
+    <main>
+      <header class="topbar">
+
+        <button id="quick-create" class="primary quick-create" data-action="compose"><svg><use href="#i-plus"/></svg><span>Написать</span></button>
+        <form id="search-form" class="search-box"><svg><use href="#i-search"/></svg><input id="search" placeholder="Поиск по почтовому ящику" aria-label="Поиск"><kbd>↵</kbd></form>
+        <button class="icon-button" data-action="refresh" aria-label="Обновить" title="Обновить"><svg><use href="#i-refresh"/></svg></button>
+        <button class="icon-button" data-action="theme" aria-label="Сменить тему" title="Сменить тему"><svg><use href="#i-moon"/></svg></button>
+
+        <span id="connection" class="connection"><i></i> Не подключено</span>
+      </header>
+      <div id="demo-banner" class="demo-banner" hidden>Демонстрационный режим · письма и встречи вымышлены <button data-action="connect">Подключить OWA <span>↗</span></button></div>
+      <div id="error" class="error-banner" role="alert" hidden></div>
+      <section id="workspace" class="workspace"></section>
+      <footer class="statusbar"><div class="bottom-dock"><nav id="view-switcher" class="view-switcher" aria-label="Разделы приложения">
+          <button class="view-tab active" data-action="view" data-view="mail" aria-label="Почта" aria-pressed="true"><svg><use href="#i-mail"/></svg><span>Почта</span></button>
+          <button class="view-tab" data-action="view" data-view="calendar" aria-label="Календарь" aria-pressed="false"><svg><use href="#i-calendar"/></svg><span>Календарь</span></button>
+          <button class="view-tab" data-action="view" data-view="contacts" aria-label="Контакты" aria-pressed="false"><svg><use href="#i-people"/></svg><span>Контакты</span></button>
+        <button class="view-tab dock-settings" data-action="settings" aria-label="Настройки" title="Настройки"><svg><use href="#i-settings"/></svg><span>Настройки</span></button></nav></div><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <span class="version">0.1.4</span></span></footer>
+    </main>
+  </div>
+  <dialog id="modal"><div id="modal-content"></div></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="../node_modules/dompurify/dist/purify.min.js"></script>
+  <script src="demo.js"></script>
+  <script src="availability.js"></script>
+  <script src="calendar.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

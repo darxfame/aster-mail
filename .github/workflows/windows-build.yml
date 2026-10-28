@@ -1,0 +1,27 @@
+name: Windows installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run dist:win -- --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aster-mail-windows-x64-unsigned
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 14
