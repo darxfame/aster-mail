@@ -1,21 +1,26 @@
 ---
-name: Ошибка
-about: Проблема в интерфейсе, подключении или работе Exchange
+name: Ошибка / Bug report
+about: Проблема в интерфейсе, подключении или Exchange / UI, connection, or Exchange problem
 title: ''
-labels: ''
+labels: bug
 assignees: ''
 ---
 
-**Что произошло и что ожидалось**
+Можно писать на русском или английском. English reports are welcome.
 
-**Как воспроизвести**
+**Что произошло и что ожидалось / Actual and expected behavior**
 
-**Окружение**
-- Версия Aster Mail:
-- ОС и архитектура:
-- Версия Exchange, если известна:
+**Как воспроизвести / Steps to reproduce**
 
-**Проверки и скриншоты с вымышленными данными**
+**Окружение / Environment**
+- Версия Aster Mail / App version:
+- ОС и архитектура / OS and architecture:
+- Версия Exchange, если известна / Exchange version, if known:
+- Воспроизводится в демо? / Reproducible in demo mode?
+
+**Проверки и скриншоты с вымышленными данными / Verification and demo-data screenshots**
 
 Не прикладывайте пароли, токены, cookies, личные письма и корпоративные адреса.
 Уязвимости сообщайте по инструкции SECURITY.md.
+Do not attach passwords, tokens, cookies, private mail, or corporate addresses.
+Report vulnerabilities using SECURITY.md.

@@ -1,13 +1,15 @@
 ---
-name: Предложение
-about: Улучшение Aster Mail
+name: Предложение / Feature request
+about: Улучшение Aster Mail / Suggest an improvement
 title: ''
-labels: ''
+labels: enhancement
 assignees: ''
 ---
 
-**Какую задачу нужно решить**
+Можно писать на русском или английском. English requests are welcome.
 
-**Предлагаемое поведение**
+**Какую задачу нужно решить / Problem to solve**
 
-**Пример сценария**
+**Предлагаемое поведение / Proposed behavior**
+
+**Пример сценария / Example workflow**

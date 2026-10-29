@@ -1,6 +1,8 @@
 # Aster Mail
 
-[Русский](README.md) · [English](README.en.md)
+**[Скачать последнюю версию для macOS / Windows](https://github.com/darxfame/aster-mail/releases/latest)**
+
+**Русский · [Read in English →](https://github.com/darxfame/aster-mail/blob/main/README.en.md)**
 
 Открытый настольный клиент **Microsoft Exchange OWA/EWS** для
 **macOS Apple Silicon и Windows x64**. Почта, календарь и коллеги в одном
@@ -12,11 +14,11 @@
 [![Звёзды](https://img.shields.io/github/stars/darxfame/aster-mail?style=flat&label=%D0%97%D0%B2%D1%91%D0%B7%D0%B4%D1%8B&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/stargazers)
 [![Проверки](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
 
-**[Скачать последнюю версию](https://github.com/darxfame/aster-mail/releases/latest)** ·
 [Руководство](docs/USER-GUIDE.md) · [План развития](docs/OWA-TODO.md) ·
-[Сообщить об ошибке](https://github.com/darxfame/aster-mail/issues)
+[Сообщить об ошибке](https://github.com/darxfame/aster-mail/issues/new/choose) ·
+[Задачи для первого PR](https://github.com/darxfame/aster-mail/contribute)
 
-![Aster Mail — интерфейс с вымышленными данными](docs/aster-sidebar-cards-0.1.3.jpg)
+[![Aster Mail — интерфейс с вымышленными данными](https://raw.githubusercontent.com/darxfame/aster-mail/main/docs/aster-sidebar-cards-0.1.3.jpg)](https://raw.githubusercontent.com/darxfame/aster-mail/main/docs/aster-sidebar-cards-0.1.3.jpg)
 
 ## Подойдёт ли вам Aster Mail
 
@@ -39,15 +41,23 @@
 ## Почему Aster Mail
 
 - **Почта под рукой.** Папки, поиск, ответы и пересылка, форматирование,
-  серверные черновики, отдельные «Кому»/«Копия» и карточки получателей.
-  Общий поиск писем, событий основного календаря и личных контактов;
-  вложения открываются в системном приложении.
+  серверные черновики и открытие вложений в системном приложении.
 - **Удобнее планировать.** Календарь дня и недели, приглашения, занятость коллег
   и подбор общего времени. На macOS — виджет встречи в строке меню.
 - **Меньше отвлечений.** Светлая и тёмная темы, настраиваемые уведомления,
   компактный индикатор связи и автоматическое восстановление подключения OWA.
 - **Прямой доступ к Exchange.** Без промежуточного облака Aster и телеметрии.
   Открытый исходный код под MIT.
+
+В разрабатываемой версии 0.1.23: отдельные «Кому»/«Копия», карточки получателей
+и общий поиск писем, событий основного календаря и личных контактов.
+Доступность в установщике проверяйте по описанию последнего релиза.
+
+### Календарь и встречи
+
+[![Календарь Aster Mail с вымышленными данными](https://raw.githubusercontent.com/darxfame/aster-mail/main/docs/aster-calendar-0.1.5.jpg)](https://raw.githubusercontent.com/darxfame/aster-mail/main/docs/aster-calendar-0.1.5.jpg)
+
+[![Виджет встреч Aster Mail для macOS](https://raw.githubusercontent.com/darxfame/aster-mail/main/docs/aster-widget-grid-0.1.7.jpg)](https://raw.githubusercontent.com/darxfame/aster-mail/main/docs/aster-widget-grid-0.1.7.jpg)
 
 ## Безопасность в основе разработки
 
@@ -122,6 +132,10 @@ npm run preview
   с коллегами, которым нужен клиент Exchange.
 
 Issues и pull requests можно писать на русском или английском.
+[Задачи для первого PR](https://github.com/darxfame/aster-mail/contribute) ·
+[Нужна помощь](https://github.com/darxfame/aster-mail/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22) ·
+[Сообщить о совместимости](https://github.com/darxfame/aster-mail/issues/new?template=compatibility_report.md).
+
 [Разработка и проверки](CONTRIBUTING.md) · [Сборка Windows](docs/WINDOWS.md) ·
 [Архитектура и соглашения](AGENTS.md).
 
