@@ -51,9 +51,9 @@ See the [detailed limitations (Russian)](docs/USER-GUIDE.md#ограничени
 - **Stay focused:** light and dark themes, configurable notifications, a compact
   connection indicator, and automatic OWA connection recovery.
 
-In development for 0.1.23: separate To/Cc fields, recipient cards, and search
-across mail, primary-calendar events, and personal contacts. Check the latest
-release notes for availability in downloadable builds.
+Available since [0.1.23](https://github.com/darxfame/aster-mail/releases/tag/v0.1.23):
+separate To/Cc fields, recipient cards, and search across mail,
+primary-calendar events, and personal contacts.
 
 ### Calendar and meetings
 
