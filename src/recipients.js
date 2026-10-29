@@ -45,7 +45,7 @@
   }
   function show(input, people, message = '') {
     const context = setup(input); context.options = people; context.active = -1; input.removeAttribute('aria-activedescendant');
-    context.box.innerHTML = people.map((person, i) => `<div class="recipient-option" role="option" id="${context.box.id}-${i}" data-index="${i}" aria-selected="false">${avatar(person.name || person.email, 0, person.email)}<div><strong>${esc(person.name || person.email)}</strong><small>${esc(person.email)}</small></div></div>`).join('') + (message ? `<div class="recipient-note" role="status">${esc(message)}</div>` : '');
+    context.box.innerHTML = people.map((person, i) => `<div class="recipient-option" role="option" id="${context.box.id}-${i}" data-index="${i}" aria-selected="false">${avatar(person.name || person.email, 0, person.email)}<div><strong>${esc(person.name || person.email)}</strong><small>${esc(person.email)}${person.source === 'directory' ? ' · Справочник Exchange' : ''}</small></div></div>`).join('') + (message ? `<div class="recipient-note" role="status">${esc(message)}</div>` : '');
     context.box.hidden = !people.length && !message; input.setAttribute('aria-expanded', String(!context.box.hidden));
   }
   function search(input) {
@@ -59,11 +59,11 @@
     context.timer = setTimeout(async () => {
       const current = () => input.isConnected && document.activeElement === input && context.generation === generation && input.value === fingerprint && account === `${state.demo}|${state.account?.server}|${state.account?.username}`;
       try {
-        const result = state.demo ? { items: window.asterDemo.contacts } : await api('contacts', { query });
+        const result = state.demo ? { items: matches(window.asterDemo.directory, query) } : await api('contacts', { query });
         if (!current()) return;
-        const people = matches([...local, ...result.items], query, excluded);
-        show(input, people, people.length ? '' : 'Совпадений нет. Можно ввести полный email вручную.');
-      } catch (error) { if (current()) show(input, found, 'Каталог недоступен. Можно ввести полный email вручную.'); }
+        const people = matches([...result.items, ...found], '', excluded);
+        show(input, people, result.truncated ? 'Много совпадений в справочнике Exchange. Уточните имя или email.' : people.length ? '' : 'В справочнике Exchange совпадений нет. Можно ввести полный email вручную.');
+      } catch (error) { if (current()) show(input, found, `Поиск в общем справочнике не выполнен: ${error.message}. Можно ввести полный email вручную.`); }
     }, 250);
   }
   document.addEventListener('focusin', event => { if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target); });

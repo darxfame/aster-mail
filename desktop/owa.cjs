@@ -62,12 +62,11 @@ class OWAClient {
   async call(action, payload, { retry = true, headerBody = false } = {}) {
     if (!this.canary) await this.authenticate();
     const body = JSON.stringify(payload);
-    const actionId = action === 'FindPeople' ? '-199' : '-100';
-    const response = await this.transport(`${this.origin}/owa/service.svc?action=${action}&EP=1&ID=${actionId}&AC=1`, {
+    const response = await this.transport(`${this.origin}/owa/service.svc?action=${action}&EP=1&ID=-100&AC=1`, {
       method: 'POST', headers: {
         'Content-Type': 'application/json; charset=UTF-8', Accept: '*/*',
-        'X-OWA-CANARY': this.canary, Action: action, 'X-OWA-ActionName': action === 'FindPeople' ? 'ComposeForms' : action,
-        'X-OWA-ActionId': actionId, 'X-OWA-Attempt': '1', 'X-Requested-With': 'XMLHttpRequest',
+        'X-OWA-CANARY': this.canary, Action: action, 'X-OWA-ActionName': action,
+        'X-OWA-ActionId': '-100', 'X-OWA-Attempt': '1', 'X-Requested-With': 'XMLHttpRequest',
         Origin: this.origin, Referer: `${this.origin}/owa/`,
         ...(headerBody ? { 'X-OWA-UrlPostData': encodeURIComponent(body) } : {}),
       }, body: headerBody ? undefined : body,
@@ -93,7 +92,7 @@ class OWAClient {
       }, body: xml,
     });
     if (response.status >= 400) throw new Error(`EWS ${action}: HTTP ${response.status}. Проверьте доступность /EWS/Exchange.asmx. Операция не повторялась.`);
-    return P.parseSOAP(response.text);
+    return P.parseSOAP(response.text, action);
   }
   async folders() {
     const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
@@ -274,20 +273,7 @@ class OWAClient {
     return availability.normalize(response, request);
   }
   async contacts({ query = '', offset = 0 }) {
-    if (query.trim()) {
-      const json = await this.call('FindPeople', P.request('FindPeople', {
-        IndexedPageItemView: P.paging(offset), QueryString: query,
-        AggregationRestriction: P.typed('RestrictionType', { Item: P.typed('Or', { Items: [
-          P.typed('Exists', { Item: P.property('PersonaEmailAddress') }),
-          P.typed('IsEqualTo', { Item: P.property('PersonaType'), FieldURIOrConstant: P.typed('FieldURIOrConstantType', { Item: P.typed('Constant', { Value: 'DistributionList' }) }) }),
-        ] }) }),
-        PersonaShape: P.typed('PersonaResponseShape', { BaseShape: 'Default', AdditionalProperties: [P.property('PersonaCompanyName')] }),
-        ShouldResolveOneOffEmailAddress: true, SearchPeopleSuggestionIndex: false,
-        Context: [P.typed('ContextProperty', { Key: 'AppName', Value: 'OWA' }), P.typed('ContextProperty', { Key: 'AppScenario', Value: 'Calendar' })],
-      }));
-      const people = P.walk(json, o => o.PersonaId?.Id && o.DisplayName !== undefined);
-      return { items: people.map(o => ({ id: o.PersonaId.Id, name: o.DisplayName, email: o.EmailAddress?.EmailAddress || o.EmailAddresses?.[0]?.EmailAddress || '', company: o.CompanyName || '', phone: o.BusinessPhoneNumbers?.[0]?.Number || '' })), more: false };
-    }
+    if (query.trim()) return require('./directory.cjs').search(this, query);
     const json = await this.call('FindItem', P.request('FindItem', {
       ParentFolderIds: [P.folder('contacts')], Traversal: 'Shallow', Paging: P.paging(offset),
       ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties' }),

@@ -1,4 +1,4 @@
-// Directory suggestions use the same FindPeople operation as participant inputs.
+// Directory suggestions use the same Exchange GAL lookup as participant inputs.
 document.addEventListener('DOMContentLoaded', () => {
   const input = $('#search'), form = $('#search-form'), box = document.createElement('div');
   box.id = 'people-search-suggestions'; box.className = 'people-search-suggestions'; box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Люди из каталога Exchange'); form.append(box);
@@ -22,9 +22,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const current = sequence, fingerprint = accountKey();
     timer = setTimeout(async () => {
       try {
-        const result = state.demo ? { items: window.asterDemo.contacts } : await api('contacts', { query });
+        const result = state.demo ? { items: window.asterRecipients.matches(window.asterDemo.directory, query) } : await api('contacts', { query });
         if (sequence !== current || accountKey() !== fingerprint || state.view !== 'contacts' || input.value.trim() !== query) return;
-        const found = window.asterRecipients.matches([...result.items, ...local], query);
+        const found = window.asterRecipients.matches([...result.items, ...window.asterRecipients.matches(local, query)], '');
         show(found, found.length ? '' : 'Совпадений не найдено');
       } catch (error) { if (sequence === current && state.view === 'contacts') show(window.asterRecipients.matches(local, query), `Каталог недоступен: ${error.message}`); }
     }, 250);

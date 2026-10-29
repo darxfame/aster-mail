@@ -170,7 +170,7 @@ test('HTML signatures are sent as escaped HTML content for new messages and repl
   }
 });
 test('contacts and directory search normalize separately', async () => {
-  const { client } = mock(url => url.includes('FindPeople') ? ok({ ResultSet: [{ PersonaId: { Id: 'p1' }, DisplayName: 'Anna', EmailAddress: { EmailAddress: 'a@example.com' } }] }) : ok({ ResponseMessages: { Items: [{ RootFolder: { Items: [{ ItemId: { Id: 'c1' }, DisplayName: 'Alex', EmailAddresses: [{ Value: 'alex@example.com' }] }], IncludesLastItemInRange: true } }] } }));
+  const { client } = mock((_url, options) => options.headers.SOAPAction?.includes('ResolveNames') ? { status: 200, text: soapOK('<ResolutionSet IncludesLastItemInRange="true"><Resolution><Mailbox><Name>Anna</Name><EmailAddress>a@example.com</EmailAddress><RoutingType>SMTP</RoutingType></Mailbox></Resolution></ResolutionSet>') } : ok({ ResponseMessages: { Items: [{ RootFolder: { Items: [{ ItemId: { Id: 'c1' }, DisplayName: 'Alex', EmailAddresses: [{ Value: 'alex@example.com' }] }], IncludesLastItemInRange: true } }] } }));
   assert.equal((await client.contacts({})).items[0].email, 'alex@example.com');
   assert.equal((await client.contacts({ query: 'Anna' })).items[0].name, 'Anna');
 });

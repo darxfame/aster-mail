@@ -22,6 +22,9 @@ or replay an invitation update after an uncertain response.
 `src/calendar-layout.js` assigns overlap columns. Keep OWA UTC headers and
 wall-time request bodies consistent. Never derive participation from opening an event. Invitees may update only
 `reminder` / `reminderSet`; keep the organizer-only field check in the backend.
+`desktop/directory.cjs` searches the Exchange GAL through EWS ResolveNames with
+ActiveDirectoryContacts scope. Accept name-resolution warnings only for that read
+operation; do not hide access or transport errors.
 `src/recipients.js` owns participant matching and accessible directory suggestions;
 discard stale search responses and preserve other comma-separated recipients.
 `src/rich-content.js` renders sanitized HTML with scripts disabled; parent code

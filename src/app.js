@@ -161,7 +161,7 @@ async function loadView(append = false) {
       if (requestedMode !== calendarMode()) return loadView();
       state.events = events; renderCalendar();
     } else {
-      const result = state.demo ? { items: structuredClone(window.asterDemo.contacts).filter(c => `${c.name} ${c.email} ${c.company}`.toLowerCase().includes(state.query.toLowerCase())), more: false } : await api('contacts', { query: state.query, offset: append ? state.contacts.length : 0 });
+      const result = state.demo ? { items: structuredClone(state.query ? window.asterDemo.directory : window.asterDemo.contacts).filter(c => `${c.name} ${c.email} ${c.company}`.toLowerCase().includes(state.query.toLowerCase())), more: false } : await api('contacts', { query: state.query, offset: append ? state.contacts.length : 0 });
       if (generation !== state.generation) return;
       state.contacts = append ? [...state.contacts, ...result.items] : result.items; state.more = result.more; renderContacts(); void refreshColleagues();
     }
@@ -364,7 +364,7 @@ function directoryModal() {
 async function searchDirectory(form) {
   const request = ++directoryRequest, query = form.elements.query.value.trim();
   await submitForm(form, async () => {
-    const result = state.demo ? { items: window.asterDemo.contacts.filter(c => `${c.name} ${c.email}`.toLowerCase().includes(query.toLowerCase())) } : await api('contacts', { query });
+    const result = state.demo ? { items: window.asterDemo.directory.filter(c => `${c.name} ${c.email}`.toLowerCase().includes(query.toLowerCase())) } : await api('contacts', { query });
     if (request !== directoryRequest || !$('#directory-results')) return;
     directoryResults = result.items.filter(c => c.email);
     $('#directory-results').innerHTML = directoryResults.map((c, i) => `<div class="directory-row">${avatar(c.name, 0, c.email)}<div><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></div><button class="secondary" data-action="add-colleague" data-index="${i}" ${colleagues().some(p => p.email.toLowerCase() === c.email.toLowerCase()) ? 'disabled' : ''}>${icon('plus')}Добавить</button></div>`).join('') || '<p class="form-note">По этому запросу людей с почтовым адресом не найдено.</p>';

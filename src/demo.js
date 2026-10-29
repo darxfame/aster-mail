@@ -49,5 +49,5 @@ window.asterDemo = (() => {
     { id: 'demo-team', name: 'Команда', parentId: 'folder-inbox', unread: 0 },
     { id: 'demo-docs', name: 'Документы', parentId: 'mail-root', unread: 0 },
   ];
-  return { messages, events, contacts, folders };
+  return { messages, events, contacts, folders, directory: [...contacts, { id: 'directory-irina', name: 'Ирина Новикова', email: 'irina.novikova@example.com', company: 'Команда исследований', source: 'directory' }, { id: 'directory-pavel', name: 'Павел Орлов', email: 'pavel.orlov@example.com', company: 'Команда разработки', source: 'directory' }] };
 })();

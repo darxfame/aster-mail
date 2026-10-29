@@ -79,12 +79,13 @@ const escapeXML = value => String(value ?? '').replace(/[<>&"']/g, c => ({ '<': 
 function soap(body) {
   return `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/><t:TimeZoneContext><t:TimeZoneDefinition Id="UTC"/></t:TimeZoneContext></soap:Header><soap:Body>${body}</soap:Body></soap:Envelope>`;
 }
-function parseSOAP(text) {
+function parseSOAP(text, action = '') {
   if (/<!DOCTYPE/i.test(text) || XMLValidator.validate(text) !== true) throw new Error('Invalid EWS XML response');
   const data = new XMLParser({ removeNSPrefix: true, ignoreAttributes: false, processEntities: true, parseTagValue: false }).parse(text);
   const codes = walk(data, o => o.ResponseCode !== undefined).map(o => o.ResponseCode);
   if (!codes.length) throw new Error('Unexpected EWS response; check that /EWS/Exchange.asmx is enabled');
-  const error = codes.find(code => code !== 'NoError');
+  const accepted = action === 'ResolveNames' ? ['NoError', 'ErrorNameResolutionMultipleResults', 'ErrorNameResolutionNoResults'] : ['NoError'];
+  const error = codes.find(code => !accepted.includes(code));
   if (error) { const failure = new Error(`Exchange: ${error}`); failure.code = error; throw failure; }
   return data;
 }
