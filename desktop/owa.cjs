@@ -18,7 +18,7 @@ function loginForm(html, origin) {
 }
 class OWAClient {
   constructor(account, transport, cookieToken, clearCookies = async () => {}, imageTransport = null) {
-    this.origin = P.normalizeServer(account.server);
+    this.origin = P.normalizeServer(account.server, account.allowHttp === true);
     this.account = account;
     this.transport = transport;
     this.cookieToken = cookieToken;

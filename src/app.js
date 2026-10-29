@@ -118,7 +118,7 @@ function renderSidebar() {
   create.setAttribute('aria-label', { mail: 'Написать', calendar: 'Создать встречу', contacts: 'Новый контакт' }[state.view]);
   document.body.classList.toggle('mail-view', isMail);
   $('#search').placeholder = { mail: 'Поиск по почтовому ящику', calendar: 'Поиск по календарю', contacts: 'Поиск людей в Exchange' }[state.view];
-  $('#connection').innerHTML = `<i></i>${state.demo ? 'Деморежим' : state.account ? 'Exchange · HTTPS' : 'Не подключено'}`;
+  $('#connection').innerHTML = `<i></i>${state.demo ? 'Деморежим' : state.account ? `Exchange · ${state.account.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}` : 'Не подключено'}`;
   $('#demo-banner').hidden = !state.demo;
 }
 function welcome() {
@@ -369,9 +369,18 @@ function renderContacts() {
   renderColleagues();
 }
 function connectModal() {
-  modal('Подключить Exchange', 'Используйте тот же адрес и логин, что в mac-owa-widget. Пароль отправляется только вашему серверу по HTTPS.', `<form id="connect-form">${field('server', 'Адрес OWA-сервера', state.account?.server || '', 'url', true)}${field('username', 'Логин · name@company.ru или DOMAIN\\login', state.account?.username || '', 'text', true)}${field('password', 'Пароль', '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">Запомнить пароль в защищённом системном хранилище</label><p class="form-note">Поддерживаются формы OWA и NTLM на том же сервере. Если для работы нужен VPN, подключите его до входа. Сертификат должен быть доверен системой.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">Посмотреть демо</button><button class="primary" type="submit">Подключиться ${icon('chevron')}</button></div></form>`);
-  $('input[name="server"]').placeholder = 'https://mail.company.ru/owa/';
+  const server = state.account?.server || '', protocol = server.startsWith('http:') ? 'http' : 'https';
+  modal('Подключить Exchange', 'Адрес и логин вашего корпоративного OWA.', `<form id="connect-form"><div class="server-address"><label class="field"><span>Протокол</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="http" ${protocol === 'http' ? 'selected' : ''}>HTTP</option><option value="custom">Свой · полный URL</option></select></label>${field('server', 'Адрес OWA-сервера', server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', 'Логин · name@company.ru или DOMAIN\\login', state.account?.username || '', 'text', true)}${field('password', 'Пароль', '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">Запомнить пароль в защищённом системном хранилище</label><p class="form-note">Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">Посмотреть демо</button><button class="primary" type="submit">Подключиться ${icon('chevron')}</button></div></form>`);
+  refreshProtocolNote();
 }
+function refreshProtocolNote() {
+  const form = $('#connect-form'); if (!form) return;
+  const protocol = form.elements.protocol.value, http = protocol === 'http' || protocol === 'custom' && /^http:/i.test(form.elements.server.value.trim());
+  form.elements.server.placeholder = protocol === 'custom' ? 'https://mail.company.ru:8443/owa/' : 'mail.company.ru';
+  $('#protocol-note').textContent = http ? 'HTTP: логин, пароль и почта передаются без шифрования. Используйте только в доверенной сети.' : protocol === 'custom' ? 'Укажите полный HTTP(S) URL, включая порт при необходимости. Другие схемы и нестандартные пути OWA пока не поддерживаются.' : 'HTTPS добавляется автоматически. Можно указать домен, порт и /owa/.';
+  $('#protocol-note').classList.toggle('http-warning', http);
+}
+
 async function compose(mode = 'new', contact = null) {
   if (!ready()) return connectModal();
   const source = syncSignature ? await getServerSignature() : null;
@@ -381,7 +390,7 @@ async function compose(mode = 'new', contact = null) {
   composeData = { kind: mode, reference: mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? { html: source.html, text: source.text } : null };
   const recipients = mode === 'reply-all' ? [...new Set([m.from.email, ...(m.to || []).map(a => a.email), ...(m.cc || []).map(a => a.email)].filter(e => e && e.toLowerCase() !== state.account?.username?.toLowerCase()))].join(', ') : mode === 'reply' ? m.from.email : contact?.email || '';
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
-  modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : 'Отправка через корпоративный Exchange по HTTPS.', `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients, 'text', true)}${field('cc', 'Копия')}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
+  modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : `Отправка через корпоративный Exchange по ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients, 'text', true)}${field('cc', 'Копия')}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
 }
 function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
 function eventModal() {
@@ -400,6 +409,7 @@ async function settingsModal() {
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal('Настройки Aster', 'Спокойное пространство, настроенное под вас.', `<form id="settings-form">
     <p class="form-note">${state.account ? `Аккаунт: ${esc(state.account.username)} · ${esc(state.account.server)}` : state.demo ? 'Сейчас открыт демонстрационный аккаунт.' : 'Аккаунт Exchange пока не подключён.'}</p>
+    <button class="secondary" type="button" data-action="updates">Обновления Aster Mail</button>
     ${checkbox('syncSignature', 'Использовать подпись из OWA', syncSignature)}
     ${textField('signature', 'Подпись для новых писем и ответов', syncSignature ? serverSignature?.text || '' : state.signature)}
     <button class="secondary" type="button" data-action="refresh-signature">Обновить подпись из OWA</button>
@@ -466,6 +476,7 @@ async function handleAction(button) {
     if (state.account) throw new Error('Сначала выйдите из аккаунта в настройках, чтобы открыть демо.');
     $('#modal').close(); state.demo = true; state.folder = 'inbox'; state.view = 'mail'; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView();
   }
+  if (action === 'updates') return updatesModal();
   if (action === 'settings') return settingsModal();
   if (action === 'refresh-signature') {
     $('#settings-form').elements.syncSignature.checked = true;
@@ -613,10 +624,16 @@ sidebarResize.addEventListener('keydown', event => {
   localStorage.setItem('aster-sidebar-collapsed', String(sidebarCollapsed)); renderSidebar();
 });
 document.addEventListener('input', event => {
+  if (event.target.closest('#connect-form') && event.target.name === 'server') {
+    const form = $('#connect-form'), match = /^(https?):\/\//i.exec(event.target.value.trim());
+    if (match && form.elements.protocol.value !== 'custom') form.elements.protocol.value = match[1].toLowerCase();
+    refreshProtocolNote();
+  }
   const form = event.target.closest('#event-form');
   if (form && ['start', 'end', 'attendees'].includes(event.target.name)) $('#planner-results').innerHTML = '<p class="form-note">Данные изменились. Проверьте занятость повторно.</p>';
 });
 document.addEventListener('change', event => {
+  if (event.target.name === 'protocol') refreshProtocolNote();
   if (event.target.name === 'allDay' && event.target.closest('#event-form')) {
     const form = $('#event-form');
     if (event.target.checked && form.elements.start.value) {
@@ -662,7 +679,7 @@ document.addEventListener('submit', event => {
     }); return;
   }
   if (form.id === 'connect-form') submitForm(form, async data => {
-    state.account = await api('connect', { ...data, remember: Boolean(data.remember) });
+    state.account = await api('connect', { ...data, ...window.asterServer.address(data.protocol, data.server), remember: Boolean(data.remember) });
     state.demo = false; state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = [];
     state.query = ''; $('#search').value = ''; $('#modal').close();
     await loadView();
@@ -682,6 +699,8 @@ document.addEventListener('submit', event => {
 async function boot() {
   renderSidebar(); welcome();
   if (window.aster) {
+    window.aster.onUpdate(receiveUpdate);
+    receiveUpdate(await api('updateState'));
     const savedSettings = await api('notificationSettings');
     timeZone = savedSettings.timeZone || 'system'; localStorage.setItem('aster-time-zone', timeZone);
     notificationPreferences = savedSettings;

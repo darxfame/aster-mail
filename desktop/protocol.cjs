@@ -122,9 +122,6 @@ function eventSOAP(data) {
   if (!data.title?.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) throw new Error('Укажите название и корректное время встречи');
   return soap(`<m:CreateItem SendMeetingInvitations="${attendees.length ? 'SendToAllAndSaveCopy' : 'SendToNone'}"><m:SavedItemFolderId><t:DistinguishedFolderId Id="calendar"/></m:SavedItemFolderId><m:Items><t:CalendarItem><t:Subject>${escapeXML(data.title)}</t:Subject><t:Body BodyType="Text">${escapeXML(data.body)}</t:Body><t:ReminderIsSet>true</t:ReminderIsSet><t:ReminderMinutesBeforeStart>15</t:ReminderMinutesBeforeStart><t:Start>${start.toISOString()}</t:Start><t:End>${end.toISOString()}</t:End><t:Location>${escapeXML(data.location)}</t:Location>${attendees.length ? `<t:RequiredAttendees>${attendees.map(email => `<t:Attendee><t:Mailbox><t:EmailAddress>${escapeXML(email)}</t:EmailAddress></t:Mailbox></t:Attendee>`).join('')}</t:RequiredAttendees>` : ''}</t:CalendarItem></m:Items></m:CreateItem>`);
 }
-function normalizeServer(value) {
-  const url = new URL(value);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !['/', '/owa', '/owa/'].includes(url.pathname)) throw new Error('Укажите HTTPS-адрес сервера, например https://mail.company.ru/owa/');
-  return url.origin;
-}
+const normalizeServer = require('../src/server.js').normalize;
+
 module.exports = { typed, folder, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer };

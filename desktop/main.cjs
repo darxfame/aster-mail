@@ -3,6 +3,8 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { Updates } = require('./updates.cjs');
+let updates;
 const { OWAClient } = require('./owa.cjs');
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences } = require('./notifications.cjs');
@@ -29,7 +31,7 @@ function reveal(navigation) {
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
 }
 function refreshWidget() {
   const state = widgetState();
@@ -123,7 +125,7 @@ async function pollNotifications() {
 function transport(url, options = {}) {
   return new Promise((resolve, reject) => {
     const credentials = account;
-    const origin = normalizeServer(credentials.server);
+    const origin = normalizeServer(credentials.server, credentials.allowHttp === true);
     if (new URL(url).origin !== origin) return reject(new Error('Запрос к постороннему серверу заблокирован'));
     const req = net.request({ url, method: options.method || 'GET', session: accountSession, useSessionCookies: true, redirect: 'manual' });
     let attempts = 0, redirects = 0, settled = false;
@@ -190,7 +192,7 @@ async function fetchContentImage(url) {
 async function connect(data, remember, restoring = false) {
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
   client = null;
-  account = { server: normalizeServer(data.server), username: data.username.trim(), password: data.password };
+  account = { server: normalizeServer(data.server, data.allowHttp === true), allowHttp: data.allowHttp === true, username: data.username.trim(), password: data.password };
   // An in-memory partition prevents session cookies from being persisted to disk.
   accountSession = session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false });
   const candidate = new OWAClient(account, transport,
@@ -220,6 +222,12 @@ function validate(operation, data) {
 }
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.astermail.desktop');
+  updates = new Updates({ directory: path.join(app.getPath('userData'), 'updates'), installed: app.getVersion(),
+    // Node fetch has no access to Electron OWA cookies and supports manual redirects.
+    fetch: (url, options) => globalThis.fetch(url, options), open: file => shell.openPath(file),
+    changed: value => { if (window && !window.isDestroyed()) window.webContents.send('aster-update', value); },
+  });
+  await updates.initialize();
   try { notificationSettings = preferences(JSON.parse(await fs.readFile(settingsFile(), 'utf8'))); } catch { /* Defaults on first launch. */ }
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
@@ -242,6 +250,11 @@ app.whenReady().then(async () => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
       validate(operation, data);
+      if (operation === 'updateState') return { ok: true, value: updates.snapshot() };
+      if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
+      if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
+      if (operation === 'openUpdateInstaller') return { ok: true, value: await updates.openInstaller() };
+      if (operation === 'saveUpdatePreferences') return { ok: true, value: await updates.preferences(data.autoCheck) };
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, error: lastPollError, supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
@@ -326,6 +339,11 @@ app.whenReady().then(async () => {
   refreshWidget();
   const widgetTimer = setInterval(refreshWidget, 15000); widgetTimer.unref();
   const timer = setInterval(() => { void pollNotifications(); }, 60000); timer.unref();
+  if (app.isPackaged) {
+    const check = () => { if (updates.state.autoCheck) void updates.check(); };
+    const firstCheck = setTimeout(check, 15000); firstCheck.unref();
+    const updateTimer = setInterval(check, 6 * 60 * 60000); updateTimer.unref();
+  }
   app.on('activate', () => reveal());
 });
 app.on('before-quit', () => { quitting = true; });

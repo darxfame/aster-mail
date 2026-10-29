@@ -30,6 +30,12 @@ external image requests use a separate session without account credentials.
 The isolated widget uses `src/widget.*`. Sound assets and their
 generator are CC0; preserve their separate license.
 
+`desktop/updates.cjs` checks stable GitHub releases and verifies installer size
+and SHA-256 before opening. Keep update traffic separate from OWA, allow only
+HTTPS GitHub/CDN destinations, and never auto-quit or replace the unsigned app.
+`src/server.js` defaults to HTTPS; HTTP requires explicit opt-in. Preserve
+same-origin authentication and TLS validation for HTTPS.
+
 ## Build, Test, and Development Commands
 
 - `npm ci`: install the locked dependency tree.

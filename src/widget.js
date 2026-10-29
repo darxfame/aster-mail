@@ -17,7 +17,7 @@ function render(state) {
   if (!selectedDay || lastZone !== zone || !inRange(selectedDay)) selectedDay = today;
   lastZone = zone;
   document.body.classList.toggle('dark', state.theme === 'dark');
-  document.querySelector('#connection').textContent = window.asterWidget ? state.connected ? 'Exchange · HTTPS' : 'Нет подключения' : 'Демо · вымышленные встречи';
+  document.querySelector('#connection').textContent = window.asterWidget ? state.connected ? `Exchange · ${state.secure === false ? 'HTTP' : 'HTTPS'}` : 'Нет подключения' : 'Демо · вымышленные встречи';
   document.querySelector('#updated').textContent = state.lastPoll ? `${clock(state.lastPoll)} · ${zone}` : zone;
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error || '';
   if (!state.connected) {
