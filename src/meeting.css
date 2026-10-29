@@ -84,3 +84,8 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .compose-message-area > .field { min-width: 0; }
 .compose-message-area .compose-history { min-width: 0; margin-top: 14px; }
 @media (max-width: 760px) { .compose-message-area:has(.compose-history) { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+
+.folder-context-menu { position: fixed; z-index: 200; width: min(235px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.folder-context-menu button { display: block; width: 100%; padding: 9px 10px; text-align: left; font-size: 12px; border-radius: 6px; }
+.folder-context-menu button:hover:not(:disabled), .folder-context-menu button:focus-visible { background: var(--accent-bg); color: var(--accent); }
+.folder-context-menu button:disabled { opacity: .4; cursor: default; }

@@ -90,7 +90,7 @@ class OWAClient {
   }
   async ews(action, xml) {
     try { return await this.requestSOAP(action, xml); }
-    finally { if (['CreateItem', 'CreateAttachment', 'SendItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'UpdateInboxRules'].includes(action)) this.mailCache.clear(); }
+    finally { if (['CreateItem', 'CreateAttachment', 'SendItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'UpdateInboxRules', 'MarkAllItemsAsRead', 'CreateFolder', 'UpdateFolder', 'MoveFolder'].includes(action)) this.mailCache.clear(); }
   }
   async requestSOAP(action, xml) {
     if (!this.canary) await this.authenticate();
@@ -117,6 +117,7 @@ class OWAClient {
     })();
     return this.identityPromise;
   }
+  async folderOperation(data) { return require('./folder-actions.cjs').run(this, data); }
   async folders(data = {}) { return this.mailCache.get('folders', () => this.fetchFolders(), { ttl: 60000, refresh: data.refresh === true }); }
   async fetchFolders() {
     const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
@@ -140,7 +141,7 @@ class OWAClient {
       const next = Number(root.IndexedPagingOffset);
       offset = Number.isFinite(next) && next > offset ? next : offset + 50;
     }
-    return [...folders.values()].map(o => ({ id: o.FolderId.Id, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
+    return [...folders.values()].map(o => ({ id: o.FolderId.Id, changeKey: o.FolderId.ChangeKey, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
   }
   async messages({ folder = 'inbox', offset = 0, filter = 'all', refresh = false }) {
     return this.mailCache.get(`list:${folder}:${offset}:${filter}`, () => this.fetchMessages({ folder, offset, filter }), { refresh });
