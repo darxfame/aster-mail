@@ -57,6 +57,9 @@ ignore stale responses after navigation; folder unread filters run on the server
 
 ## Build, Test, and Development Commands
 
+Connection diagnostics was removed at the user's request after the server version
+was identified. Do not reintroduce diagnostic controls or probes unless requested.
+
 - `npm ci`: install the locked dependency tree.
 - `npm start`: run the desktop client.
 - `npm run preview`: serve the UI on localhost:4173; browser preview supports demo only.

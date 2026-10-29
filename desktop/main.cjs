@@ -221,40 +221,6 @@ async function connect(data, remember, restoring = false) {
   }
 }
 
-let diagnosticRun = null;
-async function diagnoseProtocols(data) {
-  if (diagnosticRun) throw new Error('Диагностика уже выполняется. Дождитесь отчёта.');
-  const epoch = accountEpoch;
-  if (data.sessionId && data.sessionId !== client?.syncId) throw new Error('Сессия аккаунта завершена');
-  const source = data.sessionId ? account : data;
-  if (typeof source?.username !== 'string' || !source.username.trim() || typeof source.password !== 'string' || !source.password) throw new Error('Для диагностики укажите сервер, логин и пароль.');
-  const credentials = { server: normalizeServer(source.server), username: source.username.trim(), password: source.password };
-  const email = String(data.email || (credentials.username.includes('@') ? credentials.username : '')).trim();
-  if (email && (email.length > 320 || !/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email))) throw new Error('Укажите основной SMTP-адрес почты для Autodiscover.');
-  const isolated = session.fromPartition(`aster-diagnostics-${crypto.randomUUID()}`, { cache: false });
-  const controller = new AbortController();
-  const cancel = () => controller.abort();
-  const activeSignal = data.sessionId ? connection?.controller.signal : null;
-  activeSignal?.addEventListener('abort', cancel, { once: true });
-  const timer = setTimeout(cancel, 90000);
-  diagnosticRun = (async () => {
-    try {
-      const transport = createTransport(net, credentials, isolated, controller.signal);
-      const probe = new OWAClient(credentials, transport,
-        async () => (await isolated.cookies.get({ url: `${credentials.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value,
-        () => isolated.clearStorageData({ storages: ['cookies'] }));
-      const report = await require('./diagnostics.cjs').run(probe, email, { authenticate: true });
-      if (epoch !== accountEpoch) throw new Error('Аккаунт изменился. Запустите диагностику заново.');
-      return report;
-    } finally {
-      clearTimeout(timer); activeSignal?.removeEventListener('abort', cancel);
-      controller.abort(); credentials.password = '';
-      await isolated.clearStorageData();
-    }
-  })();
-  try { return await diagnosticRun; } finally { diagnosticRun = null; }
-}
-
 const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
@@ -335,7 +301,6 @@ app.whenReady().then(async () => {
         } else notify('meeting', 'Встреча через 15 минут · проверка', 'Тестовое уведомление Aster Mail. Данные Exchange не использовались.', { view: 'calendar' });
         return { ok: true, value: true };
       }
-      if (operation === 'diagnoseProtocols') return { ok: true, value: await diagnoseProtocols(data) };
       if (operation === 'connect') return { ok: true, value: await connect(data, Boolean(data.remember)) };
       if (operation === 'restore') {
         const epoch = accountEpoch;
