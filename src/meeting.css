@@ -47,9 +47,26 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 #search-form { position: relative; }.people-search-suggestions { position: absolute; z-index: 25; left: 0; top: calc(100% + 8px); width: min(520px, 80vw); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); max-height: 360px; overflow-y: auto; }
 .people-suggestion { display: flex; gap: 10px; align-items: center; padding: 10px; }.people-suggestion.active,.people-suggestion:hover { background: var(--accent-bg); }.people-suggestion > button:first-of-type { min-width: 0; flex: 1; text-align: left; }.people-suggestion strong,.people-suggestion small { display: block; overflow-wrap: anywhere; }.people-suggestion strong { font-size: 12px; }.people-suggestion small { font-size: 10px; color: var(--muted); margin-top: 4px; }.people-suggestion .secondary { flex: none; padding: 7px; font-size: 10px; }
 @media(max-width:760px) { .meeting-people-content { position: static; max-height: 340px; }.meeting-attendee-scroll { max-height: 250px; flex: auto; } }
-.mail-attachments-top { display: flex; flex-wrap: wrap; gap: 9px; margin: 0 0 18px; max-height: 180px; overflow-y: auto; padding: 3px; }
-.mail-attachment { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); padding: 9px 11px; width: min(260px, 100%); }
-.mail-attachment > div { min-width: 0; }.mail-attachment strong { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.mail-attachment small { font-size: 9px; color: var(--muted); margin-right: 9px; }.mail-attachment button { font-size: 10px; color: var(--accent); padding: 4px 0; text-decoration: underline; }
+.mail-attachments-top { container-type: inline-size; margin: 0 0 18px; padding: 3px; }
+.mail-attachment-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
+.attachment-preview > :nth-child(n+2) { display: none; }
+.attachment-more { margin-top: 8px; }
+.attachment-more summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: 11px; padding: 5px 0; }
+.attachment-collapse, .attachment-more[open] .attachment-expand { display: none; }
+.attachment-more[open] .attachment-collapse { display: inline; }
+.attachment-rest { max-height: 260px; overflow-y: auto; margin-top: 8px; }
+@container (min-width: 460px) {
+  .mail-attachment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .attachment-preview > :nth-child(2) { display: flex; }
+  .attachment-rest > :first-child, .attachments-count-2 .attachment-more { display: none; }
+}
+@container (min-width: 720px) {
+  .mail-attachment-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .attachment-preview > :nth-child(3) { display: flex; }
+  .attachment-rest > :nth-child(2), .attachments-count-3 .attachment-more { display: none; }
+}
+.mail-attachment { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); padding: 9px 11px; width: 100%; min-width: 0; }
+.mail-attachment > div { min-width: 0; flex: 1; }.mail-attachment strong { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.mail-attachment small { font-size: 9px; color: var(--muted); margin-right: 9px; }.mail-attachment button { font-size: 10px; color: var(--accent); padding: 4px 0; text-decoration: underline; }
 .file-extension { flex: none; padding: 7px 5px; font-size: 9px; font-weight: 750; border-radius: 5px; color: var(--accent); background: var(--accent-bg); min-width: 36px; text-align: center; }
 .extension-pdf { color: #d78080; background: #c85a5a20; }.extension-document { color: #669ddd; background: #608acd20; }.extension-sheet { color: #72ae8c; background: #58967320; }.extension-image { color: #ad88ce; background: #9468b520; }.extension-archive { color: #c19b61; background: #b78b4620; }
 .message-open { user-select: none; -webkit-user-drag: none; }.mail-dragging { cursor: grabbing; }

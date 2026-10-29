@@ -2,8 +2,8 @@
 
 ## Project Structure & Module Organization
 
-Aster Mail is an Electron client for Exchange OWA, initially targeting macOS
-Apple Silicon. `desktop/main.cjs` owns windows, credentials, transport, and IPC;
+Aster Mail is an Electron client for Exchange OWA, targeting macOS
+Apple Silicon and Windows x64. `desktop/main.cjs` owns windows, credentials, transport, and IPC;
 `desktop/owa.cjs` implements OWA/EWS operations; `desktop/protocol.cjs` contains
 payload builders and parsers. `src/` holds the plain HTML/CSS/JavaScript UI and
 explicit demo data. `test/` contains Node.js tests, `assets/` contains the original
@@ -55,6 +55,7 @@ ignore stale responses after navigation; folder unread filters run on the server
 - `npm test`: run the built-in Node.js test runner.
 - `npm run pack:mac`: package an Apple Silicon `.app`.
 - `npm run dist:mac`: produce a macOS arm64 DMG.
+- `npm run dist:win -- --x64`: produce a Windows x64 EXE installer.
 - `node scripts/icon.cjs`: regenerate the geometric PNG app icon.
 
 ## Coding Style & Naming Conventions

@@ -1,10 +1,12 @@
 function mailAttachments(message) {
   if (!message.attachments?.length) return '';
-  return `<section class="mail-attachments-top" aria-label="Вложения письма">${message.attachments.map(file => {
+  const card = file => {
     const extension = /\.([a-z0-9]{1,8})$/i.exec(file.name || '')?.[1].toUpperCase() || 'FILE';
     const type = /^(PDF)$/.test(extension) ? 'pdf' : /^(DOCX?|ODT|RTF)$/.test(extension) ? 'document' : /^(XLSX?|CSV|ODS)$/.test(extension) ? 'sheet' : /^(JPE?G|PNG|GIF|WEBP|HEIC)$/.test(extension) ? 'image' : /^(ZIP|RAR|7Z|TAR|GZ)$/.test(extension) ? 'archive' : 'file';
     return `<article class="mail-attachment"><span class="file-extension extension-${type}">${esc(extension)}</span><div><strong title="${esc(file.name)}">${esc(file.name)}</strong><small>${bytes(file.size || 0)}</small><button type="button" data-action="attachment" data-id="${esc(file.id)}" data-name="${esc(file.name)}" aria-label="Сохранить как: ${esc(file.name)}">Сохранить как…</button></div></article>`;
-  }).join('')}</section>`;
+  };
+  const files = message.attachments;
+  return `<section class="mail-attachments-top attachments-count-${Math.min(files.length, 4)}" aria-label="Вложения письма"><div class="mail-attachment-grid attachment-preview">${files.slice(0, 3).map(card).join('')}</div>${files.length > 1 ? `<details class="attachment-more"><summary><span class="attachment-expand">Все вложения (${files.length})</span><span class="attachment-collapse">Свернуть вложения</span></summary><div class="mail-attachment-grid attachment-rest">${files.slice(1).map(card).join('')}</div></details>` : ''}</section>`;
 }
 function renderSignaturePreview(target, signature) {
   if (!target) return;

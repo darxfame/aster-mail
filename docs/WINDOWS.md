@@ -1,7 +1,10 @@
-# Сборка для Windows
+# Aster Mail для Windows
 
-Исходники рассчитаны на Electron, но Windows-интерфейс и интеграции пока не прошли
-проверку на настоящей Windows. Успешная сборка установщика не заменяет эту проверку.
+Готовый **EXE-установщик для Windows x64** опубликован в
+[GitHub Releases](https://github.com/darxfame/aster-mail/releases/latest).
+Скачайте `Aster-Mail-…-windows-x64.exe` и пройдите установку.
+
+Windows-интерфейс и интеграции пока не прошли проверку на настоящей Windows. Успешная сборка установщика не заменяет эту проверку.
 
 ## Быстрый путь: GitHub Actions
 

@@ -3,11 +3,11 @@
 [![Checks](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b64cb.svg)](LICENSE)
 
-**Ранняя open-source версия · macOS Apple Silicon · Windows готовится к проверке**
+**Ранняя open-source версия · macOS Apple Silicon · Windows x64**
 
 Настольный клиент для корпоративного Exchange: почта, календарь и контакты.
-Первая платформа — **macOS Apple Silicon**, основа на Electron рассчитана и на
-Windows. Интерфейс на русском, светлая и тёмная темы, навигация в духе Mustang
+Доступны установщики для **macOS Apple Silicon (DMG)** и **Windows x64 (EXE)**.
+Основа — Electron. Интерфейс на русском, светлая и тёмная темы, навигация в духе Mustang
 и Outlook. Лицензия MIT.
 
 ![Aster Mail — деморежим](docs/aster-sidebar-cards-0.1.3.jpg)
@@ -90,6 +90,8 @@ Exchange, включая запрет пересылки организатор�
 ![Часовая сетка, пересечения и текущее время](docs/aster-timeline-0.1.6.jpg)
 
 ## Скачать установщик
+
+[Скачать последнюю версию для macOS или Windows](https://github.com/darxfame/aster-mail/releases/latest).
 
 Готовые **DMG для macOS Apple Silicon** и **EXE для Windows x64** публикуются
 в [GitHub Releases](https://github.com/darxfame/aster-mail/releases).
@@ -266,7 +268,8 @@ npm run dist:win -- --x64 --publish never # NSIS для Windows x64 (CI Windows)
 
 Локальная сборка не является подписанным и нотарифицированным публичным релизом.
 Для распространения нужны Developer ID, notarization и проверка на чистом Mac.
-Windows можно собирать вручную через GitHub Actions; инструкции и ограничения —
+Готовый Windows EXE доступен в GitHub Releases. Собрать его самостоятельно можно
+на Windows или через GitHub Actions; инструкции и ограничения —
 [docs/WINDOWS.md](docs/WINDOWS.md). Теги `v<версия>` запускают автоматическую публикацию DMG и EXE через
 [Publish installers](.github/workflows/release.yml).
 
@@ -305,7 +308,7 @@ Exchange. Проверяйте чтение, отправку, вложения 
 Лицензия: `assets/sounds/LICENSE.md`. Упаковщик помещает WAV в ресурсы macOS-бандла.
 На macOS звуки воспроизводит сам Aster через `afplay`; системный баннер остаётся
 без второго звука. Используются переключатель звука Aster и обычная громкость
-аудиовыхода. В Windows звук воспроизводит интерфейс; Windows пока не проверена.
+аудиовыхода. В Windows звук воспроизводит интерфейс; Установщик Windows x64 собирается и публикуется автоматически; работа звука и системных интеграций на реальной Windows требует отдельной проверки.
 
 ## Структура
 
@@ -339,3 +342,7 @@ Exchange. Проверяйте чтение, отправку, вложения 
 ответе или сетевой ошибке повторной отправки нет: проверьте «Черновики» и
 «Отправленные» перед новой попыткой. Обычное новое текстовое письмо отправляется
 одним CreateItem без промежуточного черновика.
+
+Вложения письма занимают один ряд: 1, 2 или 3 файла в зависимости от ширины
+области чтения. Остальные раскрываются через «Все вложения»; длинный список
+прокручивается отдельно. Расширения файлов и «Сохранить как…» остаются доступны.
