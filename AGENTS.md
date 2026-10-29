@@ -89,6 +89,13 @@ as `Handle expired OWA sessions`. Explain behavior changes and verification in
 pull requests. Include screenshots for UI changes and compatibility limitations
 for protocol changes.
 
+### Release Notes
+
+Write release notes in Russian. Include only changes in that release, necessary
+installation or update instructions, and one short joke about bugs. Compose a
+different joke for every release; do not reuse the previous release's joke.
+Omit introductions, roadmaps, test reports, and internal implementation details.
+
 ## Security & Licensing
 
 Keep credentials out of source, logs, and renderer storage. Preserve TLS checks,
