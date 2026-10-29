@@ -75,3 +75,25 @@ test('replying in Sent Items addresses original recipients and CC, never the sen
   assert.deepEqual(R.reply(m,['me@example.com'],false),{to:'anna@example.com, pavel@example.com',cc:''});
   assert.deepEqual(R.reply(m,[],false,true),{to:'anna@example.com, pavel@example.com',cc:''});
 });
+test('validated images share the session memory limit, survive mailbox writes and clear on logout', async () => {
+  const cache=new MailCache(); let calls=0;
+  await cache.get('image:attachment:logo',async()=>({Content:'raster',count:++calls}));
+  await cache.get('message:one',async()=>({text:'Private mail'}));
+  cache.clear({preserveImages:true});
+  assert.equal(cache.entries.size,1); assert.equal(cache.entries.has('message:one'),false);
+  assert.equal((await cache.get('image:attachment:logo',async()=>++calls)).count,1); assert.equal(calls,1);
+  cache.clear(); assert.equal(cache.entries.size,0); assert.equal(cache.bytes,0);
+});
+test('opening the same inline image again and marking mail read do not redownload it', async () => {
+  const pixel=Buffer.from([137,80,78,71,13,10,26,10]).toString('base64'); let downloads=0;
+  const {c}=client((_url, options)=>{
+    if(options.headers.SOAPAction) {downloads++; return {status:200,text:`<Envelope><ResponseCode>NoError</ResponseCode><FileAttachment><ContentType>image/png</ContentType><Content>${pixel}</Content></FileAttachment></Envelope>`};}
+    if(options.headers.Action==='UpdateItem') return json({Items:[{ItemId:{Id:'mail',ChangeKey:'new-key'}}]});
+    return json({Items:[{ItemId:{Id:'mail',ChangeKey:'key'},Subject:'Image',Body:{BodyType:'HTML',Value:'<img src="cid:logo">'},Attachments:[{AttachmentId:{Id:'image'},ContentId:'logo',Size:8,ContentType:'image/png'}]}]});
+  });
+  const ref={id:'mail',changeKey:'key'};
+  const first=await c.contentImages({kind:'message',ref}); await c.contentImages({kind:'message',ref});
+  await c.change({ref,field:'IsRead',value:true}); await c.contentImages({kind:'message',ref:{...ref,changeKey:'new-key'}});
+  assert.equal(downloads,1); assert.match(first.images['cid:logo'],/^data:image\/png;base64,/);
+  c.mailCache.clear(); await c.contentImages({kind:'message',ref}); assert.equal(downloads,2);
+});

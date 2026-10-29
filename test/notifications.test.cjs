@@ -67,8 +67,8 @@ test('slow calendar polling does not block mail and duplicate concurrent mail po
   const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   const begin = source.indexOf('async function pollMail()'), end = source.indexOf('\nconst page =', begin);
   let finish, calls = 0; const alerts = [];
-  const client = { messages: async options => { assert.equal(options.refresh, true); calls++; return new Promise(resolve => { finish = resolve; }); } };
-  const context = vm.createContext({ client, polling: true, mailPolling: false, notificationSettings: { mail: true }, tracker: { newMail: page => page }, queueMailAlert: message => ({ ...message, navigation: { id: message.id } }), mailAlert: require('../desktop/notifications.cjs').mailAlert, notify: (...args) => alerts.push(args), lastPollError: '' });
+  const client = { mailCache: {generation:0}, inboxStatus: async () => null, messages: async options => { assert.equal(options.refresh, true); calls++; return new Promise(resolve => { finish = resolve; }); } };
+  const context = vm.createContext({ client, window: null, polling: true, mailPolling: false, notificationSettings: { mail: true }, tracker: { newMail: page => page }, queueMailAlert: message => ({ ...message, navigation: { id: message.id } }), mailAlert: require('../desktop/notifications.cjs').mailAlert, notify: (...args) => alerts.push(args), lastPollError: '' });
   vm.runInContext(source.slice(begin, end), context);
   const first = context.pollMail(); await context.pollMail(); assert.equal(calls, 1);
   finish({ items: [{ id: 'fresh', title: 'Anna', body: 'Preview' }] }); await first;
@@ -85,4 +85,14 @@ test('persistent preview queue is bounded and replaces duplicates without replay
   assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].id, '24');
   context.queueMailAlert({ id: '24', from: { name: 'Pavel' } });
   assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].title, 'Pavel');
+});
+test('inbox synchronizes with notifications disabled and rejects a snapshot overtaken by a mailbox write', async () => {
+  const vm=require('node:vm'), source=fs.readFileSync(path.join(__dirname,'../desktop/main.cjs'),'utf8');
+  const snapshots=[];
+  const client={syncId:'session',mailCache:{generation:0},messages:async()=>({items:[{id:'new'}],more:false}),inboxStatus:async()=>({id:'inbox',unread:1})};
+  const context=vm.createContext({client,window:{isDestroyed:()=>false,webContents:{send:(channel,data)=>snapshots.push({channel,data})}},mailPolling:false,notificationSettings:{mail:false},tracker:{newMail:page=>page},queueMailAlert:()=>assert.fail('Notifications are disabled'),notify:()=>assert.fail('Notifications are disabled')});
+  vm.runInContext(source.slice(source.indexOf('async function pollMail()'),source.indexOf('\nconst page =')),context);
+  await context.pollMail(); assert.equal(snapshots.length,1); assert.equal(snapshots[0].channel,'aster-inbox'); assert.equal(snapshots[0].data.sessionId,'session'); assert.equal(snapshots[0].data.page.items[0].id,'new');
+  client.messages=async()=>{client.mailCache.generation++;return {items:[{id:'obsolete'}]};};
+  await context.pollMail(); assert.equal(snapshots.length,1);
 });

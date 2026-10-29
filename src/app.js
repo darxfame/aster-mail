@@ -73,11 +73,17 @@ function playSound(kind) {
   audio.play().catch(() => toast('Звук заблокирован системой. Проверьте настройки звука и уведомлений.'));
 }
 document.body.classList.toggle('dark', state.theme === 'dark');
+let mailWrites = 0, mailWriteEpoch = 0;
 async function api(operation, data = {}) {
   if (!window.aster) throw new Error('Подключение OWA доступно в настольном приложении. В браузере можно открыть деморежим.');
-  const result = await window.aster.invoke(operation, data);
-  if (!result.ok) throw new Error(result.error);
-  return result.value;
+  const writing = ['change','move','folderOperation','send','draft','createMailRule','connect','disconnect'].includes(operation);
+  if (writing) { mailWrites++; mailWriteEpoch++; }
+  try {
+    const result = await window.aster.invoke(operation, data);
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  } finally { if (writing) mailWrites--; }
+
 }
 let pendingMailAlerts = [];
 function renderMailAlerts(alerts) {
@@ -159,7 +165,9 @@ async function loadView(append = false) {
   renderSidebar(); clearError();
   const generation = ++state.generation;
   if (!ready()) return welcome();
-  if (!append) $('#workspace').innerHTML = `<div class="loading">${icon('refresh')}Загружаем ${state.view === 'mail' ? 'почту' : state.view === 'calendar' ? 'календарь' : 'контакты'}…</div>`;
+  state.mailLoading = state.view === 'mail' ? generation : 0;
+  const keepMail = state.view === 'mail' && state.mailViewKey === JSON.stringify([state.folder, state.query, state.filter]) && Boolean($('#messages'));
+  if (!append && !keepMail) $('#workspace').innerHTML = `<div class="loading">${icon('refresh')}Загружаем ${state.view === 'mail' ? 'почту' : state.view === 'calendar' ? 'календарь' : 'контакты'}…</div>`;
   $('#status').textContent = 'Обновление…';
   try {
     if (state.view === 'mail') {
@@ -170,15 +178,11 @@ async function loadView(append = false) {
         result = { items: structuredClone(matches), more: false };
       } else result = await api(state.query ? 'search' : 'messages', { folder: state.folder, query: state.query && state.filter === 'unread' ? `(${state.query}) AND read:no` : state.query, filter: state.filter, offset });
       if (generation !== state.generation) return;
-      // Refresh counts before showing selectable rows, so an older snapshot cannot undo a read.
-      if (!state.demo && !state.query && !append) {
-        try { const folders = await api('folders'); if (generation === state.generation) state.folders = folders; }
-        catch { /* Keep existing counts if folder refresh is unavailable. */ }
-        if (generation !== state.generation) return;
-      }
       state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = (append ? state.offset : 0) + result.items.length;
       if (!append) state.selected = null;
+      state.mailViewKey = JSON.stringify([state.folder, state.query, state.filter]);
       renderMail();
+      if (!state.demo && !state.query && !append) void refreshMailFolders(generation);
     } else if (state.view === 'calendar') {
       const requestedMode = calendarMode();
       const { start, end } = window.asterCalendar.range(state.week, requestedMode, timeZone);
@@ -195,8 +199,8 @@ async function loadView(append = false) {
   } catch (error) {
     if (generation !== state.generation) return;
     showError(error);
-    if (!append) $('#workspace').innerHTML = `<div class="empty">${icon('globe')}<h2>Не удалось загрузить данные</h2><p>Проверьте подключение и повторите запрос. Письма на сервере не затронуты.</p><button class="secondary" data-action="refresh">${icon('refresh')}Повторить</button></div>`;
-  }
+    if (!append && !keepMail) $('#workspace').innerHTML = `<div class="empty">${icon('globe')}<h2>Не удалось загрузить данные</h2><p>Проверьте подключение и повторите запрос. Письма на сервере не затронуты.</p><button class="secondary" data-action="refresh">${icon('refresh')}Повторить</button></div>`;
+  } finally { if (state.mailLoading === generation) state.mailLoading = 0; }
 }
 function filteredMessages() { return state.messages.filter(m => state.filter === 'all' || (state.filter === 'unread' ? !m.read : m.flagged)); }
 function renderMail() {
@@ -299,7 +303,7 @@ async function demoContentImages(html) {
 function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><div class="reader-replies" aria-label="Ответ на письмо"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong>${esc(m.from.name || m.from.email)}</strong><small>${esc(m.from.email)} · кому: ${esc(m.to?.map(a => a.name || a.email).join(', ') || 'вам')}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Изображения отображаются автоматически · активное содержимое отключено</div><div id="message-body"></div></div></div>`;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><div class="reader-replies" aria-label="Ответ на письмо"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="write-mail-person" data-group="from" aria-label="Написать: ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small>${mailRecipientDetails(m)}</div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Изображения отображаются автоматически · активное содержимое отключено</div><div id="message-body"></div></div></div>`;
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
       dark: state.theme === 'dark', title: 'Содержимое письма',
@@ -643,6 +647,7 @@ async function handleAction(button) {
     const c = state.contacts.find(c => c.id === button.dataset.id); if (!c) return;
     modal('Контакт', '', `<div class="contact-detail">${avatar(c.name, 0, c.email)}<h2>${esc(c.name)}</h2><p>${esc(c.company)}</p><p>${esc(c.email)}</p><p>${esc(c.phone)}</p><button class="secondary" data-action="pin-contact" data-id="${esc(c.id)}">${icon('plus')}Добавить в коллеги</button><button class="primary" data-action="write-contact" data-id="${esc(c.id)}">${icon('mail')}Написать письмо</button></div>`); return;
   }
+  if (action === 'write-mail-person') return writeMailPerson(button);
   if (action === 'write-contact') return compose('new', state.contacts.find(c => c.id === button.dataset.id));
   if (action === 'rsvp') {
     const buttons = [...button.closest('.rsvp').querySelectorAll('button')];
@@ -787,7 +792,6 @@ document.addEventListener('submit', event => {
     state.demo = false; state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = [];
     state.query = ''; $('#search').value = ''; $('#modal').close();
     await loadView();
-    try { state.folders = await api('folders'); renderSidebar(); } catch { toast('Системные папки доступны. Дополнительные папки загрузить не удалось.'); }
   });
   if (form.id === 'event-form') submitForm(form, async data => {
     data.start = T.fromWall(data.start, timeZone).toISOString(); data.end = T.fromWall(data.end, timeZone).toISOString();
@@ -810,6 +814,7 @@ async function boot() {
     notificationPreferences = savedSettings;
     window.aster.onSound(playSound);
     window.aster.onMailAlerts(renderMailAlerts);
+    window.aster.onInbox(snapshot => { void receiveInbox(snapshot); });
     renderMailAlerts(await api('mailAlerts'));
     window.aster.onNavigate(async data => {
       try {
@@ -830,7 +835,7 @@ async function boot() {
       }
       } catch (error) { showError(error); }
     });
-    try { const restored = await api('restore'); if (restored) { state.account = restored; await loadView(); try { state.folders = await api('folders'); renderSidebar(); } catch { /* System folders remain usable. */ } } }
+    try { const restored = await api('restore'); if (restored) { state.account = restored; await loadView(); } }
     catch (error) { showError(error); }
   }
 }

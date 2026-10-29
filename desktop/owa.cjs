@@ -62,7 +62,7 @@ class OWAClient {
   }
   async call(action, payload, options) {
     try { return await this.requestJSON(action, payload, options); }
-    finally { if (['UpdateItem', 'MoveItem', 'DeleteItem'].includes(action)) this.mailCache.clear(); }
+    finally { if (['UpdateItem', 'MoveItem', 'DeleteItem'].includes(action)) this.mailCache.clear({ preserveImages: true }); }
   }
   async requestJSON(action, payload, { retry = true, headerBody = false } = {}) {
     if (!this.canary) await this.authenticate();
@@ -90,7 +90,7 @@ class OWAClient {
   }
   async ews(action, xml) {
     try { return await this.requestSOAP(action, xml); }
-    finally { if (['CreateItem', 'CreateAttachment', 'SendItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'UpdateInboxRules', 'MarkAllItemsAsRead', 'CreateFolder', 'UpdateFolder', 'MoveFolder'].includes(action)) this.mailCache.clear(); }
+    finally { if (['CreateItem', 'CreateAttachment', 'SendItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'UpdateInboxRules', 'MarkAllItemsAsRead', 'CreateFolder', 'UpdateFolder', 'MoveFolder'].includes(action)) this.mailCache.clear({ preserveImages: true }); }
   }
   async requestSOAP(action, xml) {
     if (!this.canary) await this.authenticate();
@@ -148,6 +148,11 @@ class OWAClient {
       offset = Number.isFinite(next) && next > offset ? next : offset + 50;
     }
     return [...folders.values()].map(o => ({ id: o.FolderId.Id, changeKey: o.FolderId.ChangeKey, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
+  }
+  async inboxStatus() {
+    const result = await this.call('GetFolder', P.request('GetFolder', { FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }), FolderIds: [P.folder('inbox')] }));
+    const folder = P.walk(result, value => value.FolderId?.Id && Number.isInteger(value.UnreadCount))[0];
+    return folder ? { id: folder.FolderId.Id, unread: folder.UnreadCount, total: folder.TotalCount } : null;
   }
   async messages({ folder = 'inbox', offset = 0, filter = 'all', refresh = false }) {
     return this.mailCache.get(`list:${folder}:${offset}:${filter}`, () => this.fetchMessages({ folder, offset, filter }), { refresh });
@@ -288,12 +293,15 @@ class OWAClient {
   async contentImages(data) {
     if (!['message', 'event'].includes(data.kind)) throw new Error('Некорректный тип содержимого');
     const current = data.kind === 'event' ? await this.eventDetails(data.ref) : await this.message(data.ref);
-    return require('./content-images.cjs').load(current, async id => {
+    return require('./content-images.cjs').load(current, id => this.mailCache.get(`image:attachment:${id}`, async () => {
       const response = await this.ews('GetAttachment', P.soap(`<m:GetAttachment><m:AttachmentIds><t:AttachmentId Id="${P.escapeXML(id)}"/></m:AttachmentIds></m:GetAttachment>`));
       const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
       if (!image) throw new Error('Exchange не вернул изображение');
+      calendarEvents.imageData(image);
       return image;
-    }, this.imageTransport);
+    }, { ttl: 300000 }), this.imageTransport ? url => this.mailCache.get(`image:remote:${url}`, async () => {
+      const image = await this.imageTransport(url); calendarEvents.imageData(image); return image;
+    }, { ttl: 300000 }) : null);
   }
 
   async createEvent(data) { await this.ews('CreateItem', P.eventSOAP(data)); return true; }

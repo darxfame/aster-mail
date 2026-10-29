@@ -79,3 +79,82 @@ document.addEventListener('submit', event => {
     $('#modal').close(); toast(state.demo ? 'Демо: серверное правило не создавалось' : 'Правило создано в Exchange');
   });
 });
+
+// Replace the polled first page and retain only the known contiguous older tail.
+function mergeInboxPage(current, page) {
+  const head = page.items;
+  if (!page.more || current.length <= 50 || !head.length) return [...head];
+  const boundary = current.findIndex(message => message.id === head[head.length - 1].id);
+  if (boundary < 0) return [...head];
+  const seen = new Set(head.map(message => message.id));
+  return [...head, ...current.slice(boundary + 1).filter(message => !seen.has(message.id))];
+}
+async function receiveInbox(snapshot) {
+  if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || mailWrites) return;
+  const generation = state.generation, account = state.account, epoch = mailWriteEpoch;
+  let inbox = state.folders.find(folder => folder.wellKnown === 'inbox' || folder.id === snapshot.inbox?.id);
+  if (!inbox && snapshot.inbox) { inbox = { ...snapshot.inbox, name: 'Входящие', wellKnown: 'inbox' }; state.folders.push(inbox); renderSidebar(); }
+  if (inbox && snapshot.inbox && (inbox.unread !== snapshot.inbox.unread || inbox.total !== snapshot.inbox.total)) {
+    Object.assign(inbox, snapshot.inbox); renderSidebar();
+  }
+  if (state.mailLoading || state.view !== 'mail' || state.query || !['inbox', inbox?.id].includes(state.folder) || !$('#messages')) return;
+  try {
+    const page = state.filter === 'all' ? snapshot.page : await api('messages', { folder: state.folder, filter: state.filter, offset: 0, refresh: true });
+    if (account !== state.account || generation !== state.generation || epoch !== mailWriteEpoch || mailWrites || !$('#messages')) return;
+    const next = mergeInboxPage(state.messages, page);
+    if (JSON.stringify(next) === JSON.stringify(state.messages) && state.more === page.more) return;
+    const list = $('#messages'), atTop = list.scrollTop < 2;
+    const anchor = [...list.querySelectorAll('.message-row')].find(row => row.getBoundingClientRect().bottom > list.getBoundingClientRect().top);
+    const anchorId = anchor?.dataset.id, top = anchor?.getBoundingClientRect().top;
+    state.messages = next; state.offset = next.length; state.more = page.more;
+    // Keep the reader, selected message and any compose dialog mounted.
+    renderMessages();
+    const remaining = [...list.querySelectorAll('.message-row')].find(row => row.dataset.id === anchorId);
+    if (atTop) list.scrollTop = 0;
+    else if (remaining) list.scrollTop += remaining.getBoundingClientRect().top - top;
+    const more = document.querySelector('.mail-list .load-more');
+    if (more) more.hidden = !state.more;
+    else if (state.more) list.insertAdjacentHTML('afterend', '<button class="secondary load-more" data-action="more">Загрузить ещё</button>');
+    $('#status').textContent = `Обновлено ${time(new Date())} · Прямое подключение к Exchange`;
+  } catch { /* Keep readable mail on a transient refresh error; the next poll retries the read. */ }
+}
+
+async function refreshMailFolders(generation) {
+  const account = state.account, epoch = mailWriteEpoch;
+  try {
+    const folders = await api('folders');
+    if (account !== state.account || generation !== state.generation) return;
+    // Keep local read counts when a mailbox write overtook the folder read.
+    if (epoch !== mailWriteEpoch || mailWrites) for (const folder of folders) {
+      const known = state.folders.find(previous => previous.id === folder.id);
+      if (known) folder.unread = known.unread;
+      else if (folder.wellKnown === 'inbox') folder.unread = undefined;
+    }
+    state.folders = folders; renderSidebar();
+  } catch { /* System folders and the message list remain usable. */ }
+}
+
+function mailRecipientDetails(message) {
+  const groups = [['to', 'Кому'], ['cc', 'Копия']];
+  const people = groups.flatMap(([key]) => message[key] || []);
+  if (!people.length) return '<small>Получатели не указаны</small>';
+  const names = people.slice(0, 2).map(person => person.name || person.email).join(', ');
+  return `<details class="mail-recipients"><summary><span>Получатели · ${people.length}</span><span class="recipient-summary-names">${esc(names)}${people.length > 2 ? ` и ещё ${people.length - 2}` : ''}</span></summary><div class="mail-recipient-list">${groups.map(([key, label]) => message[key]?.length ? `<div class="recipient-group-label">${label}</div>${message[key].map((person, index) => `<button type="button" class="mail-person" data-action="write-mail-person" data-group="${key}" data-index="${index}" aria-label="Написать: ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || 'Участник')}</strong><small>${esc(person.email || 'Найти адрес в Exchange')}</small></span>${icon('mail')}</button>`).join('')}` : '').join('')}</div></details>`;
+}
+let mailPeopleChoices = [];
+async function writeMailPerson(button) {
+  const group = button.dataset.group, index = Number(button.dataset.index);
+  const person = group === 'from' ? state.selected?.from : group === 'choice' ? mailPeopleChoices[index] : state.selected?.[group]?.[index];
+  if (!person) return;
+  if (/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(person.email || '')) return compose('new', person);
+  const account = state.account, message = state.selected;
+  button.disabled = true;
+  try {
+    const result = state.demo ? { items: window.asterRecipients.matches(window.asterDemo.directory, person.name || '') } : await api('contacts', { query: person.name || '' });
+    if (account !== state.account || message !== state.selected) return;
+    mailPeopleChoices = result.items.filter(candidate => candidate.email);
+    if (!mailPeopleChoices.length) throw new Error('Адрес не найден в справочнике Exchange. Уточните email у получателя.');
+    // A name can belong to several people; always let the user choose the actual address.
+    modal('Выберите адрес', person.name || '', `<div class="mail-recipient-list">${mailPeopleChoices.map((candidate, i) => `<button type="button" class="mail-person" data-action="write-mail-person" data-group="choice" data-index="${i}">${avatar(candidate.name, i, candidate.email)}<span><strong>${esc(candidate.name)}</strong><small>${esc(candidate.email)}</small></span>${icon('mail')}</button>`).join('')}</div>`);
+  } finally { button.disabled = false; }
+}

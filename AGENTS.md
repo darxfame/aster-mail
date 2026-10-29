@@ -12,7 +12,10 @@ ignored `release/`.
 
 `desktop/folder-actions.cjs` performs folder changes: protect system folders by identity, suppress read receipts for bulk reads, and move removed folders to Deleted Items without permanent deletion or mutation retries.
 
-`desktop/mail-cache.cjs` caches mail in account-local memory only; never persist payloads, cache failed reads, or let an old in-flight read repopulate an invalidated cache. Background mail polls bypass TTL.
+`desktop/mail-cache.cjs` caches mail in account-local memory only; never persist payloads, cache failed reads, or let an old in-flight read repopulate an invalidated cache. Background mail polls bypass TTL and publish account-session-scoped inbox snapshots.
+Keep the reader and compose dialog mounted during background list updates; discard
+snapshots overtaken by navigation or mailbox writes. Images share the memory budget,
+survive ordinary mailbox invalidation, and clear on logout or explicit cache reset.
 
 `desktop/notifications.cjs` owns alert deduplication. Mail polls independently every 15 seconds; keep preview queues bounded, in memory and scoped to the current account. Reply/forward references require fresh ChangeKeys; after CreateAttachment, send with the last RootItemChangeKey. Calendar gestures must preserve duration and organizer permissions, and distinguish occurrences from series. `desktop/meetings.cjs`
 normalizes menu-bar meeting links and countdowns; `src/calendar.js` holds shared

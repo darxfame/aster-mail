@@ -25,14 +25,19 @@ function queueMailAlert(message) {
   return alert;
 }
 async function pollMail() {
-  if (!client || mailPolling || !notificationSettings.mail) return;
+  if (!client || mailPolling) return;
   mailPolling = true;
-  const active = client;
+  const active = client, revision = client.mailCache.generation;
   try {
     const page = await active.messages({ folder: 'inbox', offset: 0, refresh: true });
-    if (active !== client || !notificationSettings.mail) return;
+    if (active !== client) return;
+    let inbox = null;
+    try { inbox = await active.inboxStatus(); } catch { /* New mail can still appear if the count request fails. */ }
+    if (active !== client || revision !== active.mailCache.generation) return;
+    if (window && !window.isDestroyed()) window.webContents.send('aster-inbox', { sessionId: active.syncId, page, inbox });
     lastMailPoll = new Date().toISOString(); lastMailError = '';
     const fresh = tracker.newMail(page.items);
+    if (!notificationSettings.mail) return;
     for (const message of [...fresh].reverse()) queueMailAlert(message);
     if (fresh.length) {
       const alert = mailAlert(fresh[0], notificationSettings.preview);
@@ -215,7 +220,7 @@ async function connect(data, remember, restoring = false) {
   const candidate = new OWAClient(account, transport,
     async () => (await accountSession.cookies.get({ url: `${account.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value,
     () => accountSession.clearStorageData({ storages: ['cookies'] }), fetchContentImage);
-  try { await candidate.authenticate(); client = candidate; }
+  try { await candidate.authenticate(); candidate.syncId = crypto.randomUUID(); client = candidate; }
   catch (error) { account.password = ''; await accountSession.clearStorageData(); throw error; }
   if (remember) {
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) throw new Error('Безопасное хранилище недоступно. Снимите «Запомнить».');
@@ -225,7 +230,7 @@ async function connect(data, remember, restoring = false) {
   tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
   widgetEvents = []; widgetDetail = null; refreshWidget();
   void pollNotifications();
-  return { server: account.server, username: account.username };
+  return { server: account.server, username: account.username, sessionId: client.syncId };
 }
 const methods = new Set(['folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {

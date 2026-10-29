@@ -14,3 +14,12 @@ test('inline and external images render as validated raster data with explicit l
   assert.throws(() => I.sourceURL('https://user:password@example.com/image'));
   assert.throws(() => I.sourceURL('file:///etc/passwd'));
 });
+test('image reads run in parallel with at most three requests and retain per-image failures', async () => {
+  let active=0, peak=0;
+  const current={html:Array.from({length:7},(_,i)=>`<img src="https://images.example.com/${i}">`).join(''),attachments:[]};
+  const result=await I.load(current,()=>assert.fail('Not inline'),async url=>{
+    active++; peak=Math.max(peak,active); await new Promise(resolve=>setImmediate(resolve)); active--;
+    if(url.endsWith('/3')) throw new Error('HTTP 404'); return image;
+  });
+  assert.equal(peak,3); assert.equal(Object.keys(result.images).length,6); assert.match(result.errors['https://images.example.com/3'],/404/);
+});

@@ -4,7 +4,10 @@ class MailCache {
     this.maxBytes = maxBytes; this.maxEntries = maxEntries; this.now = now;
     this.entries = new Map(); this.pending = new Map(); this.bytes = 0; this.generation = 0;
   }
-  clear() { this.generation++; this.entries.clear(); this.pending.clear(); this.bytes = 0; }
+  clear({ preserveImages = false } = {}) {
+    this.generation++; this.pending.clear();
+    for (const [key, entry] of this.entries) if (!preserveImages || !key.startsWith('image:')) { this.bytes -= entry.size; this.entries.delete(key); }
+  }
   async get(key, load, { ttl = 30000, refresh = false } = {}) {
     if (key.length > 20000) return load();
     const cached = this.entries.get(key);

@@ -56,6 +56,8 @@
       img.removeAttribute('src'); img.dataset.imageSource = src;
       img.alt ||= 'Изображение'; img.title = 'Загрузка изображения…';
     });
+    const imagesTask = doc.querySelector('img') ? Promise.resolve().then(loadImages) : Promise.resolve({ images: {}, errors: {} });
+    imagesTask.catch(() => {}); // The frame's load listener reports the error.
     const frame = document.createElement('iframe'); frame.className = 'email-frame'; frame.title = title;
     // Scripts remain forbidden by both sandbox and CSP; same-origin lets the parent attach listeners.
     frame.setAttribute('sandbox', 'allow-same-origin');
@@ -70,7 +72,7 @@
       body.addEventListener('submit', event => event.preventDefault());
       resize();
       try {
-        const result = await loadImages();
+        const result = await imagesTask;
         if (!frame.isConnected) return;
         body.querySelectorAll('img').forEach(img => {
           const src = img.dataset.imageSource;

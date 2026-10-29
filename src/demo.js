@@ -34,6 +34,8 @@ window.asterDemo = (() => {
     { id: 'c5', name: 'Алексей Морозов', email: 'alex@example.com', company: 'Разработка', phone: '' },
     { id: 'c6', name: 'Команда поддержки', email: 'support@example.com', company: 'IT', phone: '' },
   ];
+  messages[3].to = [person('Вы', 'you@example.com'), ...contacts, ...Array.from({ length: 20 }, (_, i) => person(`Коллега ${i + 1}`, `colleague${i + 1}@example.com`))];
+  messages[3].cc = [person('Ирина Новикова', 'irina.novikova@example.com'), person('Павел Орлов', 'pavel.orlov@example.com')];
   events.forEach((event, i) => {
     Object.assign(event, { changeKey: 'demo-version', response: i === 0 ? 'Unknown' : i === 1 ? 'Accept' : i === 2 || i === 3 ? 'Organizer' : i === 4 ? 'Decline' : 'Tentative', isOrganizer: i === 2 || i === 3, reminder: 15, reminderSet: true, showAs: 'Busy', sensitivity: 'Normal', attendees: contacts.slice(0, 4).map((c, n) => ({ ...c, role: n === 3 ? 'optional' : 'required', response: n === 0 ? 'Accept' : n === 1 ? 'Tentative' : 'Unknown' })), attachments: [] });
     if (event.isOrganizer) event.organizer = person('Вы', 'you@example.com');

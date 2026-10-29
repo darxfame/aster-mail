@@ -63,12 +63,25 @@ function address(value) {
   const o = value?.Mailbox || value || {};
   return { name: o.Name || '', email: o.RoutingType === 'EX' ? '' : o.EmailAddress || '' };
 }
+function mailPreview(value, html = false) {
+  let text = String(value || '').slice(0, 16000);
+  if (html) text = text.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]*>/g, ' ')
+    .replace(/&(?:nbsp|ensp|emsp);/gi, ' ').replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_match, number) => {
+      const code = number[0].toLowerCase() === 'x' ? parseInt(number.slice(1), 16) : Number(number);
+      return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : ' ';
+    }).replace(/&(amp|lt|gt|quot|apos);/gi, (_match, name) => ({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'"})[name.toLowerCase()]);
+  // Some Exchange Preview values join Russian names and adjacent Latin activity labels.
+  // Preserve email addresses and URLs; do not guess boundaries in lowercase words.
+  return text.split(/((?:https?:\/\/|mailto:)[^\s<>]+|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)/gi)
+    .map((part, index) => index % 2 ? part : part.replace(/([а-яё])([А-ЯЁ])/g, '$1 $2').replace(/([А-Яа-яЁё])([A-Za-z])/g, '$1 $2').replace(/([A-Za-z])([А-Яа-яЁё])/g, '$1 $2'))
+    .join('').replace(/\s+/g, ' ').trim().slice(0, 240);
+}
 function message(o) {
   const body = o.NormalizedBody || o.Body || o.UniqueBody || {};
   return {
     id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
     from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address),
-    date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: o.Preview || '', read: Boolean(o.IsRead),
+    date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: mailPreview(body.Value || o.Preview, Boolean(body.Value && body.BodyType !== 'Text')), read: Boolean(o.IsRead),
     importance: o.Importance || 'Normal', flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
     html: body.BodyType === 'Text' ? null : body.Value || '', text: body.BodyType === 'Text' ? body.Value : '',
     attachments: (o.Attachments || []).filter(a => a.AttachmentId).map(a => ({ id: a.AttachmentId.Id, name: a.Name, size: a.Size, type: a.ContentType || '', contentId: a.ContentId || '', inline: Boolean(a.IsInline) })),
@@ -129,4 +142,4 @@ function eventSOAP(data) {
 }
 const normalizeServer = require('../src/server.js').normalize;
 
-module.exports = { typed, folder, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer };
+module.exports = { typed, folder, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };
