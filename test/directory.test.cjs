@@ -29,8 +29,8 @@ test('multiple ambiguous names are normal suggestions, zero matches are an empty
   assert.throws(() => P.parseSOAP(response('ErrorAccessDenied'), 'ResolveNames'), /ErrorAccessDenied/);
 });
 test('EX legacy names resolve to SMTP contact addresses and duplicates are removed', () => {
-  const xml = response('NoError', `<ResolutionSet>${person('Ирина', '/o=Company/ou=Group/cn=Recipients/cn=irina', 'EX', '<Contact><CompanyName>Research</CompanyName><EmailAddresses><Entry Key="EmailAddress1">SMTP:irina@example.com</Entry><Entry Key="EmailAddress2">smtp:alias@example.com</Entry></EmailAddresses></Contact>')}${person('Duplicate', 'IRINA@example.com')}${person('Unresolved EX', '/o=Company/cn=no-email', 'EX')}</ResolutionSet>`);
-  const result = normalize(P.parseSOAP(xml)); assert.equal(result.items.length, 1); assert.equal(result.items[0].email, 'irina@example.com'); assert.equal(result.items[0].company, 'Research');
+  const xml = response('NoError', `<ResolutionSet>${person('Ирина', '/o=Company/ou=Group/cn=Recipients/cn=irina', 'EX', '<Contact><CompanyName>Research</CompanyName><PhoneNumbers><Entry Key="BusinessPhone">+7 000 123-45-67</Entry></PhoneNumbers><EmailAddresses><Entry Key="EmailAddress1">SMTP:irina@example.com</Entry><Entry Key="EmailAddress2">smtp:alias@example.com</Entry></EmailAddresses></Contact>')}${person('Duplicate', 'IRINA@example.com')}${person('Unresolved EX', '/o=Company/cn=no-email', 'EX')}</ResolutionSet>`);
+  const result = normalize(P.parseSOAP(xml)); assert.equal(result.items.length, 1); assert.equal(result.items[0].email, 'irina@example.com'); assert.equal(result.items[0].company, 'Research'); assert.equal(result.items[0].phone, '+7 000 123-45-67');
 });
 test('directory failures keep the actual cause, and invalid queries never reach the server', async () => {
   await assert.rejects(client(response('ErrorAccessDenied')).instance.contacts({ query: 'Ирина' }), /EWS ResolveNames.*ErrorAccessDenied/);

@@ -208,7 +208,7 @@ function renderSidebar() {
   create.innerHTML = `${icon('plus')}<span>${{ mail: 'Написать', calendar: 'Встреча', contacts: 'Контакт' }[state.view]}</span>`;
   create.setAttribute('aria-label', { mail: 'Написать', calendar: 'Создать встречу', contacts: 'Новый контакт' }[state.view]);
   document.body.classList.toggle('mail-view', isMail);
-  $('#search').placeholder = { mail: 'Поиск по почтовому ящику', calendar: 'Поиск по календарю', contacts: 'Поиск людей в Exchange' }[state.view];
+  $('#search').placeholder = { mail: 'Поиск: письма, календарь, контакты', calendar: 'Поиск по календарю', contacts: 'Поиск людей в Exchange' }[state.view];
   renderConnection();
   $('#demo-banner').hidden = !state.demo;
   restoreFocus();
@@ -229,12 +229,12 @@ async function loadView(append = false) {
       const offset = append ? state.offset : 0;
       let result;
       if (state.demo) {
-        const matches = window.asterDemo.messages.filter(m => state.query ? `${m.subject} ${m.preview} ${m.from.name} ${m.from.email}`.toLowerCase().includes(state.query.toLowerCase()) : m.folder === state.folder).filter(m => state.filter === 'all' || (state.filter === 'unread' ? !m.read : m.flagged));
-        result = { items: structuredClone(matches), more: false };
-      } else result = await api(state.query ? 'search' : 'messages', { folder: state.folder, query: state.query && state.filter === 'unread' ? `(${state.query}) AND read:no` : state.query, filter: state.filter, offset });
+        result = state.query ? demoMailSearch(state.query) : { items: structuredClone(window.asterDemo.messages.filter(message => message.folder === state.folder)), more: false };
+      } else result = state.query ? await searchMailbox(state.query, state.filter, offset) : await api('messages', { folder: state.folder, filter: state.filter, offset });
       if (generation !== state.generation) return;
+      if (state.filter !== 'all' && result.related) result.related = result.related.mail?.error ? { mail: result.related.mail } : null;
       state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = (append ? state.offset : 0) + result.items.length;
-      if (!append) state.selected = null;
+      if (!append) { state.selected = null; state.searchObjects = state.query ? result.related : null; }
       state.mailViewKey = JSON.stringify([state.folder, state.query, state.filter]);
       renderMail();
       if (!state.demo && !state.query && !append) void refreshMailFolders(generation);
@@ -267,7 +267,7 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected));
   const title = state.query ? `Результаты поиска` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || 'Письма';
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}» · весь ящик`) : 'Всё важное — на своём месте'}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', 'Все письма'], ['unread', 'Непрочитанные'], ['flagged', 'Избранное']].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? '<button class="secondary load-more" data-action="more">Загрузить ещё</button>' : ''}</div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}» · весь ящик`) : 'Всё важное — на своём месте'}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', state.query ? 'Все объекты' : 'Все письма'], ['unread', 'Непрочитанные'], ['flagged', 'Избранное']].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? '<button class="secondary load-more" data-action="more">Загрузить ещё</button>' : ''}</div><article class="reader" id="reader"></article>`;
   renderMessages();
   if (state.selected) renderReader(); else $('#reader').innerHTML = `<div class="empty">${icon('mail')}<h2>Место для ваших мыслей</h2><p>Выберите письмо, чтобы прочитать его, или напишите новое.</p></div>`;
 }
@@ -278,11 +278,15 @@ function renderMessages() {
   const items = filteredMessages();
   syncMailSelection(items);
   if ($('#mail-count')) $('#mail-count').textContent = `${items.length}${state.more ? '+' : ''}`;
-  $('#messages').innerHTML = items.map((m, i) => {
+  if (state.query && state.searchObjects) $('#messages').querySelectorAll('[data-search-kind]').forEach(element => {
+    if (state.searchObjects[element.dataset.searchKind]) state.searchObjects[element.dataset.searchKind].expanded = element.open;
+  });
+  const related = renderSearchObjects();
+  $('#messages').innerHTML = related + (state.query ? '<h3 class="search-mail-heading">Письма</h3>' : '') + (items.map((m, i) => {
     const key = dayKey(m.date), label = key === dayKey(new Date()) ? 'Сегодня' : dateFormat(m.date, { day: 'numeric', month: 'long' });
     const heading = key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : ''; previousDay = key;
     return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="Выбрать письмо: ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? 'Прочитано' : 'Непрочитано'}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || 'Неизвестный отправитель')}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? '<span class="unread-badge">Новое</span>' : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? '<span class="tag">Приглашение</span>' : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? 'Убрать из избранного' : 'В избранное'}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
-  }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? 'Непрочитанных писем нет' : state.filter === 'flagged' ? 'Избранных писем нет' : 'Здесь пока нет писем'}</p></div>`;
+  }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? 'Непрочитанных писем нет' : state.filter === 'flagged' ? 'Избранных писем нет' : 'Здесь пока нет писем'}</p></div>`);
   restoreFocus();
   renderMailBatchToolbar();
 }
@@ -376,7 +380,7 @@ async function demoContentImages(html) {
 function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button type="button" class="icon-button" data-mail-find aria-label="Найти в письме" title="Найти в письме · Cmd/Ctrl+F">${icon('search')}</button><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-mail-move aria-label="Переместить в папку" title="Переместить в папку">${icon('folder')}</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><div class="reader-replies" aria-label="Действия с письмом">${isDraftMessage(m) ? '<button class="primary" data-action="edit-draft">Продолжить черновик</button>' : `<button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="write-mail-person" data-group="from" aria-label="Написать: ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small>${mailRecipientDetails(m)}</div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Картинки: встроенные и с сервера OWA · активное содержимое отключено</div><div id="message-body"></div></div></div>`;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button type="button" class="icon-button" data-mail-find aria-label="Найти в письме" title="Найти в письме · Cmd/Ctrl+F">${icon('search')}</button><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-mail-move aria-label="Переместить в папку" title="Переместить в папку">${icon('folder')}</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><div class="reader-replies" aria-label="Действия с письмом">${isDraftMessage(m) ? '<button class="primary" data-action="edit-draft">Продолжить черновик</button>' : `<button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="Открыть контакт: ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Картинки: встроенные и с сервера OWA · активное содержимое отключено</div><div id="message-body"></div></div></div>`;
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
       dark: state.theme === 'dark', title: 'Содержимое письма',
@@ -862,9 +866,30 @@ async function handleAction(button) {
   }
   if (action === 'contact') {
     const c = state.contacts.find(c => c.id === button.dataset.id); if (!c) return;
-    modal('Контакт', '', `<div class="contact-detail">${avatar(c.name, 0, c.email)}<h2>${esc(c.name)}</h2><p>${esc(c.company)}</p><p>${esc(c.email)}</p><p>${esc(c.phone)}</p><button class="secondary" data-action="pin-contact" data-id="${esc(c.id)}">${icon('plus')}Добавить в коллеги</button><button class="primary" data-action="write-contact" data-id="${esc(c.id)}">${icon('mail')}Написать письмо</button></div>`); return;
+    return openContactCard(c);
   }
-  if (action === 'write-mail-person') return writeMailPerson(button);
+  if (action === 'search-more-objects') return moreSearchObjects(button);
+  if (action === 'search-object') {
+    const kind = button.dataset.kind, item = state.searchObjects?.[kind]?.items?.[Number(button.dataset.index)];
+    if (!item) return;
+    if (kind === 'calendar') return openMeeting(item);
+    if (kind === 'contacts') return openContactCard(item);
+    return;
+  }
+  if (action === 'open-mail-person') return openMailPerson(button);
+  if (action === 'write-card-contact' || action === 'pin-card-contact') {
+    const context = currentContactCard();
+    if (!context) return;
+    if (action === 'write-card-contact') return compose('new', context.person);
+    const list = colleagues(), person = context.person;
+    if (!person.email) return;
+    if (!list.some(value => value.email.toLowerCase() === person.email.toLowerCase())) {
+      if (list.length >= 50) throw new Error('Можно закрепить до 50 коллег');
+      await saveColleagues([...list, person]);
+    }
+    if (currentContactCard() === context) { button.disabled = true; button.textContent = 'В коллегах'; }
+    renderColleagues(); void refreshColleagues(); toast('Коллега добавлен'); return;
+  }
   if (action === 'write-contact') return compose('new', state.contacts.find(c => c.id === button.dataset.id));
   if (action === 'rsvp') {
     const buttons = [...button.closest('.rsvp').querySelectorAll('button')];
@@ -1074,7 +1099,7 @@ function applyAccount(value) {
   syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
   sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
   serverSignature = null; composeData = null; activeMeeting = null; meetingEdit = null; meetingRequest++;
-  moveRuleContext = null; mailDrag = null; mailPeopleChoices = [];
+  moveRuleContext = null; mailDrag = null; mailPeopleChoices = []; contactCardContext = null; state.searchObjects = null;
   colleagueData = []; directoryResults = []; directoryRequest++; colleagueRequest++;
   state.query = ''; $('#search').value = ''; renderMailAlerts([]);
   $('#people-search-suggestions')?.replaceChildren();

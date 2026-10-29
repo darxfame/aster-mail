@@ -243,13 +243,31 @@ class OWAClient {
   async draft(data) { return this.outgoing(data, true); }
   async editDraft(data) { return require('./mail-drafts.cjs').run(this, data); }
   async search(data) {
+    if (data.kind && data.kind !== 'mail') return this.searchObjects(data);
     // Search sessions must not be ended while another request still uses them.
     const task = (this.searchQueue || Promise.resolve()).then(() => this.performSearch(data));
     this.searchQueue = task.catch(() => {});
     return task;
   }
+  async searchObjects({ query, kind, offset = 0 }) {
+    if (!['calendar', 'contacts'].includes(kind)) throw new Error('Неизвестный тип объектов поиска');
+    if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error('Проверьте поисковый запрос');
+    // Use the OWA JSON FindItem transport; no EWS connection or calendar date window.
+    const json = await this.call('FindItem', P.request('FindItem', {
+      ParentFolderIds: [P.folder(kind)], Traversal: 'Shallow', Paging: P.paging(offset),
+      ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties' }),
+      QueryString: P.typed('QueryStringType', { Value: query.trim() }),
+    }, 'Exchange2016'));
+    const root = P.walk(json, value => value.RootFolder)[0]?.RootFolder;
+    if (!root || !Array.isArray(root.Items)) throw new Error('OWA FindItem: неподдерживаемый формат результатов поиска');
+    const items = root.Items.filter(value => value.ItemId?.Id).map(kind === 'calendar' ? calendarEvents.normalize : P.contact);
+    const more = root.IncludesLastItemInRange === false;
+    const nextOffset = Number(root.IndexedPagingOffset);
+    if (more && (!items.length || Number.isFinite(nextOffset) && nextOffset <= offset)) throw new Error('OWA FindItem: сервер не продвинул страницу поиска');
+    return { items, more, nextOffset: Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : offset + root.Items.length };
+  }
   async performSearch({ query, offset = 0 }) {
-    if (typeof query !== 'string' || !query.trim() || query.length > 2000) throw new Error('Введите поисковый запрос');
+    if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error('Введите поисковый запрос');
     const scope = [P.typed('PrimaryMailboxSearchScopeType', { FolderScope: P.typed('SearchFolderScopeType', { BaseFolderId: P.folder('msgfolderroot') }) })];
     if (!offset || !this.searchSession || this.searchQuery !== query) {
       if (this.searchSession) await this.call('EndSearchSession', P.request('EndSearchSession', { SearchSessionId: this.searchSession }));
@@ -365,11 +383,7 @@ class OWAClient {
     }));
     const root = P.walk(json, o => o.RootFolder)[0]?.RootFolder;
     if (!root) throw new Error('OWA FindItem: в ответе нет контактов');
-    return { items: (root.Items || []).map(o => ({
-      id: o.ItemId?.Id, name: o.DisplayName || o.Subject || '',
-      email: o.EmailAddresses?.[0]?.Value || o.EmailAddresses?.[0]?.EmailAddress || '',
-      company: o.CompanyName || '', phone: o.PhoneNumbers?.[0]?.Value || '',
-    })), more: root.IncludesLastItemInRange === false };
+    return { items: (root.Items || []).map(P.contact), more: root.IncludesLastItemInRange === false };
   }
   async createContact(data) {
     const email = P.emails(data.email)[0];

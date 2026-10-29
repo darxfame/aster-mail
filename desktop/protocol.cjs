@@ -76,6 +76,11 @@ function mailPreview(value, html = false) {
     .map((part, index) => index % 2 ? part : part.replace(/([а-яё])([А-ЯЁ])/g, '$1 $2').replace(/([А-Яа-яЁё])([A-Za-z])/g, '$1 $2').replace(/([A-Za-z])([А-Яа-яЁё])/g, '$1 $2'))
     .join('').replace(/\s+/g, ' ').trim().slice(0, 240);
 }
+function contact(o) {
+  return { id: o.ItemId?.Id || '', name: o.DisplayName || o.Subject || '',
+    email: o.EmailAddresses?.[0]?.Value || o.EmailAddresses?.[0]?.EmailAddress || '',
+    company: o.CompanyName || '', phone: o.PhoneNumbers?.[0]?.Value || '' };
+}
 function message(o) {
   const body = o.NormalizedBody || o.Body || o.UniqueBody || {};
   return {
@@ -142,4 +147,4 @@ function eventSOAP(data) {
 }
 const normalizeServer = require('../src/server.js').normalize;
 
-module.exports = { typed, folder, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };
+module.exports = { contact, typed, folder, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };

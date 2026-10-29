@@ -53,11 +53,11 @@ test('previews separate HTML blocks and joined Cyrillic names without changing U
   const address='АннаСмирнова@example.com https://example.com/АннаСмирнова'; assert.equal(P.mailPreview(address),address);
   assert.doesNotThrow(()=>P.mailPreview('&#999999999;',true));
 });
-test('recipient details collapse long lists, escape names and address buttons by group and index',()=>{
+test('recipient roles stay separate and names are escaped with contact buttons by group and index',()=>{
   const source=fs.readFileSync(require.resolve('../src/mail-ui.js'),'utf8');
   const context=vm.createContext({esc:value=>String(value).replace(/[<>&"]/g,char=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[char])),avatar:()=>'',icon:()=>''});
   vm.runInContext(source.slice(source.indexOf('function mailRecipientDetails(')),context);
   const html=context.mailRecipientDetails({to:Array.from({length:100},(_,i)=>({name:i===0?'<b>Анна</b>':`Участник ${i}`,email:`person${i}@example.com`})),cc:[{name:'Елена',email:'elena@example.com'}]});
-  assert.match(html,/<details class="mail-recipients"><summary>/); assert.doesNotMatch(html,/<details[^>]* open/);
-  assert.match(html,/Получатели · 101/); assert.match(html,/&lt;b&gt;Анна&lt;\/b&gt;/); assert.match(html,/class="mail-recipient-list"/); assert.match(html,/data-group="cc" data-index="0"/);
+  assert.match(html,/<details class="mail-recipients" open><summary>/);
+  assert.match(html,/Кому · 100/); assert.match(html,/Копия · 1/); assert.doesNotMatch(html,/Получатели · 101/); assert.match(html,/&lt;b&gt;Анна&lt;\/b&gt;/); assert.match(html,/class="mail-recipient-list"/); assert.match(html,/data-group="cc" data-index="0"/);
 });

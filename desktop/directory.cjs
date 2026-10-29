@@ -11,7 +11,9 @@ function normalize(data) {
     const email = validEmail(direct) ? direct : smtp?.replace(/^smtp:/i, '') || '';
     if (!validEmail(email) || seen.has(email.toLowerCase())) continue;
     seen.add(email.toLowerCase());
-    items.push({ id: `directory:${email.toLowerCase()}`, name: contact.DisplayName || mailbox.Name || email, email, company: contact.CompanyName || '', phone: '', source: 'directory' });
+    const phones = P.walk(contact.PhoneNumbers, value => value.Entry !== undefined).flatMap(value => Array.isArray(value.Entry) ? value.Entry : [value.Entry]);
+    const phone = phones.find(value => value?.['@_Key'] === 'BusinessPhone') || phones[0];
+    items.push({ id: `directory:${email.toLowerCase()}`, name: contact.DisplayName || mailbox.Name || email, email, company: contact.CompanyName || '', phone: typeof phone === 'string' ? phone : phone?.['#text'] || phone?.Value || '', source: 'directory' });
   }
   const set = P.walk(data, value => value['@_IncludesLastItemInRange'] !== undefined)[0];
   return { items, more: false, truncated: String(set?.['@_IncludesLastItemInRange']).toLowerCase() === 'false' };

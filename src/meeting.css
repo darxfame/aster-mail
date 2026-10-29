@@ -139,3 +139,24 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .picked-files > div { display: flex; align-items: center; gap: 8px; margin-top: 5px; overflow-wrap: anywhere; }
 .picked-files button { margin-left: auto; flex: none; }
 @media(max-width: 620px) { .compose-dialog .modal-header { flex-wrap: wrap; }.compose-dialog .modal-header > div { flex-basis: 100%; } }
+
+/* Recipient roles remain visible without combining To and Cc names. */
+.mail-recipient-groups { margin: -12px 0 24px; display: grid; gap: 8px; }
+.mail-recipient-groups .mail-recipients { margin: 0; }
+.mail-recipient-groups .mail-recipient-list { max-height: 144px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
+.recipient-empty { color: var(--muted); font-size: 10px; }
+.contact-card-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.contact-card-actions .primary { margin-top: 0; }
+
+.search-object-group { padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.search-object-group summary, .search-mail-heading { font-size: 11px; color: var(--accent); margin: 8px 0; }
+.search-mail-heading { padding: 0 23px; }
+.search-object { display: flex; width: 100%; text-align: left; gap: 10px; padding: 10px 4px; border-radius: 6px; }
+.search-object:hover { background: var(--accent-bg); }
+.search-object > svg { width: 18px; flex: none; color: var(--accent); }
+.search-object > span { min-width: 0; }
+.search-object strong, .search-object small { display: block; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; }
+.search-object small { color: var(--muted); font-size: 10px; }
+.search-source-error { font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+
+.search-object-group summary { cursor: pointer; }

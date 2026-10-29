@@ -163,25 +163,102 @@ async function refreshMailFolders(generation) {
 
 function mailRecipientDetails(message) {
   const groups = [['to', 'Кому'], ['cc', 'Копия'], ['bcc', 'Скрытая копия']];
-  const people = groups.flatMap(([key]) => message[key] || []);
-  if (!people.length) return '<small>Получатели не указаны</small>';
-  const names = people.slice(0, 2).map(person => person.name || person.email).join(', ');
-  return `<details class="mail-recipients"><summary><span>Получатели · ${people.length}</span><span class="recipient-summary-names">${esc(names)}${people.length > 2 ? ` и ещё ${people.length - 2}` : ''}</span></summary><div class="mail-recipient-list">${groups.map(([key, label]) => message[key]?.length ? `<div class="recipient-group-label">${label}</div>${message[key].map((person, index) => `<button type="button" class="mail-person" data-action="write-mail-person" data-group="${key}" data-index="${index}" aria-label="Написать: ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || 'Участник')}</strong><small>${esc(person.email || 'Найти адрес в Exchange')}</small></span>${icon('mail')}</button>`).join('')}` : '').join('')}</div></details>`;
+  if (!groups.some(([key]) => message[key]?.length)) return '<small>Получатели не указаны</small>';
+  return `<div class="mail-recipient-groups" aria-label="Получатели письма">${groups.map(([key, label]) => {
+    const people = message[key] || [];
+    if (!people.length) return key === 'to' ? '<div class="recipient-empty">Кому: не указано</div>' : '';
+    return `<details class="mail-recipients" open><summary><span>${label} · ${people.length}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="Открыть контакт: ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || 'Участник')}</strong><small>${esc(person.email || 'Адрес не указан')}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
+  }).join('')}</div>`;
 }
 let mailPeopleChoices = [];
-async function writeMailPerson(button) {
+async function openMailPerson(button) {
   const group = button.dataset.group, index = Number(button.dataset.index);
   const person = group === 'from' ? state.selected?.from : group === 'choice' ? mailPeopleChoices[index] : state.selected?.[group]?.[index];
-  if (!person) return;
-  if (/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(person.email || '')) return compose('new', person);
-  const account = state.account, message = state.selected;
+  if (!person || !['from', 'choice', 'to', 'cc', 'bcc'].includes(group)) return;
+  return openContactCard(person, true);
+}
+let contactCardContext = null;
+function currentContactCard() {
+  const context = contactCardContext;
+  return context && context.account === state.account && context.generation === state.generation && context.modal === modalSequence && $('#modal').open ? context : null;
+}
+function contactCardBody(person, note = '') {
+  const canWrite = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(person.email || '');
+  const pinned = colleagues().some(value => value.email.toLowerCase() === person.email?.toLowerCase());
+  return `<div class="contact-detail">${avatar(person.name || person.email, 0, person.email)}<h2>${esc(person.name || person.email || 'Контакт')}</h2><p>${esc(person.email || 'Email не указан в письме')}</p><p data-contact-field="company" ${person.company ? '' : 'hidden'}>${esc(person.company || '')}</p><p data-contact-field="phone" ${person.phone ? '' : 'hidden'}>${esc(person.phone || '')}</p><p class="form-note" role="status" data-contact-field="status">${esc(note)}</p><div class="contact-card-actions"><button type="button" class="secondary" data-action="pin-card-contact" ${!canWrite || pinned ? 'disabled' : ''}>${icon('plus')}${pinned ? 'В коллегах' : 'Добавить в коллеги'}</button><button type="button" class="primary" data-action="write-card-contact" ${canWrite ? '' : 'disabled'}>${icon('mail')}Написать письмо</button></div></div>`;
+}
+async function openContactCard(person, lookup = false) {
+  if (modalBusy) return;
+  const local = [...(state.demo ? window.asterDemo.contacts : state.contacts), ...colleagues()].find(value => person.email && value.email?.toLowerCase() === person.email.toLowerCase());
+  const base = { ...person, ...(local || {}) };
+  modal('Контакт', '', contactCardBody(base, lookup ? 'Загружаем сведения из справочника…' : ''));
+  const context = contactCardContext = { person: base, account: state.account, generation: state.generation, modal: modalSequence };
+  if (!lookup) return;
+  const query = person.email || person.name || '';
+  const update = (value, note) => {
+    if (currentContactCard() !== context) return;
+    context.person = value;
+    // Keep the dialog and focusable actions mounted during a directory read.
+    const detail = $('#modal-content .contact-detail');
+    for (const [field, text] of Object.entries({ company: value.company || '', phone: value.phone || '', status: note })) {
+      const element = detail.querySelector(`[data-contact-field="${field}"]`);
+      element.textContent = text; element.hidden = !text;
+    }
+    detail.querySelector('h2').textContent = value.name || value.email || 'Контакт';
+  };
+  if (query.trim().length < 2 || query.length > 254) { update(base, 'Недостаточно данных для поиска в справочнике.'); return; }
+  try {
+    const result = state.demo ? { items: window.asterRecipients.matches(window.asterDemo.directory, query) } : await api('contacts', { query });
+    if (currentContactCard() !== context) return;
+    const exact = result.items.find(candidate => person.email && candidate.email?.toLowerCase() === person.email.toLowerCase());
+    if (exact) { update({ ...base, ...exact, company: exact.company || base.company || '', phone: exact.phone || base.phone || '' }, 'Сведения из справочника Exchange'); return; }
+    if (!person.email && result.items.length) {
+      mailPeopleChoices = result.items;
+      modal('Выберите контакт', 'В письме не указан SMTP-адрес. Уточните получателя по справочнику.', `<div class="mail-recipient-list">${mailPeopleChoices.map((candidate, i) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="choice" data-index="${i}">${avatar(candidate.name, i, candidate.email)}<span><strong>${esc(candidate.name)}</strong><small>${esc(candidate.email)}</small></span></button>`).join('')}</div>`);
+      return;
+    }
+    update(base, 'Дополнительные сведения в справочнике не найдены.');
+  } catch (error) { update(base, `Справочник недоступен: ${error.message}`); }
+}
+
+// Each result group has its own paging and error state; mail-only actions stay mail-only.
+async function searchMailbox(query, filter, offset = 0) {
+  const kinds = filter === 'all' && offset === 0 ? ['mail', 'calendar', 'contacts'] : ['mail'];
+  const settled = await Promise.allSettled(kinds.map(kind => api('search', { kind, query: kind === 'mail' && filter === 'unread' ? `(${query}) AND read:no` : query, offset })));
+  const groups = {};
+  for (let i = 0; i < kinds.length; i++) groups[kinds[i]] = settled[i].status === 'fulfilled' ? settled[i].value : { items: [], more: false, error: settled[i].reason.message, connectionError: settled[i].reason.connectionError === true };
+  if (settled.every(result => result.status === 'rejected')) throw settled[0].reason;
+  return { ...groups.mail, related: offset === 0 ? groups : null };
+}
+function demoMailSearch(query) {
+  const contains = value => String(value || '').toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru'));
+  const personText = person => `${person?.name || ''} ${person?.email || ''}`;
+  return {
+    items: structuredClone(window.asterDemo.messages.filter(message => contains([message.subject, message.text, message.html?.replace(/<[^>]*>/g, ' '), message.preview, ...[message.from, ...message.to || [], ...message.cc || [], ...message.bcc || []].map(personText), ...message.attachments.map(file => file.name), message.meeting?.location].join(' ')))), more: false,
+    related: { calendar: { items: structuredClone(window.asterDemo.events.filter(event => contains([event.title, event.body, event.html?.replace(/<[^>]*>/g, ' '), event.preview, event.location, personText(event.organizer), ...(event.attendees || []).map(personText)].join(' ')))), more: false }, contacts: { items: structuredClone(window.asterDemo.contacts.filter(person => contains([personText(person), person.company, person.phone].join(' ')))), more: false } },
+  };
+}
+function renderSearchObjects() {
+  if (!state.query || !state.searchObjects) return '';
+  return ['calendar', 'contacts', 'mail'].map(kind => {
+    const group = state.searchObjects[kind];
+    if (!group || kind === 'mail' && !group.error) return '';
+    const label = { calendar: 'Календарь', contacts: 'Личные контакты', mail: 'Письма' }[kind];
+    const rows = kind === 'mail' ? '' : group.items.map((item, index) => `<button type="button" class="search-object" data-action="search-object" data-kind="${kind}" data-index="${index}">${icon(kind === 'calendar' ? 'calendar' : 'people')}<span><strong>${esc(item.title || item.name || item.email || 'Без названия')}</strong><small>${esc(kind === 'calendar' ? `${item.start ? dateFormat(item.start, { day: 'numeric', month: 'long', year: 'numeric' }) + ' · ' + time(item.start) : 'Дата не указана'}${item.recurring ? ' · Повторяется' : ''} · ${item.location || ''}` : [item.email, item.company].filter(Boolean).join(' · '))}</small></span></button>`).join('');
+    return `<details class="search-object-group" data-search-kind="${kind}" ${group.expanded || !state.messages.length || group.error ? 'open' : ''}><summary>${label}${kind === 'mail' ? '' : ` · ${group.items.length}${group.more ? '+' : ''}`}</summary>${rows}${group.error ? `<p class="search-source-error" role="status">Поиск не завершён: ${esc(group.error)}</p><button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">Повторить</button>` : !group.items.length ? '<p class="form-note">Совпадений нет</p>' : ''}${group.more && !group.error ? `<button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">Ещё: ${label.toLowerCase()}</button>` : ''}</details>`;
+  }).join('');
+}
+async function moreSearchObjects(button) {
+  const kind = button.dataset.kind;
+  if (kind === 'mail') return loadView();
+  const group = state.searchObjects?.[kind], generation = state.generation, query = state.query;
+  if (!group || !['calendar', 'contacts'].includes(kind)) return;
   button.disabled = true;
   try {
-    const result = state.demo ? { items: window.asterRecipients.matches(window.asterDemo.directory, person.name || '') } : await api('contacts', { query: person.name || '' });
-    if (account !== state.account || message !== state.selected) return;
-    mailPeopleChoices = result.items.filter(candidate => candidate.email);
-    if (!mailPeopleChoices.length) throw new Error('Адрес не найден в справочнике Exchange. Уточните email у получателя.');
-    // A name can belong to several people; always let the user choose the actual address.
-    modal('Выберите адрес', person.name || '', `<div class="mail-recipient-list">${mailPeopleChoices.map((candidate, i) => `<button type="button" class="mail-person" data-action="write-mail-person" data-group="choice" data-index="${i}">${avatar(candidate.name, i, candidate.email)}<span><strong>${esc(candidate.name)}</strong><small>${esc(candidate.email)}</small></span>${icon('mail')}</button>`).join('')}</div>`);
-  } finally { button.disabled = false; }
+    const result = await api('search', { kind, query, offset: group.nextOffset || 0 });
+    if (generation !== state.generation || query !== state.query || group !== state.searchObjects?.[kind]) return;
+    const items = new Map([...group.items, ...result.items].map(item => [item.id, item]));
+    state.searchObjects[kind] = { ...result, items: [...items.values()], expanded: true };
+  } catch (error) { if (generation === state.generation && group === state.searchObjects?.[kind]) group.error = error.message; }
+  finally { if (generation === state.generation) renderMessages(); }
 }
