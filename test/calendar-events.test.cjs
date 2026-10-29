@@ -14,6 +14,8 @@ test('calendar colors follow organizer and response rather than position', () =>
   assert.equal(E.kind({ response: 'Organizer' }), 'organized');
   assert.equal(E.kind({ response: 'Accept' }), 'accepted');
   assert.equal(E.kind({ response: 'Unknown' }), 'pending');
+  assert.equal(E.kind({ response: 'Decline' }), 'declined');
+  assert.equal(E.kind({ response: 'Declined' }), 'declined');
   assert.equal(E.kind({ response: 'Tentative' }), 'pending');
   assert.equal(E.kind({ response: 'Organizer', cancelled: true }), 'cancelled');
   assert.equal(E.kind({ isOrganizer: false, organizer: { email: 'me@example.com' } }, 'me@example.com'), 'pending');
@@ -38,9 +40,11 @@ test('organizer updates use conflict protection, send updates and preserve unedi
   assert.match(C.updateSOAP(source, { attendees: '' }), /DeleteItemField/);
   assert.throws(() => C.updateSOAP(source, { start: 'invalid' }));
 });
-test('invitees may update only their local settings and never send organizer updates', () => {
+test('invitees may update only reminders and never send organizer updates', () => {
   const invited = { ...source, isOrganizer: false };
-  assert.match(C.updateSOAP(invited, { reminder: 5, reminderSet: true, sensitivity: 'Private' }), /SendToNone/);
+  assert.match(C.updateSOAP(invited, { reminder: 5, reminderSet: true }), /SendToNone/);
+  assert.throws(() => C.updateSOAP(invited, { sensitivity: 'Private' }), /напоминание/);
+  assert.throws(() => C.updateSOAP(invited, { showAs: 'Free' }), /напоминание/);
   assert.throws(() => C.updateSOAP(invited, { start: '2026-10-29T12:00:00Z' }), /организатор/);
   assert.throws(() => C.updateSOAP({ ...source, cancelled: true }, { title: 'New' }));
   assert.throws(() => C.updateSOAP(source, { reminder: -1 }));

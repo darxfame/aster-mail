@@ -39,7 +39,7 @@ function updateSOAP(current, changes) {
   const fields = [], allowed = ['title', 'body', 'start', 'end', 'location', 'attendees', 'optionalAttendees', 'allDay', 'reminder', 'reminderSet', 'showAs', 'sensitivity'];
   if (Object.keys(changes).some(key => !allowed.includes(key))) throw new Error('Неподдерживаемое поле встречи');
   if (current.cancelled || current.canModify === false) throw new Error('Встреча отменена или недоступна для редактирования');
-  if (current.isOrganizer !== true && Object.keys(changes).some(key => !['reminder', 'reminderSet', 'showAs', 'sensitivity'].includes(key))) throw new Error('Расписание, описание и участников может изменить только организатор');
+  if (current.isOrganizer !== true && Object.keys(changes).some(key => !['reminder', 'reminderSet'].includes(key))) throw new Error('Только организатор может изменять свойства встречи. Участнику доступно только напоминание.');
   const set = (field, value, element = field.split(':')[1]) => fields.push(`<t:SetItemField><t:FieldURI FieldURI="${field}"/><t:CalendarItem><t:${element}>${value}</t:${element}></t:CalendarItem></t:SetItemField>`);
   for (const key of ['title', 'body', 'location']) if (Object.hasOwn(changes, key)) {
     if (typeof changes[key] !== 'string' || changes[key].length > (key === 'body' ? 1000000 : 2000) || (key === 'title' && !changes[key].trim())) throw new Error('Проверьте название и описание встречи');

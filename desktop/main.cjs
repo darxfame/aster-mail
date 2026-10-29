@@ -28,7 +28,7 @@ function reveal(navigation) {
 }
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  const calendarEvents = widgetEvents.filter(event => !event.cancelled && !['Decline', 'Declined'].includes(event.response)).map(event => ({ ...event, joinUrl: meetingLink(event) }));
+  const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(event => ({ ...event, joinUrl: meetingLink(event) }));
   return { connected: Boolean(client), events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
 }
 function refreshWidget() {
@@ -304,11 +304,12 @@ app.whenReady().then(async () => {
       if (!widgetWindow || event.sender !== widgetWindow.webContents || event.senderFrame !== widgetWindow.webContents.mainFrame) throw new Error('Untrusted widget sender');
       if (operation === 'state') return { ok: true, value: widgetState() };
       if (operation === 'app') { widgetWindow.hide(); reveal(); return { ok: true }; }
-      const meeting = widgetEvents.find(item => item.id === data?.id && !item.cancelled && !['Decline', 'Declined'].includes(item.response));
+      const meeting = widgetEvents.find(item => item.id === data?.id && !item.cancelled);
       if (!meeting) throw new Error('Встреча больше не доступна. Дождитесь обновления календаря.');
       if (operation === 'open') {
         widgetWindow.hide(); reveal({ view: 'calendar', date: meeting.start, eventId: meeting.id });
       } else if (operation === 'join') {
+        if (['Decline', 'Declined'].includes(meeting.response)) throw new Error('Встреча отклонена. Измените ответ в карточке встречи.');
         const url = httpsURL(meetingLink(meeting));
         if (!url) throw new Error('Ссылка на созвон не найдена. Откройте карточку встречи.');
         widgetWindow.hide(); await shell.openExternal(url);

@@ -32,7 +32,7 @@ window.asterDemo = (() => {
     { id: 'c6', name: 'Команда поддержки', email: 'support@example.com', company: 'IT', phone: '' },
   ];
   events.forEach((event, i) => {
-    Object.assign(event, { changeKey: 'demo-version', response: i === 0 ? 'Unknown' : i === 1 ? 'Accept' : i === 2 || i === 3 ? 'Organizer' : 'Tentative', isOrganizer: i === 2 || i === 3, reminder: 15, reminderSet: true, showAs: 'Busy', sensitivity: 'Normal', attendees: contacts.slice(0, 4).map((c, n) => ({ ...c, role: n === 3 ? 'optional' : 'required', response: n === 0 ? 'Accept' : n === 1 ? 'Tentative' : 'Unknown' })), attachments: [] });
+    Object.assign(event, { changeKey: 'demo-version', response: i === 0 ? 'Unknown' : i === 1 ? 'Accept' : i === 2 || i === 3 ? 'Organizer' : i === 4 ? 'Decline' : 'Tentative', isOrganizer: i === 2 || i === 3, reminder: 15, reminderSet: true, showAs: 'Busy', sensitivity: 'Normal', attendees: contacts.slice(0, 4).map((c, n) => ({ ...c, role: n === 3 ? 'optional' : 'required', response: n === 0 ? 'Accept' : n === 1 ? 'Tentative' : 'Unknown' })), attachments: [] });
     if (event.isOrganizer) event.organizer = person('Вы', 'you@example.com');
   });
   for (const event of [events[0], events[2]]) {

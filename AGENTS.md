@@ -20,7 +20,10 @@ owns folder trees and the mini month picker. Never overwrite a stale meeting
 or replay an invitation update after an uncertain response.
 `src/time.js` normalizes UTC Exchange instants and converts IANA wall times;
 `src/calendar-layout.js` assigns overlap columns. Keep OWA UTC headers and
-wall-time request bodies consistent. Never derive participation from opening an event.
+wall-time request bodies consistent. Never derive participation from opening an event. Invitees may update only
+`reminder` / `reminderSet`; keep the organizer-only field check in the backend.
+`src/recipients.js` owns participant matching and accessible directory suggestions;
+discard stale search responses and preserve other comma-separated recipients.
 `src/rich-content.js` renders sanitized HTML with scripts disabled; parent code
 handles inline links. `desktop/content-images.cjs` validates raster images, and
 external image requests use a separate session without account credentials.

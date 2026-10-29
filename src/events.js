@@ -5,6 +5,7 @@
   }
   function kind(event, email) {
     if (event.cancelled) return 'cancelled';
+    if (['Decline', 'Declined'].includes(event.response)) return 'declined';
     if (organizer(event, email)) return 'organized';
     return ['Accept', 'Accepted'].includes(event.response) ? 'accepted' : 'pending';
   }
