@@ -92,7 +92,8 @@ for protocol changes.
 ### Release Notes
 
 Write release notes in Russian. Include only changes in that release, necessary
-installation or update instructions, and one short joke about bugs. Compose a
+installation or update instructions, and one short joke about bugs as the last
+bullet in the Changes section, before installation instructions. Compose a
 different joke for every release; do not reuse the previous release's joke.
 Omit introductions, roadmaps, test reports, and internal implementation details.
 

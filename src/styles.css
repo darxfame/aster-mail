@@ -95,3 +95,7 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .protocol-result strong{display:block;font-size:12px}.protocol-result p{white-space:pre-wrap;margin:6px 0;color:var(--muted)}
 .protocol-status{font-size:11px;color:var(--muted)}.protocol-status[data-status="ok"]{color:var(--accent)}
 .protocol-report textarea{width:100%;resize:vertical;font:11px/1.5 monospace}
+
+.mail-find{display:flex;align-items:center;gap:6px;padding:8px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:var(--surface)}
+.mail-find[hidden]{display:none}.mail-find input{flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--text);font:inherit}.mail-find [role="status"]{font-size:11px;color:var(--muted);min-width:74px}
+::highlight(aster-mail-matches){background:#ffe38a;color:#252033}::highlight(aster-mail-current){background:#e78216;color:#17121c}

@@ -1,6 +1,6 @@
 {
   "name": "aster-mail",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "private": true,
   "description": "A calm desktop home for Exchange mail, calendar and people",
   "author": "Aster Mail contributors",
@@ -11,7 +11,7 @@
     "dev": "electron .",
     "preview": "node scripts/preview.cjs",
     "test": "node --test test/*.test.cjs",
-    "check": "node --check desktop/diagnostics.cjs && node --check desktop/transport.cjs && node --check desktop/local-store.cjs && node --check desktop/folder-actions.cjs && node --check desktop/mail-cache.cjs && node --check desktop/mail-batch.cjs && node --check src/mail-batch.js && node --check src/mail-ui.js && node --check src/people-ui.js && node --check desktop/directory.cjs && node --check desktop/mail-rules.cjs && node --check desktop/updates.cjs && node --check src/server.js && node --check src/updates-ui.js && node --check desktop/preload.cjs && node --check desktop/main.cjs && node --check desktop/owa.cjs && node --check desktop/mail-drafts.cjs && node --check desktop/protocol.cjs && node --check src/time.js && node --check src/mail-editor.js && node --check src/rich-content.js && node --check desktop/content-images.cjs && node --check src/app.js && node --check desktop/meetings.cjs && node --check desktop/widget-preload.cjs && node --check src/widget.js && node --check src/calendar-layout.js && node --check src/calendar-ui.js && node --check src/calendar.js && node --check desktop/availability.cjs && node --check src/availability.js && node --check desktop/calendar-events.cjs && node --check src/events.js && node --check src/folders.js && node --check src/sidebar-ui.js && node --check src/recipients.js && node --check src/meeting-ui.js",
+    "check": "node --check src/mail-find.js && node --check desktop/diagnostics.cjs && node --check desktop/transport.cjs && node --check desktop/local-store.cjs && node --check desktop/folder-actions.cjs && node --check desktop/mail-cache.cjs && node --check desktop/mail-batch.cjs && node --check src/mail-batch.js && node --check src/mail-ui.js && node --check src/people-ui.js && node --check desktop/directory.cjs && node --check desktop/mail-rules.cjs && node --check desktop/updates.cjs && node --check src/server.js && node --check src/updates-ui.js && node --check desktop/preload.cjs && node --check desktop/main.cjs && node --check desktop/owa.cjs && node --check desktop/mail-drafts.cjs && node --check desktop/protocol.cjs && node --check src/time.js && node --check src/mail-editor.js && node --check src/rich-content.js && node --check desktop/content-images.cjs && node --check src/app.js && node --check desktop/meetings.cjs && node --check desktop/widget-preload.cjs && node --check src/widget.js && node --check src/calendar-layout.js && node --check src/calendar-ui.js && node --check src/calendar.js && node --check desktop/availability.cjs && node --check src/availability.js && node --check desktop/calendar-events.cjs && node --check src/events.js && node --check src/folders.js && node --check src/sidebar-ui.js && node --check src/recipients.js && node --check src/meeting-ui.js",
     "pack:mac": "electron-builder --mac --arm64 --dir",
     "dist:mac": "electron-builder --mac dmg --arm64",
     "dist:win": "electron-builder --win nsis"
