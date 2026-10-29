@@ -56,12 +56,12 @@ test('at 09:50 the widget picks today’s recurring 10:00 meeting before 16:00 a
   client.canary = 'canary';
   const events = await client.calendar(range), next = upcomingMeetings(events, now)[0];
   assert.equal(next.id, 'today'); assert.equal(next.response, 'Accept'); assert.equal(next.recurring, true);
-  assert.equal(countdown(next, now).label, '10 мин');
+  assert.equal(countdown(next, now).label, 'Через 10 мин');
   assert.equal(payload.Header.TimeZoneContext.TimeZoneDefinition.Id, 'UTC');
   assert.equal(payload.Body.RangeStart, range.start.slice(0, 19));
   assert.ok(Date.parse(`${payload.Body.RangeStart}Z`) < now - 12 * 3600000);
   for (const zone of ['Europe/Moscow', 'Asia/Tokyo', 'America/New_York']) {
     assert.ok(T.format(next.start, { hour: '2-digit' }, zone));
-    assert.equal(countdown(next, now).label, '10 мин');
+    assert.equal(countdown(next, now).label, 'Через 10 мин');
   }
 });

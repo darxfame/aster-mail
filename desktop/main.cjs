@@ -28,7 +28,8 @@ function reveal(navigation) {
 }
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), events, countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
+  const calendarEvents = widgetEvents.filter(event => !event.cancelled && !['Decline', 'Declined'].includes(event.response)).map(event => ({ ...event, joinUrl: meetingLink(event) }));
+  return { connected: Boolean(client), events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
 }
 function refreshWidget() {
   const state = widgetState();
@@ -40,8 +41,10 @@ function refreshWidget() {
 }
 function toggleWidget() {
   if (widgetWindow?.isVisible()) { widgetWindow.hide(); return; }
+  const bounds = tray.getBounds(), area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea;
+  const width = Math.min(440, area.width - 16), height = Math.min(670, area.height - 16);
   if (!widgetWindow || widgetWindow.isDestroyed()) {
-    widgetWindow = new BrowserWindow({ width: 390, height: 490, show: false, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, title: 'Aster · ближайшие встречи', backgroundColor: '#f8f6fc',
+    widgetWindow = new BrowserWindow({ width, height, show: false, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, title: 'Aster · ближайшие встречи', backgroundColor: '#f8f6fc',
       webPreferences: { preload: path.join(__dirname, 'widget-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     widgetWindow.loadFile(path.join(__dirname, '../src/widget.html'));
@@ -50,9 +53,9 @@ function toggleWidget() {
     widgetWindow.on('blur', () => widgetWindow.hide());
     widgetWindow.once('ready-to-show', () => { widgetWindow.show(); widgetWindow.focus(); });
   }
-  const bounds = tray.getBounds(), area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea;
-  const x = Math.max(area.x, Math.min(bounds.x + bounds.width / 2 - 195, area.x + area.width - 390));
-  const y = bounds.y + bounds.height + 490 < area.y + area.height ? bounds.y + bounds.height + 8 : Math.max(area.y, bounds.y - 498);
+  widgetWindow.setSize(width, height);
+  const x = Math.max(area.x, Math.min(bounds.x + bounds.width / 2 - width / 2, area.x + area.width - width));
+  const y = bounds.y + bounds.height + height + 8 < area.y + area.height ? bounds.y + bounds.height + 8 : Math.max(area.y, bounds.y - height - 8);
   widgetWindow.setPosition(Math.round(x), Math.round(y));
   if (!widgetWindow.webContents.isLoading()) { refreshWidget(); widgetWindow.show(); widgetWindow.focus(); }
 }
@@ -301,7 +304,7 @@ app.whenReady().then(async () => {
       if (!widgetWindow || event.sender !== widgetWindow.webContents || event.senderFrame !== widgetWindow.webContents.mainFrame) throw new Error('Untrusted widget sender');
       if (operation === 'state') return { ok: true, value: widgetState() };
       if (operation === 'app') { widgetWindow.hide(); reveal(); return { ok: true }; }
-      const meeting = upcomingMeetings(widgetEvents).find(item => item.id === data?.id);
+      const meeting = widgetEvents.find(item => item.id === data?.id && !item.cancelled && !['Decline', 'Declined'].includes(item.response));
       if (!meeting) throw new Error('Встреча больше не доступна. Дождитесь обновления календаря.');
       if (operation === 'open') {
         widgetWindow.hide(); reveal({ view: 'calendar', date: meeting.start, eventId: meeting.id });

@@ -14,7 +14,15 @@ test('upcoming meetings exclude unavailable events and roll over after the end',
   const events = [event, { ...event, id: 'cancelled', cancelled: true }, { ...event, id: 'declined', response: 'Decline' }, { ...event, allDay: true }, { ...event, start: 'invalid' }];
   assert.deepEqual(upcomingMeetings(events, now).map(e => e.id), ['next']);
   assert.deepEqual(upcomingMeetings(events, Date.parse(event.end)), []);
-  assert.equal(countdown(event, now).label, '12 мин');
-  assert.equal(countdown(event, now + 15 * 60000).label, 'Сейчас · 45 мин');
+  assert.equal(countdown(event, now).label, 'Через 12 мин');
+  assert.equal(countdown(event, now + 15 * 60000).label, 'До конца · 45 мин');
   assert.equal(countdown(null, now).label, 'Свободно');
+});
+test('menu bar distinguishes time until start from time until end and expires at the exact boundary', () => {
+  const E = require('../src/events.js');
+  assert.equal(countdown, E.countdown);
+  assert.equal(countdown(event, Date.parse(event.start) - 8 * 60000).label, 'Через 8 мин');
+  assert.equal(countdown(event, Date.parse(event.end) - 8 * 60000).label, 'До конца · 8 мин');
+  assert.equal(countdown(event, Date.parse(event.start)).active, true);
+  assert.equal(countdown(event, Date.parse(event.end)).label, 'Свободно');
 });
