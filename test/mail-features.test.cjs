@@ -54,11 +54,13 @@ test('signature images load as validated raster bytes, and inline attachments re
   assert.match(attach, /<t:IsInline>true<\/t:IsInline>/); assert.match(attach, /<t:ContentId>signature@aster.local/);
   assert.equal(calls.filter(call => call.options.headers.SOAPAction.includes('SendItem')).length, 1);
 });
-test('relative OWA signature images use only the authenticated same-origin transport', async () => {
+test('relative OWA signature images use the isolated image transport without OWA credentials', async () => {
   const html = '<img src="/owa/image.png">';
-  const { instance, calls } = client((url, options) => options.binary ? { status: 200, buffer: Buffer.from(pixel, 'base64') } : { status: 200, text: soap(`<DictionaryEntry><DictionaryKey><Value>signaturehtml</Value></DictionaryKey><DictionaryValue><Value>${P.escapeXML(html)}</Value></DictionaryValue></DictionaryEntry>`) });
+  const downloads = [];
+  const { instance, calls } = client(() => ({ status: 200, text: soap(`<DictionaryEntry><DictionaryKey><Value>signaturehtml</Value></DictionaryKey><DictionaryValue><Value>${P.escapeXML(html)}</Value></DictionaryValue></DictionaryEntry>`) }), async url => { downloads.push(url); return { ContentType: 'image/png', Content: pixel }; });
   const signature = await instance.signature(); assert.equal(signature.images['https://mail.example.com/owa/image.png'], `data:image/png;base64,${pixel}`);
-  assert.equal(calls[1].url, 'https://mail.example.com/owa/image.png');
+  assert.deepEqual(downloads, ['https://mail.example.com/owa/image.png']);
+  assert.equal(calls.length, 1);
 });
 test('attachment cards escape file names, show extensions and expose Save As without a second download path', () => {
   const fs = require('node:fs'), vm = require('node:vm');

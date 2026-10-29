@@ -1,6 +1,6 @@
 // Pure notification policy, independent of Electron and real mailboxes.
 const T = require('../src/time.js');
-const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: true, timeZone: 'system', theme: 'light' };
+const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, timeZone: 'system', theme: 'light' };
 function preferences(value = {}) {
   const result = { ...defaults };
   for (const key of ['mail', 'meetings', 'sounds', 'preview']) if (typeof value[key] === 'boolean') result[key] = value[key];
@@ -35,7 +35,7 @@ class NotificationTracker {
     });
   }
 }
-function mailAlert(message, preview = true) {
+function mailAlert(message, preview = false) {
   const text = value => String(value || '').replace(/\s+/g, ' ').trim();
   return { id: message.id, title: preview ? text(message.from?.name || message.from?.email) || 'Новое письмо' : 'Новое письмо',
     body: preview ? [text(message.subject) || '(Без темы)', text(message.preview).slice(0, 240)].filter(Boolean).join('\n') : 'В Exchange получено новое письмо.', navigation: { view: 'mail', id: message.id } };

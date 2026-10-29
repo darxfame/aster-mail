@@ -56,7 +56,7 @@ test('server reminder settings override the default and can disable a single mee
 test('mail alerts include sender, subject and bounded plain preview; privacy hides all three', () => {
   const { mailAlert } = require('../desktop/notifications.cjs');
   const message = { id: 'new', from: { name: 'Anna', email: 'anna@example.com' }, subject: 'Project', preview: 'Hello\nteam ' + 'a'.repeat(500) };
-  const alert = mailAlert(message);
+  const alert = mailAlert(message, true);
   assert.equal(alert.title, 'Anna'); assert.match(alert.body, /^Project\nHello team /);
   assert.ok(alert.body.length <= 248); assert.equal(alert.navigation.id, 'new');
   const hidden = mailAlert(message, false);
@@ -95,4 +95,12 @@ test('inbox synchronizes with notifications disabled and rejects a snapshot over
   await context.pollMail(); assert.equal(snapshots.length,1); assert.equal(snapshots[0].channel,'aster-inbox'); assert.equal(snapshots[0].data.sessionId,'session'); assert.equal(snapshots[0].data.page.items[0].id,'new');
   client.messages=async()=>{client.mailCache.generation++;return {items:[{id:'obsolete'}]};};
   await context.pollMail(); assert.equal(snapshots.length,1);
+});
+
+test('notification content is hidden by default and explicit privacy choices survive normalization', () => {
+  assert.equal(preferences().preview, false);
+  assert.equal(preferences({ preview: false }).preview, false);
+  assert.equal(preferences({ preview: true }).preview, true);
+  const { mailAlert } = require('../desktop/notifications.cjs');
+  assert.doesNotMatch(JSON.stringify(mailAlert({ id: 'm', subject: 'Secret', preview: 'Confidential', from: { name: 'Private sender' } })), /Secret|Confidential|Private sender/);
 });

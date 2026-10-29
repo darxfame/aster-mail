@@ -37,7 +37,7 @@ async function openMeeting(summary) {
     }
   } catch (error) {
     if (request === meetingRequest && dialog.open && dialog.dataset.meetingCard === 'true') $('#modal-content').innerHTML = `<div class="modal-header"><h2>Не удалось открыть встречу</h2><button class="icon-button" data-action="close" aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body"><p class="form-error">${esc(error.message)}</p><button class="secondary" data-action="meeting-return">Повторить загрузку</button></div>`;
-    activeMeeting = { origin: summary };
+    if (request === meetingRequest) activeMeeting = { origin: summary };
   }
 }
 function renderMeetingCard() {

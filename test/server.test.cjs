@@ -5,13 +5,14 @@ const { OWAClient } = require('../desktop/owa.cjs');
 test('HTTPS default adds scheme; custom URL preserves explicit port', () => {
   assert.deepEqual(address('https', 'mail.example.com/owa/'), { server: 'https://mail.example.com', allowHttp: false });
   assert.equal(address('custom', 'https://mail.example.com:8443/owa').server, 'https://mail.example.com:8443');
-  assert.deepEqual(address('http', 'mail.example.com'), { server: 'http://mail.example.com', allowHttp: true });
-  assert.equal(address('custom', 'http://mail.example.com:8080').allowHttp, true);
+  assert.throws(() => address('http', 'mail.example.com'));
+  assert.throws(() => address('custom', 'http://mail.example.com:8080'));
 });
-test('HTTP requires explicit opt-in in backend as well as UI', () => {
+test('HTTP is rejected even with legacy explicit opt-in', () => {
   assert.throws(() => normalize('http://mail.example.com'));
   assert.throws(() => new OWAClient({ server: 'http://mail.example.com' }));
-  assert.equal(new OWAClient({ server: 'http://mail.example.com', allowHttp: true }).origin, 'http://mail.example.com');
+  assert.throws(() => normalize('http://mail.example.com', true));
+  assert.throws(() => new OWAClient({ server: 'http://mail.example.com', allowHttp: true }));
   assert.throws(() => address('https', 'http://mail.example.com'));
 });
 test('reject credentials, query, fragment, unknown paths and protocols', () => {
@@ -20,9 +21,9 @@ test('reject credentials, query, fragment, unknown paths and protocols', () => {
   assert.throws(() => address('https', ''));
   assert.throws(() => address('file', 'mail.example.com'));
 });
-test('HTTP forms stay on the explicitly selected origin, HTTPS cannot downgrade', () => {
+test('HTTPS forms cannot downgrade or cross origin', () => {
   const { loginForm } = require('../desktop/owa.cjs');
-  assert.equal(loginForm('<form action="/owa/auth.owa"></form>', 'http://mail.example.com').url, 'http://mail.example.com/owa/auth.owa');
+  assert.equal(loginForm('<form action="/owa/auth.owa"></form>', 'https://mail.example.com').url, 'https://mail.example.com/owa/auth.owa');
   assert.throws(() => loginForm('<form action="https://mail.example.com/owa/auth.owa"></form>', 'http://mail.example.com'));
   assert.throws(() => loginForm('<form action="http://mail.example.com/owa/auth.owa"></form>', 'https://mail.example.com'));
 });

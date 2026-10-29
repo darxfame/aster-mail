@@ -301,7 +301,7 @@ class OWAClient {
       return image;
     }, { ttl: 300000 }), this.imageTransport ? url => this.mailCache.get(`image:remote:${url}`, async () => {
       const image = await this.imageTransport(url); calendarEvents.imageData(image); return image;
-    }, { ttl: 300000 }) : null);
+    }, { ttl: 300000 }) : null, this.origin);
   }
 
   async createEvent(data) { await this.ews('CreateItem', P.eventSOAP(data)); return true; }
@@ -373,17 +373,9 @@ class OWAClient {
       return `${prefix}${quote}${this.origin}${src}${quote}`;
     });
     const loaded = await require('./content-images.cjs').load({ html: signature.html, attachments: [] }, null, async src => {
-      const url = new URL(src);
-      if (url.origin === this.origin && url.pathname.startsWith('/owa/')) {
-        const response = await this.transport(url.href, { binary: true });
-        if (response.status >= 400) throw new Error('Изображение подписи недоступно');
-        const buffer = response.buffer;
-        const type = buffer?.[0] === 137 ? 'image/png' : buffer?.[0] === 255 ? 'image/jpeg' : buffer?.toString('ascii', 0, 3) === 'GIF' ? 'image/gif' : 'image/webp';
-        return { ContentType: type, Content: buffer.toString('base64') };
-      }
       if (!this.imageTransport) throw new Error('Внешние изображения недоступны');
       return this.imageTransport(src);
-    });
+    }, this.origin);
     return { ...signature, ...loaded };
   }
   async attachment(id) {

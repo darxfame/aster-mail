@@ -4,8 +4,20 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const initials = name => (name || '?').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
 const avatar = (name, tone = 0, email = '') => `<div class="avatar tone-${tone % 5}" ${email ? `data-person-email="${esc(email)}"` : ''}>${esc(initials(name))}</div>`;
+// Discard legacy plaintext preferences instead of importing unscoped corporate data.
+for (const key of Object.keys(window.localStorage)) if (key.startsWith('aster-')) window.localStorage.removeItem(key);
+let localValues = {}, localSave = Promise.resolve();
+const localPreferences = {
+  getItem: key => localValues[key] ?? null,
+  setItem(key, value) {
+    localValues[key] = String(value);
+    if (!state.account || state.demo) return;
+    localSave = api('saveLocalData', { values: { ...localValues } });
+    localSave.catch(showError);
+  },
+};
 const T = window.asterTime;
-let timeZone = localStorage.getItem('aster-time-zone') || 'system';
+let timeZone = localPreferences.getItem('aster-time-zone') || 'system';
 try { T.zone(timeZone); } catch { timeZone = 'system'; }
 const dateFormat = (value, options) => value && Number.isFinite(new Date(value).getTime()) ? T.format(value, options, timeZone) : '';
 const time = value => dateFormat(value, { hour: '2-digit', minute: '2-digit' });
@@ -19,21 +31,23 @@ const systemFolders = [
   ['inbox', 'Входящие', 'inbox'], ['sentitems', 'Отправленные', 'send'], ['drafts', 'Черновики', 'file'],
   ['archive', 'Архив', 'archive'], ['deleteditems', 'Корзина', 'trash'], ['junkemail', 'Нежелательная почта', 'shield'],
 ];
-const state = { demo: false, account: null, view: 'mail', folder: 'inbox', folders: [], messages: [], selected: null, filter: 'all', query: '', more: false, offset: 0, week: new Date(), events: [], contacts: [], generation: 0, signature: localStorage.getItem('aster-signature') || '', theme: localStorage.getItem('aster-theme') || 'light' };
+const state = { demo: false, account: null, view: 'mail', folder: 'inbox', folders: [], messages: [], selected: null, filter: 'all', query: '', more: false, offset: 0, week: new Date(), events: [], contacts: [], generation: 0, signature: localPreferences.getItem('aster-signature') || '', theme: localPreferences.getItem('aster-theme') || 'light' };
 let toastTimer, composeData, modalBusy = false;
 let messageOpenSequence = 0;
 const readingMessages = new Map();
-let calendarPreference = localStorage.getItem('aster-calendar-view') || 'auto';
+let calendarPreference = localPreferences.getItem('aster-calendar-view') || 'auto';
 let renderedCalendarMode;
-let navigationPlacement = localStorage.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
+let navigationPlacement = localPreferences.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
 const calendarMode = () => window.asterCalendar.mode(calendarPreference, $('#workspace').clientWidth);
 const calendarRange = () => window.asterCalendar.range(state.week, calendarMode(), timeZone);
-let syncSignature = localStorage.getItem('aster-signature-sync') === 'true';
+let syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
 let serverSignature = null;
-let sidebarCollapsed = localStorage.getItem('aster-sidebar-collapsed') === 'true';
+let sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
 document.body.classList.toggle('desktop', Boolean(window.aster));
 async function getServerSignature() {
+  const signatureAccount = state.account;
   const value = state.demo ? { html: '<p>С уважением,<br><b>Команда Aster</b></p>', text: 'С уважением,\nКоманда Aster', autoAddSignature: true, autoAddSignatureOnReply: true } : await api('signature');
+  if (state.account !== signatureAccount) throw new Error('Сессия аккаунта завершена');
   if (state.demo) { value.html += '<img src="cid:demo-logo" alt="Aster" width="48" height="48">'; value.images = (await demoContentImages(value.html)).images; }
   const signatureDoc = new DOMParser().parseFromString(value.html || '', 'text/html');
   signatureDoc.querySelectorAll('img').forEach(img => { const src = img.getAttribute('src'); if (value.images?.[src]) img.setAttribute('src', value.images[src]); else { img.removeAttribute('src'); img.alt = 'Изображение подписи недоступно'; } });
@@ -65,7 +79,7 @@ async function refreshSignatureField() {
     status.textContent = `Не удалось получить подпись: ${error.message}`;
   }
 }
-let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: true };
+let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
 function playSound(kind) {
   if (!['mail', 'meeting'].includes(kind)) return;
   const audio = new Audio(`../assets/sounds/aster-${kind}.wav`);
@@ -79,7 +93,9 @@ async function api(operation, data = {}) {
   const writing = ['change','move','folderOperation','send','draft','createMailRule','connect','disconnect'].includes(operation);
   if (writing) { mailWrites++; mailWriteEpoch++; }
   try {
-    const result = await window.aster.invoke(operation, data);
+    const sessionId = state.account?.sessionId;
+    const result = await window.aster.invoke(operation, { ...data, sessionId });
+    if (!['connect', 'restore', 'disconnect'].includes(operation) && sessionId !== state.account?.sessionId) throw new Error('Сессия аккаунта завершена');
     if (!result.ok) throw new Error(result.error);
     return result.value;
   } finally { if (writing) mailWrites--; }
@@ -118,7 +134,7 @@ function modal(title, description, body) {
   if (modalBusy) return;
   delete $('#modal').dataset.eventId;
   delete $('#modal').dataset.meetingCard;
-  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog', 'compose-dialog');
+  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog', 'compose-dialog', 'settings-dialog');
   $('#modal-content').innerHTML = `<div class="modal-header"><div><h2>${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button class="icon-button" data-action="close" aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
   if (!$('#modal').open) $('#modal').showModal();
 }
@@ -303,7 +319,7 @@ async function demoContentImages(html) {
 function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><div class="reader-replies" aria-label="Ответ на письмо"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="write-mail-person" data-group="from" aria-label="Написать: ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small>${mailRecipientDetails(m)}</div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Изображения отображаются автоматически · активное содержимое отключено</div><div id="message-body"></div></div></div>`;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><div class="reader-replies" aria-label="Ответ на письмо"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="write-mail-person" data-group="from" aria-label="Написать: ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small>${mailRecipientDetails(m)}</div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Картинки: встроенные и с сервера OWA · активное содержимое отключено</div><div id="message-body"></div></div></div>`;
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
       dark: state.theme === 'dark', title: 'Содержимое письма',
@@ -342,12 +358,12 @@ function renderCalendar() {
 }
 function colleaguesKey() { return `aster-colleagues:${state.demo ? 'demo' : `${state.account?.server || ''}|${state.account?.username || ''}`}`; }
 function colleagues() {
-  try { const saved = JSON.parse(localStorage.getItem(colleaguesKey()) || 'null'); return Array.isArray(saved) ? saved.filter(c => c && typeof c.email === 'string' && /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(c.email)).slice(0, 50) : state.demo ? window.asterDemo.contacts.slice(0, 4) : []; }
+  try { const saved = JSON.parse(localPreferences.getItem(colleaguesKey()) || 'null'); return Array.isArray(saved) ? saved.filter(c => c && typeof c.email === 'string' && /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(c.email)).slice(0, 50) : state.demo ? window.asterDemo.contacts.slice(0, 4) : []; }
   catch { return []; }
 }
 let colleagueData = [], colleagueScope = '', colleagueUpdated = null, colleagueError = '', colleagueRequest = 0;
 let directoryResults = [], directoryRequest = 0;
-function saveColleagues(list) { localStorage.setItem(colleaguesKey(), JSON.stringify(list.map(c => ({ name: c.name, email: c.email, company: c.company || '' })))); }
+async function saveColleagues(list) { localPreferences.setItem(colleaguesKey(), JSON.stringify(list.map(c => ({ name: c.name, email: c.email, company: c.company || '' })))); await localSave; }
 async function fetchAvailability(emails, start, end) {
   if (!state.demo) return api('availability', { emails: emails.join(','), start: start.toISOString(), end: end.toISOString() });
   return emails.map((email, i) => {
@@ -437,16 +453,15 @@ function renderContacts() {
   renderColleagues();
 }
 function connectModal() {
-  const server = state.account?.server || '', protocol = server.startsWith('http:') ? 'http' : 'https';
-  modal('Подключить Exchange', 'Адрес и логин вашего корпоративного OWA.', `<form id="connect-form"><div class="server-address"><label class="field"><span>Протокол</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="http" ${protocol === 'http' ? 'selected' : ''}>HTTP</option><option value="custom">Свой · полный URL</option></select></label>${field('server', 'Адрес OWA-сервера', server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', 'Логин · name@company.ru или DOMAIN\\login', state.account?.username || '', 'text', true)}${field('password', 'Пароль', '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">Запомнить пароль в защищённом системном хранилище</label><p class="form-note">Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">Посмотреть демо</button><button class="primary" type="submit">Подключиться ${icon('chevron')}</button></div></form>`);
+  const server = state.account?.server || '', protocol = 'https';
+  modal('Подключить Exchange', 'Адрес и логин вашего корпоративного OWA.', `<form id="connect-form"><div class="server-address"><label class="field"><span>Протокол</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="custom">Свой · полный URL</option></select></label>${field('server', 'Адрес OWA-сервера', server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', 'Логин · name@company.ru или DOMAIN\\login', state.account?.username || '', 'text', true)}${field('password', 'Пароль', '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">Запомнить пароль в защищённом системном хранилище</label><p class="form-note">Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">Посмотреть демо</button><button class="primary" type="submit">Подключиться ${icon('chevron')}</button></div></form>`);
   refreshProtocolNote();
 }
 function refreshProtocolNote() {
   const form = $('#connect-form'); if (!form) return;
-  const protocol = form.elements.protocol.value, http = protocol === 'http' || protocol === 'custom' && /^http:/i.test(form.elements.server.value.trim());
+  const protocol = form.elements.protocol.value;
   form.elements.server.placeholder = protocol === 'custom' ? 'https://mail.company.ru:8443/owa/' : 'mail.company.ru';
-  $('#protocol-note').textContent = http ? 'HTTP: логин, пароль и почта передаются без шифрования. Используйте только в доверенной сети.' : protocol === 'custom' ? 'Укажите полный HTTP(S) URL, включая порт при необходимости. Другие схемы и нестандартные пути OWA пока не поддерживаются.' : 'HTTPS добавляется автоматически. Можно указать домен, порт и /owa/.';
-  $('#protocol-note').classList.toggle('http-warning', http);
+  $('#protocol-note').textContent = 'Разрешён только HTTPS с доверенным сертификатом. Можно указать домен, порт и /owa/.';
 }
 
 async function compose(mode = 'new', contact = null) {
@@ -486,37 +501,80 @@ function contactModal() {
   if (!ready()) return connectModal();
   modal('Новый контакт', 'Сохранится в личных контактах Exchange.', `<form id="contact-form">${field('name', 'Имя', '', 'text', true)}${field('email', 'Email', '', 'email', true)}${field('company', 'Компания / команда')}${field('phone', 'Телефон', '', 'tel')}${formError()}<div class="modal-footer"><button class="primary" type="submit">Сохранить контакт</button></div></form>`);
 }
+function selectSettingsTab(selected) {
+  const form = selected.closest('form');
+  for (const tab of form.querySelectorAll('[role="tab"]')) {
+    const active = tab === selected;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    form.querySelector(`#${tab.getAttribute('aria-controls')}`).hidden = !active;
+  }
+}
 async function settingsModal() {
   if (window.aster) notificationPreferences = await api('notificationSettings');
   const zones = [...new Set([T.zone(), T.zone(timeZone), 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
   const p = notificationPreferences;
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal('Настройки Aster', 'Спокойное пространство, настроенное под вас.', `<form id="settings-form">
-    <p class="form-note">${state.account ? `Аккаунт: ${esc(state.account.username)} · ${esc(state.account.server)}` : state.demo ? 'Сейчас открыт демонстрационный аккаунт.' : 'Аккаунт Exchange пока не подключён.'}</p>
-    <button class="secondary" type="button" data-action="updates">Обновления Aster Mail</button>
-    ${checkbox('syncSignature', 'Использовать подпись из OWA', syncSignature)}
-    ${textField('signature', 'Подпись для новых писем и ответов', syncSignature ? serverSignature?.text || '' : state.signature)}
-    <button class="secondary" type="button" data-action="refresh-signature">Обновить подпись из OWA</button>
-    <div id="signature-preview"></div>
-    <p id="signature-status" class="form-note" role="status">Подпись загружается с сервера при создании письма. Настройки сервера не изменяются.</p>
+    <div class="settings-tabs" role="tablist" aria-label="Разделы настроек">
+      ${[['general', 'Общие'], ['signature', 'Подпись'], ['notifications', 'Уведомления'], ['account', 'Аккаунт']].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
+    </div>
+    <div class="settings-panels">
+    <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
+    <h3 class="settings-section-title">Оформление и навигация</h3>
     <label class="field"><span>Оформление</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>Светлое</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>Тёмное</option></select></label>
     <h3 class="settings-heading">Дата и время</h3>
     <label class="field"><span>Часовой пояс</span><select name="timeZone"><option value="system" ${timeZone === 'system' ? 'selected' : ''}>Как на компьютере · ${esc(T.zone())}</option>${zones.map(zone => `<option value="${esc(zone)}" ${timeZone === zone ? 'selected' : ''}>${esc(zone.replaceAll('_', ' '))}</option>`).join('')}</select></label>
     <p class="form-note">Пояс применяется к календарю, письмам, виджету и времени создания встреч. Отсчёт до встречи не зависит от пояса отображения. «Как на компьютере» следует системным настройкам.</p>
     <h3 class="settings-heading">Навигация</h3>
     <label class="field"><span>Размещение карточек разделов</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>Слева · под папками, над аккаунтом</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>Внизу окна · горизонтальная панель</option></select></label>
-    <h3 class="settings-heading">Уведомления и звуки</h3>
+    </section>
+    <section id="settings-panel-signature" role="tabpanel" aria-labelledby="settings-tab-signature" tabindex="0" hidden>
+    <h3 class="settings-section-title">Подпись в письмах</h3>
+    ${checkbox('syncSignature', 'Использовать подпись из OWA', syncSignature)}
+    ${textField('signature', 'Подпись для новых писем и ответов', syncSignature ? serverSignature?.text || '' : state.signature)}
+    <button class="secondary" type="button" data-action="refresh-signature">Обновить подпись из OWA</button>
+    <div id="signature-preview"></div>
+    <p id="signature-status" class="form-note" role="status">Подпись загружается с сервера при создании письма. Настройки сервера не изменяются.</p>
+    </section>
+    <section id="settings-panel-notifications" role="tabpanel" aria-labelledby="settings-tab-notifications" tabindex="0" hidden>
+    <h3 class="settings-section-title">Уведомления и звуки</h3>
     ${checkbox('notifyMail', 'Всплывающие уведомления о новых письмах', p.mail)}
     ${checkbox('notifyMeetings', 'Напоминания о встречах', p.meetings)}
     <label class="field"><span>Напоминать о встрече</span><select name="minutes">${[0, 5, 10, 15, 30].map(n => `<option value="${n}" ${p.minutes === n ? 'selected' : ''}>${n ? `За ${n} минут` : 'В момент начала'}</option>`).join('')}</select></label>
     ${checkbox('notifySounds', 'Звук нового письма и отдельный звук встречи', p.sounds)}
-    ${checkbox('notifyPreview', 'Показывать отправителя, тему и превью письма', p.preview)}
+    ${checkbox('notifyPreview', 'Показывать отправителя, тему и текст в уведомлениях', p.preview)}
     <div class="sound-tests"><button type="button" class="secondary" data-action="test-notification" data-kind="mail">${icon('mail')}Проверить письмо</button><button type="button" class="secondary" data-action="test-notification" data-kind="meeting">${icon('calendar')}Проверить встречу</button></div>
     <p class="form-note">Оригинальные звуки Aster — CC0: можно свободно использовать и изменять. ${window.aster ? 'Проверка показывает баннер и воспроизводит звук. На macOS Aster играет звук напрямую, с обычной громкостью аудиовыхода.' : 'В браузере проверяются звук и плашка с вымышленным письмом. Системные уведомления доступны в приложении.'}</p>
     <p class="form-note">Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. Плашка в клиенте остаётся до открытия или закрытия. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.</p>
     ${p.lastMailPoll ? `<p class="form-note">Последняя проверка почты: ${esc(time(p.lastMailPoll))}</p>` : ''}${p.lastPoll ? `<p class="form-note">Последняя проверка календаря: ${esc(time(p.lastPoll))}</p>` : ''}${p.error ? `<p class="form-error">${esc(p.error)}</p>` : ''}
-    <p class="form-note">Подпись хранится на этом компьютере. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). На диск письма и вложения не сохраняются; при выходе кэш очищается.</p>
-    ${formError()}<div class="modal-footer"><button class="secondary ${state.account ? 'danger' : ''}" type="button" data-action="${state.account ? 'disconnect' : 'connect'}">${state.account ? 'Выйти и удалить пароль' : 'Подключить Exchange'}</button><button class="primary" type="submit">Сохранить</button></div></form>`);
+    </section>
+    <section id="settings-panel-account" role="tabpanel" aria-labelledby="settings-tab-account" tabindex="0" hidden>
+    <h3 class="settings-section-title">Аккаунт Exchange</h3>
+    <p class="form-note">${state.account ? `Аккаунт: ${esc(state.account.username)} · ${esc(state.account.server)}` : state.demo ? 'Сейчас открыт демонстрационный аккаунт.' : 'Аккаунт Exchange пока не подключён.'}</p>
+    <button class="secondary ${state.account ? 'danger' : ''}" type="button" data-action="${state.account ? 'disconnect' : 'connect'}">${state.account ? 'Выйти и удалить пароль' : 'Подключить Exchange'}</button>
+    <h3 class="settings-heading">Данные на компьютере</h3>
+    <p class="form-note">Подпись, коллеги и настройки сохраняются зашифрованными и удаляются при выходе. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). На диск письма и вложения не сохраняются; при выходе кэш очищается.</p>
+    <h3 class="settings-heading">Приложение</h3>
+    <button class="secondary" type="button" data-action="updates">Обновления Aster Mail</button>
+    </section>
+    </div>
+    <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">Отмена</button><button class="primary" type="submit">Сохранить</button></div></div></form>`);
+  $('#modal').classList.add('settings-dialog');
+  $('#settings-form').addEventListener('keydown', event => {
+    if (!event.target.matches('[role="tab"]')) return;
+    const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+    const index = tabs.indexOf(event.target);
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    selectSettingsTab(tabs[next]);
+    tabs[next].focus();
+  });
   if (syncSignature) await refreshSignatureField();
 }
 async function submitForm(form, operation) {
@@ -569,7 +627,7 @@ async function handleAction(button) {
   if (action === 'back-to-list') { state.selected = null; renderMail(); return; }
   if (action === 'toggle-sidebar') {
     sidebarCollapsed = !sidebarCollapsed;
-    localStorage.setItem('aster-sidebar-collapsed', String(sidebarCollapsed));
+    localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed));
     renderSidebar(); return;
   }
   if (action === 'close') { if (!modalBusy) { if ($('#compose-form') && !confirm('Закрыть письмо без сохранения?')) return; $('#modal').close(); } return; }
@@ -581,6 +639,7 @@ async function handleAction(button) {
   }
   if (action === 'updates') return updatesModal();
   if (action === 'settings') return settingsModal();
+  if (action === 'settings-tab') return selectSettingsTab(button);
   if (action === 'refresh-signature') {
     $('#settings-form').elements.syncSignature.checked = true;
     return refreshSignatureField();
@@ -591,14 +650,15 @@ async function handleAction(button) {
     return;
   }
   if (action === 'theme') {
-    state.theme = state.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('aster-theme', state.theme); document.body.classList.toggle('dark', state.theme === 'dark');
+    state.theme = state.theme === 'dark' ? 'light' : 'dark'; localPreferences.setItem('aster-theme', state.theme); document.body.classList.toggle('dark', state.theme === 'dark');
     if (state.selected) renderReader();
     if (activeMeeting && $('#modal').open && $('#modal').dataset.meetingCard === 'true') renderMeetingBody(activeMeeting);
     if (window.aster) notificationPreferences = await api('saveNotifications', { ...notificationPreferences, theme: state.theme });
     return;
   }
   if (action === 'disconnect') {
-    await api('disconnect'); state.account = null; state.demo = false; state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = []; $('#modal').close(); return loadView();
+    try { await api('disconnect'); } finally { applyAccount(null); $('#modal').close(); $('#modal-content').replaceChildren(); await loadView(); }
+    return;
   }
   if (action === 'folder') { state.view = 'mail'; state.folder = button.dataset.folder; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView(); }
   if (action === 'refresh') { if (window.aster && !state.demo) await api('clearMailCache'); return loadView(); }
@@ -612,11 +672,11 @@ async function handleAction(button) {
   if (action === 'save-draft') return sendCompose(true);
   if (action === 'new-event') return eventModal();
   if (action === 'new-contact') return contactModal();
-  if (action === 'calendar-day') { state.week = calendarDate(button.dataset.date); calendarPreference = 'day'; localStorage.setItem('aster-calendar-view', calendarPreference); return loadView(); }
+  if (action === 'calendar-day') { state.week = calendarDate(button.dataset.date); calendarPreference = 'day'; localPreferences.setItem('aster-calendar-view', calendarPreference); return loadView(); }
   if (action === 'today' || ['calendar-prev', 'calendar-next'].includes(action)) {
     if (action === 'today') {
       state.week = new Date();
-      if ($('#workspace').clientWidth < 700) { calendarPreference = 'auto'; localStorage.setItem('aster-calendar-view', calendarPreference); }
+      if ($('#workspace').clientWidth < 700) { calendarPreference = 'auto'; localPreferences.setItem('aster-calendar-view', calendarPreference); }
     } else state.week = window.asterCalendar.move(state.week, calendarMode(), action === 'calendar-next' ? 1 : -1, timeZone);
     return loadView();
   }
@@ -628,11 +688,11 @@ async function handleAction(button) {
     const list = colleagues();
     if (!list.some(p => p.email.toLowerCase() === c.email.toLowerCase())) {
       if (list.length >= 50) throw new Error('Можно закрепить до 50 коллег');
-      saveColleagues([...list, c]);
+      await saveColleagues([...list, c]);
     }
     button.disabled = true; toast('Коллега добавлен'); renderColleagues(); void refreshColleagues(); return;
   }
-  if (action === 'remove-colleague') { saveColleagues(colleagues().filter(c => c.email !== button.dataset.email)); renderColleagues(); return; }
+  if (action === 'remove-colleague') { await saveColleagues(colleagues().filter(c => c.email !== button.dataset.email)); renderColleagues(); return; }
   if (action === 'refresh-colleagues') return refreshColleagues();
   if (action === 'toggle-colleagues') { const list = $('#colleagues-list'); list.hidden = !list.hidden; button.setAttribute('aria-expanded', String(!list.hidden)); button.setAttribute('aria-label', list.hidden ? 'Развернуть список коллег' : 'Свернуть список коллег'); return; }
   if (action === 'plan-colleague') { eventModal(); $('#event-form').elements.attendees.value = button.dataset.email; return; }
@@ -722,7 +782,7 @@ function finishSidebarDrag(event) {
   if (!sidebarDrag) return;
   if (event.type === 'pointercancel') { sidebarCollapsed = sidebarDrag.collapsed; renderSidebar(); }
   sidebarDrag = null; document.body.classList.remove('sidebar-dragging');
-  localStorage.setItem('aster-sidebar-collapsed', String(sidebarCollapsed));
+  localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed));
 }
 sidebarResize.addEventListener('pointerup', finishSidebarDrag);
 sidebarResize.addEventListener('pointercancel', finishSidebarDrag);
@@ -730,12 +790,12 @@ sidebarResize.addEventListener('lostpointercapture', finishSidebarDrag);
 sidebarResize.addEventListener('keydown', event => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault(); sidebarCollapsed = ['ArrowLeft', 'Home'].includes(event.key);
-  localStorage.setItem('aster-sidebar-collapsed', String(sidebarCollapsed)); renderSidebar();
+  localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed)); renderSidebar();
 });
 document.addEventListener('input', event => {
   if (event.target.closest('#connect-form') && event.target.name === 'server') {
     const form = $('#connect-form'), match = /^(https?):\/\//i.exec(event.target.value.trim());
-    if (match && form.elements.protocol.value !== 'custom') form.elements.protocol.value = match[1].toLowerCase();
+    if (match) form.elements.protocol.value = 'custom';
     refreshProtocolNote();
   }
   const form = event.target.closest('#event-form');
@@ -757,7 +817,7 @@ document.addEventListener('change', event => {
   if (event.target.checked) emails.push(event.target.value);
   input.value = emails.join(', '); $('#planner-results').innerHTML = '<p class="form-note">Состав участников изменился. Проверьте занятость.</p>';
 });
-document.addEventListener('change', event => { if (event.target.id === 'calendar-mode') { calendarPreference = event.target.value; localStorage.setItem('aster-calendar-view', calendarPreference); loadView(); } });
+document.addEventListener('change', event => { if (event.target.id === 'calendar-mode') { calendarPreference = event.target.value; localPreferences.setItem('aster-calendar-view', calendarPreference); loadView(); } });
 document.addEventListener('change', event => { if (event.target.id === 'files') $('#picked-files').textContent = [...event.target.files].map(f => `${f.name} · ${bytes(f.size)}`).join(' / '); });
 document.addEventListener('change', event => { if (event.target.name === 'syncSignature') refreshSignatureField().catch(showError); });
 document.addEventListener('submit', event => {
@@ -773,22 +833,25 @@ document.addEventListener('submit', event => {
       const next = { mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme };
       T.zone(next.timeZone);
       notificationPreferences = window.aster ? await api('saveNotifications', next) : next;
-      timeZone = next.timeZone; localStorage.setItem('aster-time-zone', timeZone);
+      timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);
       miniMonthCursor = null;
       if (data.syncSignature) await getServerSignature();
-      syncSignature = Boolean(data.syncSignature); localStorage.setItem('aster-signature-sync', String(syncSignature));
+      syncSignature = Boolean(data.syncSignature); localPreferences.setItem('aster-signature-sync', String(syncSignature));
       if (!syncSignature) state.signature = data.signature;
       state.theme = data.theme;
       navigationPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
-      localStorage.setItem('aster-navigation-placement', navigationPlacement);
+      localPreferences.setItem('aster-navigation-placement', navigationPlacement);
       renderSidebar();
-      localStorage.setItem('aster-signature', state.signature); localStorage.setItem('aster-theme', state.theme);
+      localPreferences.setItem('aster-signature', state.signature); localPreferences.setItem('aster-theme', state.theme);
+      await localSave;
       document.body.classList.toggle('dark', state.theme === 'dark'); $('#modal').close(); toast('Настройки сохранены');
       if (ready()) await loadView();
     }); return;
   }
   if (form.id === 'connect-form') submitForm(form, async data => {
-    state.account = await api('connect', { ...data, ...window.asterServer.address(data.protocol, data.server), remember: Boolean(data.remember) });
+    const connected = await api('connect', { ...data, ...window.asterServer.address(data.protocol, data.server), remember: Boolean(data.remember) });
+    form.elements.password.value = ''; data.password = '';
+    applyAccount(connected);
     state.demo = false; state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = [];
     state.query = ''; $('#search').value = ''; $('#modal').close();
     await loadView();
@@ -804,13 +867,35 @@ document.addEventListener('submit', event => {
     state.view = 'contacts'; state.query = ''; $('#search').value = ''; $('#modal').close(); toast(state.demo ? 'Демо: контакт добавлен' : 'Контакт сохранён в Exchange'); await loadView();
   });
 });
+function applyAccount(value) {
+  state.generation++; messageOpenSequence++; readingMessages.clear();
+  localValues = value?.localData || {}; localSave = Promise.resolve();
+  const { localData, notifications, ...identity } = value || {};
+  state.account = value ? identity : null; state.demo = false;
+  state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = [];
+  state.folder = 'inbox'; state.view = 'mail'; state.filter = 'all'; state.offset = 0; state.more = false;
+  state.signature = localPreferences.getItem('aster-signature') || '';
+  state.theme = localPreferences.getItem('aster-theme') || 'light';
+  notificationPreferences = notifications || { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
+  timeZone = notificationPreferences.timeZone || 'system';
+  calendarPreference = localPreferences.getItem('aster-calendar-view') || 'auto';
+  navigationPlacement = localPreferences.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
+  syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
+  sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
+  serverSignature = null; composeData = null; activeMeeting = null; meetingEdit = null; meetingRequest++;
+  moveRuleContext = null; mailDrag = null; mailPeopleChoices = [];
+  colleagueData = []; directoryResults = []; directoryRequest++; colleagueRequest++;
+  state.query = ''; $('#search').value = ''; renderMailAlerts([]);
+  $('#people-search-suggestions')?.replaceChildren();
+  document.body.classList.toggle('dark', state.theme === 'dark'); renderSidebar();
+}
 async function boot() {
   renderSidebar(); welcome();
   if (window.aster) {
     window.aster.onUpdate(receiveUpdate);
     receiveUpdate(await api('updateState'));
     const savedSettings = await api('notificationSettings');
-    timeZone = savedSettings.timeZone || 'system'; localStorage.setItem('aster-time-zone', timeZone);
+    timeZone = savedSettings.timeZone || 'system';
     notificationPreferences = savedSettings;
     window.aster.onSound(playSound);
     window.aster.onMailAlerts(renderMailAlerts);
@@ -835,7 +920,7 @@ async function boot() {
       }
       } catch (error) { showError(error); }
     });
-    try { const restored = await api('restore'); if (restored) { state.account = restored; await loadView(); } }
+    try { const restored = await api('restore'); if (restored) { applyAccount(restored); await loadView(); } }
     catch (error) { showError(error); }
   }
 }

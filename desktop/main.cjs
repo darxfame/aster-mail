@@ -6,11 +6,15 @@ const { spawn } = require('node:child_process');
 const { Updates } = require('./updates.cjs');
 let updates;
 const { OWAClient } = require('./owa.cjs');
+const { createTransport } = require('./transport.cjs');
+const { LocalStore } = require('./local-store.cjs');
+const { fetchContentImage } = require('./content-images.cjs');
+let localStore, connection, accountEpoch = 0;
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences, mailAlert } = require('./notifications.cjs');
 const { httpsURL, meetingLink, upcomingMeetings, countdown, pollingRange } = require('./meetings.cjs');
 let widgetWindow, widgetEvents = [], widgetDetail = null;
-let window, client, account, accountSession, tray, createWindow, quitting = false;
+let window, client, account, tray, createWindow, quitting = false;
 let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false, mailPolling = false;
 let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
@@ -128,7 +132,11 @@ async function pollNotifications() {
         if (next) {
           const key = `${next.id}:${next.start}`;
           if (!widgetDetail || widgetDetail.key !== key || Date.now() - widgetDetail.at > 300000) {
-            try { widgetDetail = { key, at: Date.now(), data: await active.event({ id: next.id, changeKey: next.changeKey }) }; } catch { /* The calendar preview and location remain available. */ }
+            try {
+              const data = await active.event({ id: next.id, changeKey: next.changeKey });
+              if (active !== client) return;
+              widgetDetail = { key, at: Date.now(), data };
+            } catch { /* The calendar preview and location remain available. */ }
           }
           if (active !== client) return;
           if (widgetDetail?.key === key) Object.assign(next, { body: widgetDetail.data.body, joinUrl: widgetDetail.data.joinUrl || next.joinUrl, cancelled: widgetDetail.data.cancelled });
@@ -144,94 +152,54 @@ async function pollNotifications() {
   } finally { polling = false; }
 }
 
-function transport(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const credentials = account;
-    const origin = normalizeServer(credentials.server, credentials.allowHttp === true);
-    if (new URL(url).origin !== origin) return reject(new Error('Запрос к постороннему серверу заблокирован'));
-    const req = net.request({ url, method: options.method || 'GET', session: accountSession, useSessionCookies: true, redirect: 'manual' });
-    let attempts = 0, redirects = 0, settled = false;
-    const finish = (error, result) => {
-      if (settled) return;
-      settled = true; clearTimeout(timer);
-      error ? reject(error) : resolve(result);
-    };
-    const timer = setTimeout(() => { finish(new Error('Сервер не ответил за 30 секунд. Проверьте VPN и подключение.')); req.abort(); }, 30000);
-    req.on('login', (info, callback) => {
-      if (info.isProxy || info.host !== new URL(origin).hostname || attempts++ > 0) return callback();
-      callback(credentials.username, credentials.password);
-    });
-    req.on('redirect', (_status, _method, destination) => {
-      if (++redirects > 5 || new URL(destination).origin !== origin) {
-        finish(new Error('OWA перенаправляет на другой сервер. Межсерверный SSO пока не поддерживается.'));
-        req.abort(); return;
-      }
-      req.followRedirect();
-    });
-    req.on('error', () => finish(new Error('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.')));
-    req.on('response', res => {
-      const chunks = []; let size = 0;
-      res.on('data', chunk => {
-        size += chunk.length;
-        if (size > 30 * 1024 * 1024) { finish(new Error('Ответ превышает лимит 30 МБ')); req.abort(); }
-        else chunks.push(chunk);
-      });
-      res.on('error', () => finish(new Error('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.')));
-      res.on('end', () => { const buffer = Buffer.concat(chunks); finish(null, { status: res.statusCode, text: options.binary ? '' : buffer.toString('utf8'), buffer }); });
-    });
-    for (const [key, value] of Object.entries(options.headers || {})) req.setHeader(key, value);
-    req.setHeader('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 AsterMail/0.1');
-    if (options.body) req.write(options.body);
-    req.end();
-  });
-}
-let imageSession;
-async function fetchContentImage(url) {
-  require('./content-images.cjs').sourceURL(url);
-  imageSession ||= session.fromPartition(`aster-images-${crypto.randomUUID()}`, { cache: false });
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
-  try {
-    let response;
-    for (let redirect = 0; redirect <= 4; redirect++) {
-      response = await imageSession.fetch(url, { credentials: 'omit', redirect: 'manual', referrerPolicy: 'no-referrer', signal: controller.signal });
-      if (![301, 302, 303, 307, 308].includes(response.status)) break;
-      const next = require('./content-images.cjs').sourceURL(new URL(response.headers.get('location'), url).href);
-      if (url.startsWith('https:') && !next.startsWith('https:')) throw new Error('Небезопасное перенаправление изображения');
-      await response.body?.cancel(); url = next;
-    }
-    if (!response.ok) throw new Error(`Изображение: HTTP ${response.status}`);
-    const type = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
-    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type)) { controller.abort(); throw new Error('Неподдерживаемый формат изображения'); }
-    const chunks = []; let size = 0;
-    for await (const chunk of response.body) {
-      size += chunk.length;
-      if (size > 5 * 1024 * 1024) { controller.abort(); throw new Error('Изображение превышает 5 МБ'); }
-      chunks.push(Buffer.from(chunk));
-    }
-    return { ContentType: type, Content: Buffer.concat(chunks).toString('base64') };
-  } finally { clearTimeout(timer); }
+
+function retireAccount() {
+  const previous = connection;
+  connection = null; client = null; account = null;
+  if (previous) {
+    previous.controller.abort(); previous.account.password = '';
+    previous.client?.mailCache.clear(); previous.client?.photoCache?.clear();
+  }
+  mailAlerts = []; publishMailAlerts();
+  tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
+  notificationSettings = preferences(); widgetEvents = []; widgetDetail = null; refreshWidget();
+  for (const n of activeNotifications) n.close(); activeNotifications.clear();
+  return previous ? Promise.all([previous.session.clearStorageData(), previous.images.clearStorageData()]) : Promise.resolve();
 }
 async function connect(data, remember, restoring = false) {
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
-  client?.mailCache.clear(); client = null; mailAlerts = []; publishMailAlerts();
-  account = { server: normalizeServer(data.server, data.allowHttp === true), allowHttp: data.allowHttp === true, username: data.username.trim(), password: data.password };
-  // An in-memory partition prevents session cookies from being persisted to disk.
-  accountSession = session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false });
-  const candidate = new OWAClient(account, transport,
-    async () => (await accountSession.cookies.get({ url: `${account.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value,
-    () => accountSession.clearStorageData({ storages: ['cookies'] }), fetchContentImage);
-  try { await candidate.authenticate(); candidate.syncId = crypto.randomUUID(); client = candidate; }
-  catch (error) { account.password = ''; await accountSession.clearStorageData(); throw error; }
-  if (remember) {
-    if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) throw new Error('Безопасное хранилище недоступно. Снимите «Запомнить».');
-    await fs.mkdir(app.getPath('userData'), { recursive: true });
-    await fs.writeFile(credentialFile(), safeStorage.encryptString(JSON.stringify(account)), { mode: 0o600 });
-  } else if (!restoring) await fs.rm(credentialFile(), { force: true });
-  tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
-  widgetEvents = []; widgetDetail = null; refreshWidget();
-  void pollNotifications();
-  return { server: account.server, username: account.username, sessionId: client.syncId };
+  const credentials = { server: normalizeServer(data.server), username: data.username.trim(), password: data.password };
+  if (remember) localStore.requireEncryption();
+  const epoch = ++accountEpoch;
+  const retired = retireAccount();
+  const current = { account: credentials, controller: new AbortController(),
+    session: session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false }),
+    images: session.fromPartition(`aster-images-${crypto.randomUUID()}`, { cache: false }) };
+  connection = current; account = credentials;
+  const assertCurrent = () => { if (epoch !== accountEpoch || connection !== current) throw new Error('Сессия аккаунта завершена'); };
+  const transport = createTransport(net, credentials, current.session, current.controller.signal);
+  const candidate = new OWAClient(credentials, transport,
+    async () => { assertCurrent(); return (await current.session.cookies.get({ url: `${credentials.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value; },
+    () => { assertCurrent(); return current.session.clearStorageData({ storages: ['cookies'] }); },
+    url => fetchContentImage(url, credentials.server, current.images, current.controller.signal));
+  current.client = candidate;
+  try {
+    await retired; assertCurrent();
+    await candidate.authenticate(); assertCurrent();
+    const saved = await localStore.load(`${credentials.server}|${credentials.username.toLowerCase()}`, assertCurrent); assertCurrent();
+    if (remember) await localStore.saveCredentials(credentials, assertCurrent);
+    else if (!restoring) await localStore.removeCredentials(assertCurrent);
+    assertCurrent();
+    candidate.syncId = crypto.randomUUID(); client = candidate;
+    notificationSettings = preferences(saved.notifications);
+    refreshWidget(); void pollNotifications();
+    return { server: credentials.server, username: credentials.username, sessionId: candidate.syncId, localData: saved.values || {}, notifications: notificationSettings };
+  } catch (error) {
+    if (connection === current) { ++accountEpoch; await retireAccount(); }
+    throw error;
+  }
 }
+
 const methods = new Set(['folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
@@ -250,8 +218,8 @@ app.whenReady().then(async () => {
     changed: value => { if (window && !window.isDestroyed()) window.webContents.send('aster-update', value); },
   });
   await updates.initialize();
-  try { const saved = JSON.parse(await fs.readFile(settingsFile(), 'utf8')); notificationSettings = preferences(saved.previewVersion === 1 ? saved : { ...saved, preview: true });
-    if (saved.previewVersion !== 1) await fs.writeFile(settingsFile(), JSON.stringify({ ...notificationSettings, previewVersion: 1 }), { mode: 0o600 }); } catch { /* Defaults on first launch. */ }
+  localStore = new LocalStore(app.getPath('userData'), safeStorage);
+  await fs.rm(settingsFile(), { force: true }); // Remove legacy plaintext notification settings.
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
@@ -283,12 +251,19 @@ app.whenReady().then(async () => {
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: lastMailError || lastPollError, supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
-        const before = notificationSettings;
-        notificationSettings = preferences(data);
+        const before = notificationSettings, next = preferences(data);
+        if (client) {
+          const active = connection;
+          if (data.sessionId !== client.syncId) throw new Error('Сессия аккаунта завершена');
+          await localStore.save({ notifications: next }, () => { if (connection !== active) throw new Error('Сессия аккаунта завершена'); });
+          if (connection !== active) throw new Error('Сессия аккаунта завершена');
+        }
+        notificationSettings = next;
         if (!before.mail && notificationSettings.mail) { tracker.mailSeen.clear(); tracker.baseline = null; }
-        await fs.mkdir(app.getPath('userData'), { recursive: true });
-        await fs.writeFile(settingsFile(), JSON.stringify({ ...notificationSettings, previewVersion: 1 }), { mode: 0o600 });
-        if (!notificationSettings.preview || !notificationSettings.mail) { mailAlerts = []; publishMailAlerts(); }
+        if (!notificationSettings.preview || !notificationSettings.mail) {
+          mailAlerts = []; publishMailAlerts();
+          for (const n of activeNotifications) n.close(); activeNotifications.clear();
+        }
         refreshWidget(); void pollNotifications(); return { ok: true, value: notificationSettings };
       }
       if (operation === 'testNotification') {
@@ -301,19 +276,20 @@ app.whenReady().then(async () => {
       }
       if (operation === 'connect') return { ok: true, value: await connect(data, Boolean(data.remember)) };
       if (operation === 'restore') {
+        const epoch = accountEpoch;
         let encrypted;
         try { encrypted = await fs.readFile(credentialFile()); } catch (error) { if (error.code === 'ENOENT') return { ok: true, value: null }; throw error; }
+        if (epoch !== accountEpoch) throw new Error('Сессия аккаунта завершена');
+        localStore.requireEncryption();
         const saved = JSON.parse(safeStorage.decryptString(encrypted));
         return { ok: true, value: await connect(saved, false, true) };
       }
       if (operation === 'disconnect') {
-        client?.mailCache.clear(); client = null; if (account) account.password = ''; account = null;
-        if (accountSession) await accountSession.clearStorageData();
-        mailAlerts = []; publishMailAlerts();
-        tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
-        widgetEvents = []; widgetDetail = null; refreshWidget();
-        for (const n of activeNotifications) n.close(); activeNotifications.clear();
-        await fs.rm(credentialFile(), { force: true }); return { ok: true, value: true };
+        if (client && data.sessionId !== client.syncId) throw new Error('Сессия аккаунта завершена');
+        ++accountEpoch;
+        const retired = retireAccount();
+        await Promise.all([retired, localStore.clear(), window.webContents.session.clearStorageData({ storages: ['localstorage', 'indexdb', 'cachestorage'] })]);
+        return { ok: true, value: true };
       }
       if (operation === 'openLink') {
         const url = new URL(data.url);
@@ -323,8 +299,16 @@ app.whenReady().then(async () => {
         return { ok: true, value: true };
       }
       if (!client) throw new Error('Сначала подключите аккаунт OWA');
+      const activeClient = client;
+      if (data.sessionId !== activeClient.syncId) throw new Error('Сессия аккаунта завершена');
+      if (operation === 'saveLocalData') {
+        const active = connection;
+        await localStore.save({ values: data.values }, () => { if (connection !== active) throw new Error('Сессия аккаунта завершена'); });
+        return { ok: true, value: true };
+      }
       if (operation === 'joinEvent') {
-        const event = await client.eventDetails(data);
+        const event = await activeClient.eventDetails(data);
+        if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
         const url = meetingLink(event);
         if (!url || event.cancelled) throw new Error('Ссылка на созвон недоступна');
         await shell.openExternal(url); return { ok: true, value: true };
@@ -332,12 +316,17 @@ app.whenReady().then(async () => {
       if (operation === 'attachment') {
         if (typeof data.id !== 'string' || typeof data.name !== 'string') throw new Error('Invalid attachment');
         const result = await dialog.showSaveDialog(window, { defaultPath: path.basename(data.name).replace(/[\\/:]/g, '_') });
-        if (!result.canceled) await fs.writeFile(result.filePath, await client.attachment(data.id));
+        if (!result.canceled) {
+          const bytes = await activeClient.attachment(data.id);
+          if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
+          await fs.writeFile(result.filePath, bytes);
+        }
         return { ok: true, value: !result.canceled };
       }
       if (operation === 'clearMailCache') { client.mailCache.clear(); return { ok: true, value: true }; }
       if (!methods.has(operation)) throw new Error('Unknown operation');
-      const value = await client[operation](data);
+      const value = await activeClient[operation](data);
+      if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
       if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
       return { ok: true, value };
     } catch (error) { return { ok: false, error: error.message }; }
@@ -379,5 +368,5 @@ app.whenReady().then(async () => {
   }
   app.on('activate', () => { reveal(); void pollNotifications(); });
 });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; connection?.controller.abort(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

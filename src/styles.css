@@ -62,3 +62,23 @@
 .timeline-track .calendar-dragging { opacity: .35; cursor: grabbing; }
 .calendar-drop-marker { position: absolute; z-index: 8; left: 3px; right: 3px; border: 2px dashed #9b70d0; border-radius: 8px; padding: 4px; background: #b392e34a; color: #583485; font-size: 11px; pointer-events: none; overflow: hidden; }
 .dark .calendar-drop-marker { color: #f0e3ff; }
+
+/* Settings keep one form mounted while only the selected section scrolls. */
+.settings-dialog{width:680px;height:700px;max-height:90vh;overflow:hidden}
+.settings-dialog #modal-content{height:100%;display:flex;flex-direction:column}
+.settings-dialog .modal-header{flex-shrink:0}
+.settings-dialog .modal-body{flex:1;min-height:0;display:flex;padding-bottom:0}
+#settings-form{display:flex;flex-direction:column;min-width:0;width:100%}
+.settings-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);flex-shrink:0}
+.settings-tabs [role="tab"]{flex:1;padding:13px 8px;border-radius:8px 8px 0 0;border-bottom:2px solid transparent;font-size:12px;color:var(--muted);white-space:nowrap}
+.settings-tabs [role="tab"]:hover{background:var(--surface2);color:var(--text)}
+.settings-tabs [aria-selected="true"]{background:var(--accent-bg);color:var(--accent);border-bottom-color:var(--accent)}
+.settings-tabs [role="tab"]:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.settings-panels{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 8px 16px 0;scrollbar-gutter:stable}
+.settings-section-title{font-size:15px;font-weight:550;margin:20px 0 16px}
+.settings-footer{flex-shrink:0;padding-bottom:22px}
+.settings-footer .modal-footer{margin-top:0}
+.settings-footer>.form-error:empty{display:none}
+.settings-footer>.form-error:not(:empty){margin:0;padding:10px 0;max-height:90px;overflow:auto}
+.settings-dialog .sound-tests{flex-wrap:wrap}
+@media(max-width:480px){.settings-dialog .modal-header{padding:20px 16px 12px}.settings-dialog .modal-body{padding:8px 16px 0}.settings-tabs{gap:0}.settings-tabs [role="tab"]{font-size:10px;padding:12px 5px}.settings-dialog .form-note{overflow-wrap:anywhere}}

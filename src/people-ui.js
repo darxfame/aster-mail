@@ -30,14 +30,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 250);
   });
   box.addEventListener('pointerdown', event => event.preventDefault());
-  box.addEventListener('click', event => {
+  box.addEventListener('click', async event => {
     const pin = event.target.closest('[data-person-pin]'), choice = event.target.closest('[data-person-select]');
     if (choice) { void select(Number(choice.dataset.personSelect)).catch(showError); return; }
     if (!pin || pin.disabled) return;
     const person = results[Number(pin.dataset.personPin)], list = colleagues();
     if (!person || list.some(p => p.email.toLowerCase() === person.email.toLowerCase())) return;
     if (list.length >= 50) { toast('Можно закрепить до 50 коллег'); return; }
-    saveColleagues([...list, person]); show(results); renderColleagues(); void refreshColleagues(); toast('Коллега добавлен');
+    try { await saveColleagues([...list, person]); } catch (error) { showError(error); return; }
+    show(results); renderColleagues(); void refreshColleagues(); toast('Коллега добавлен');
   });
   input.addEventListener('keydown', event => {
     if (box.hidden) return;

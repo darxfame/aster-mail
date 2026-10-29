@@ -65,6 +65,6 @@ if (window.asterWidget) {
     { id: 'demo-past', title: 'Утренняя синхронизация', start: at(-120), end: at(-90), response: 'Accept' },
     ...window.asterDemo.events.filter(e => Date.parse(e.start) >= +window.asterCalendar.range(new Date(now), 'day').end),
   ];
-  render({ connected: true, timeZone: 'system', theme: localStorage.getItem('aster-theme') || 'light', lastPoll: at(0), events, calendarEvents: events });
+  render({ connected: true, timeZone: 'system', theme: 'light', lastPoll: at(0), events, calendarEvents: events });
 }
 setInterval(() => { if (snapshot) render(snapshot); }, 15000);
