@@ -14,7 +14,10 @@
 - [x] Регрессионные проверки с запретом EWS и частичным результатом.
 - [x] Demo UI: выбор без прочтения, read двух писем, перенос двух в подпапку, сброс выбора.
 - [x] Локальная сборка macOS: DMG 0.1.18; версия bundle и модули в app.asar проверены.
-- [ ] Commit, тег v0.1.18, CI macOS/Windows и публикация установщиков.
+- [x] Commit 4c751e2, тег v0.1.18, CI macOS/Windows и публикация DMG/EXE.
+
+[Релиз 0.1.18](https://github.com/darxfame/aster-mail/releases/tag/v0.1.18) ·
+[Успешные сборки](https://github.com/darxfame/aster-mail/actions/runs/40961600873).
 
 ## 0.1.19 Исходящая почта через OWA
 
