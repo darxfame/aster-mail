@@ -31,6 +31,8 @@ ActiveDirectoryContacts scope. Accept name-resolution warnings only for that rea
 operation; do not hide access or transport errors.
 `src/recipients.js` owns participant matching and accessible directory suggestions;
 discard stale search responses and preserve other comma-separated recipients.
+`src/mail-editor.js` uses native rich-text editing. Keep pasted markup and outgoing
+formatting within the shared style allowlist; never mount unsanitized mail in the editor.
 `src/rich-content.js` renders sanitized HTML with scripts disabled; parent code
 handles inline links. `desktop/content-images.cjs` validates raster images, and
 external image requests use a separate session without account credentials.

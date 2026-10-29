@@ -17,12 +17,14 @@
       seen.add(email); return true;
     }).slice(0, 8);
   }
-  function reply(message, ownEmails = [], all = false) {
+  function reply(message, ownEmails = [], all = false, sent = false) {
     const seen = new Set(ownEmails.map(email => email.trim().toLowerCase()));
     const take = people => people.map(person => (person?.email || '').trim()).filter(email => {
       const key = email.toLowerCase(); if (!email || seen.has(key)) return false; seen.add(key); return true;
     }).join(', ');
-    let to = take([message.from]), cc = all ? take(message.cc || []) : '';
+    if (sent && message.from?.email) seen.add(message.from.email.trim().toLowerCase());
+    const ownMessage = sent || seen.has(message.from?.email?.trim().toLowerCase());
+    let to = take(ownMessage ? message.to || [] : [message.from]), cc = all ? take(message.cc || []) : '';
     if (!to && cc) { const addresses = cc.split(', '); to = addresses.shift(); cc = addresses.join(', '); }
     return { to, cc };
   }

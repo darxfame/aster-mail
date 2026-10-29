@@ -62,3 +62,16 @@ test('reader prefers the complete normalized body over unique-only fragments in 
   const m = P.message({ItemId:{Id:'m'},UniqueBody:{BodyType:'HTML',Value:'Only new answer'},NormalizedBody:{BodyType:'HTML',Value:'New answer<blockquote>Earlier conversation</blockquote>'}});
   assert.match(m.html,/Earlier conversation/);
 });
+test('OWA SessionSettings and root responses identify domain logins; temporary failures are not cached', async () => {
+  let attempt = 0;
+  const { c, calls } = client(() => ++attempt === 1 ? json({}) : { status:200, text:JSON.stringify({ SessionSettings:{ UserEmailAddress:'primary@example.com', UserPrincipalName:'upn@example.net' } }) });
+  assert.deepEqual((await c.identity()).emails, []);
+  assert.deepEqual(await c.identity(), {email:'primary@example.com',emails:['primary@example.com','upn@example.net']});
+  await c.identity(); assert.equal(calls.length,2);
+});
+test('replying in Sent Items addresses original recipients and CC, never the sender, even without OWA identity', () => {
+  const m = {from:{email:'me@example.com'},to:[{email:'anna@example.com'},{email:'pavel@example.com'}],cc:[{email:'ME@example.com'},{email:'elena@example.com'},{email:'ANNA@example.com'}]};
+  assert.deepEqual(R.reply(m,[],true,true),{to:'anna@example.com, pavel@example.com',cc:'elena@example.com'});
+  assert.deepEqual(R.reply(m,['me@example.com'],false),{to:'anna@example.com, pavel@example.com',cc:''});
+  assert.deepEqual(R.reply(m,[],false,true),{to:'anna@example.com, pavel@example.com',cc:''});
+});

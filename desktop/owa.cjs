@@ -85,7 +85,7 @@ class OWAClient {
     let json;
     try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch { throw new Error(`OWA ${action}: вместо JSON получена страница входа или неподдерживаемый ответ.`); }
     if (action === 'GetUserAvailabilityInternal' && availability.rows(json, payload.request.Body.MailboxDataArray.length)) return json;
-    if (action === 'GetOwaUserConfiguration' && !json.Body && json.UserSessionSettings) return P.checkJSON({ Body: json });
+    if (action === 'GetOwaUserConfiguration' && !json.Body && (json.UserSessionSettings || json.SessionSettings)) return P.checkJSON({ Body: json });
     return P.checkJSON(json);
   }
   async ews(action, xml) {
@@ -107,16 +107,22 @@ class OWAClient {
   async identity() {
     if (!this.identityPromise) this.identityPromise = (async () => {
       const valid = value => typeof value === 'string' && /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(value);
-      let settings = {};
+      let settings = [];
       try {
         const json = await this.call('GetOwaUserConfiguration', P.request('GetOwaUserConfiguration', {}));
-        settings = P.walk(json, value => value.UserSessionSettings)[0]?.UserSessionSettings || {};
+        settings = P.walk(json, value => value.UserSessionSettings || value.SessionSettings)
+          .flatMap(value => [value.SessionSettings, value.UserSessionSettings]).filter(Boolean);
       } catch { /* A UPN login remains usable if the server restricts configuration reads. */ }
-      const emails = [...new Set([settings.UserEmailAddress, settings.UserPrincipalName, this.account.username].filter(valid).map(value => value.toLowerCase()))];
-      return { email: valid(settings.UserEmailAddress) ? settings.UserEmailAddress : emails[0] || '', emails };
+      const addresses = settings.flatMap(value => [value.UserEmailAddress, value.UserPrincipalName]);
+      const emails = [...new Set([...addresses, this.account.username].filter(valid).map(value => value.toLowerCase()))];
+      return { email: addresses.find(valid) || emails[0] || '', emails };
     })();
-    return this.identityPromise;
+    const result = await this.identityPromise;
+    // A temporary configuration failure must not disable replies until the next login.
+    if (!result.emails.length) this.identityPromise = null;
+    return result;
   }
+
   async folderOperation(data) { return require('./folder-actions.cjs').run(this, data); }
   async folders(data = {}) { return this.mailCache.get('folders', () => this.fetchFolders(), { ttl: 60000, refresh: data.refresh === true }); }
   async fetchFolders() {

@@ -89,3 +89,23 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .folder-context-menu button { display: block; width: 100%; padding: 9px 10px; text-align: left; font-size: 12px; border-radius: 6px; }
 .folder-context-menu button:hover:not(:disabled), .folder-context-menu button:focus-visible { background: var(--accent-bg); color: var(--accent); }
 .folder-context-menu button:disabled { opacity: .4; cursor: default; }
+
+.reader-toolbar { flex: none; min-height: 58px; height: auto; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+.reader-replies { display: flex; flex-wrap: wrap; gap: 5px; margin-left: auto; }
+.reader-replies .secondary { padding: 7px 9px; font-size: 10px; }
+.reader-toolbar .reader-position { margin-left: 6px; }
+.compose-editor-field { min-width: 0; margin: 14px 0; }
+.editor-label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.mail-editor { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.mail-editor:focus-within { border-color: var(--accent); }
+.format-toolbar { display: flex; flex-wrap: wrap; gap: 3px; padding: 7px; background: var(--surface2); border-bottom: 1px solid var(--line); }
+.format-toolbar button, .format-toolbar label { min-width: 28px; min-height: 28px; padding: 4px; font-size: 12px; border-radius: 4px; }
+.format-toolbar button:hover, .format-toolbar button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
+.format-toolbar select { max-width: 95px; font-size: 11px; padding: 3px; }
+.format-toolbar [data-command="bold"] { font-weight: bold; }.format-toolbar [data-command="italic"] { font-style: italic; }.format-toolbar [data-command="underline"] { text-decoration: underline; }.format-toolbar [data-command="strikeThrough"] { text-decoration: line-through; }
+.format-toolbar label { display: flex; align-items: center; gap: 3px; }
+.format-toolbar input[type="color"] { width: 22px; height: 23px; padding: 1px; }
+.compose-editor { padding: 14px; min-height: 235px; max-height: 45vh; overflow: auto; font: 16px/1.6 Arial, sans-serif; overflow-wrap: anywhere; white-space: pre-wrap; outline: none; }
+.compose-editor p, .compose-editor div { margin: 0; }.compose-editor a { color: var(--accent); text-decoration: underline; }.compose-editor table { max-width: 100%; }.compose-editor ul, .compose-editor ol { white-space: normal; }
+.editor-link { padding: 8px; display: flex; flex-wrap: wrap; gap: 8px; }.editor-link input { min-width: 0; flex: 1; padding: 7px; }.editor-link .form-error { width: 100%; }
+@media(max-width: 520px) { .reader-replies { flex: 1 1 100%; margin-left: 0; }.reader-replies .secondary { flex: 1; } }
