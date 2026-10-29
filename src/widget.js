@@ -1,15 +1,16 @@
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const format = (value, options) => new Intl.DateTimeFormat('ru-RU', options).format(new Date(value));
+const format = (value, options) => window.asterTime.format(value, options, snapshot?.timeZone || 'system');
 const clock = value => format(value, { hour: '2-digit', minute: '2-digit' });
 let snapshot;
 function render(state) {
   snapshot = state;
+  document.body.classList.toggle('dark', state.theme === 'dark');
   document.querySelector('#connection').textContent = window.asterWidget ? state.connected ? 'Exchange · HTTPS' : 'Нет подключения' : 'Деморежим · вымышленные встречи';
-  document.querySelector('#updated').textContent = state.lastPoll ? `Обновлено ${clock(state.lastPoll)}` : '';
+  document.querySelector('#updated').textContent = state.lastPoll ? `Обновлено ${clock(state.lastPoll)} · ${window.asterTime.zone(state.timeZone)}` : '';
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error || '';
   const events = state.events.filter(e => new Date(e.end) > Date.now());
   if (!state.connected || !events.length) {
-    document.querySelector('#meetings').innerHTML = `<div class="empty"><strong>${state.connected ? state.lastPoll ? 'Время для себя' : 'Обновляем календарь' : 'Ваш календарь — рядом'}</strong>${state.connected ? state.lastPoll ? 'В ближайшие семь дней встреч нет.' : 'Загружаем ближайшие встречи из Exchange.' : 'Подключите корпоративный Exchange в Aster Mail.'}<button class="open" data-action="app">Открыть Aster Mail ↗</button></div>`; return;
+    document.querySelector('#meetings').innerHTML = `<div class="empty"><strong>${state.connected ? state.lastPoll ? 'Время для себя' : 'Обновляем календарь' : 'Ваш календарь — рядом'}</strong>${state.connected ? state.lastPoll ? 'Ближайших встреч нет.' : 'Загружаем ближайшие встречи из Exchange.' : 'Подключите корпоративный Exchange в Aster Mail.'}<button class="open" data-action="app">Открыть Aster Mail ↗</button></div>`; return;
   }
   const first = events[0], active = new Date(first.start) <= Date.now();
   const minutes = Math.max(1, Math.ceil((new Date(active ? first.end : first.start) - Date.now()) / 60000));

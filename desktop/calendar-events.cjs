@@ -1,4 +1,5 @@
 const P = require('./protocol.cjs');
+const T = require('../src/time.js');
 const list = value => Array.isArray(value) ? value : value ? [value] : [];
 const flag = value => value === true || value === 'true';
 const id = value => value?.Id || value?.['@_Id'];
@@ -7,12 +8,12 @@ function normalize(o) {
   const person = (a, role) => ({ ...P.address(a.Mailbox || a), role, response: a.ResponseType || '' });
   const attendees = (value, role) => list(value?.Attendee || value).map(a => person(a, role));
   const rawAttachments = Array.isArray(o.Attachments) ? o.Attachments : [...list(o.Attachments?.FileAttachment), ...list(o.Attachments?.ItemAttachment)];
-  const response = o.MyResponseType || '';
+  const response = o.MyResponseType || o.ResponseType || '';
   return {
-    id: id(o.ItemId), changeKey: o.ItemId?.ChangeKey || o.ItemId?.['@_ChangeKey'] || '', title: o.Subject || '(Без названия)', start: o.Start, end: o.End,
+    id: id(o.ItemId), changeKey: o.ItemId?.ChangeKey || o.ItemId?.['@_ChangeKey'] || '', title: o.Subject || '(Без названия)', start: T.exchange(o.Start), end: T.exchange(o.End),
     organizer: P.address(o.Organizer?.Mailbox || o.Organizer), response,
     ...(o.IsOrganizer !== undefined ? { isOrganizer: flag(o.IsOrganizer) } : response ? { isOrganizer: response === 'Organizer' } : {}),
-    cancelled: flag(o.IsCancelled), allDay: flag(o.IsAllDayEvent), recurring: flag(o.IsRecurring) || ['Occurrence', 'Exception', 'RecurringMaster'].includes(o.CalendarItemType), calendarType: o.CalendarItemType || 'Single',
+    cancelled: flag(o.IsCancelled), allDay: flag(o.IsAllDayEvent), recurring: flag(o.IsRecurring) || Boolean(o.SeriesId) || ['Occurrence', 'Exception', 'RecurringMaster'].includes(o.CalendarItemType), calendarType: o.CalendarItemType || 'Single',
     recurrence: o.Recurrence || null, location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName || '',
     html: (body.BodyType || body['@_BodyType']) === 'HTML' ? bodyValue : '', body: (body.BodyType || body['@_BodyType']) === 'HTML' ? '' : bodyValue || o.Preview || '',
     attendees: [...attendees(o.RequiredAttendees, 'required'), ...attendees(o.OptionalAttendees, 'optional'), ...attendees(o.Resources, 'resource')],

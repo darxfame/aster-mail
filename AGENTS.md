@@ -18,6 +18,12 @@ calculates status and common slots. Never treat unknown availability as free.
 image previews. `src/meeting-ui.js` owns the meeting dialog; `src/sidebar-ui.js`
 owns folder trees and the mini month picker. Never overwrite a stale meeting
 or replay an invitation update after an uncertain response.
+`src/time.js` normalizes UTC Exchange instants and converts IANA wall times;
+`src/calendar-layout.js` assigns overlap columns. Keep OWA UTC headers and
+wall-time request bodies consistent. Never derive participation from opening an event.
+`src/rich-content.js` renders sanitized HTML with scripts disabled; parent code
+handles inline links. `desktop/content-images.cjs` validates raster images, and
+external image requests use a separate session without account credentials.
 The isolated widget uses `src/widget.*`. Sound assets and their
 generator are CC0; preserve their separate license.
 

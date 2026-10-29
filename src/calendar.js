@@ -1,19 +1,17 @@
-/* Shared local-date arithmetic: calendar days must survive daylight-saving changes. */
+/* Calendar boundaries use the selected IANA zone, including daylight-saving changes. */
 (function (root) {
-  function range(date, view) {
-    const start = new Date(date); start.setHours(0, 0, 0, 0);
-    if (view === 'week') start.setDate(start.getDate() - (start.getDay() + 6) % 7);
-    if (view === 'quarter') start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1);
-    const end = new Date(start);
-    if (view === 'quarter') end.setMonth(end.getMonth() + 3);
-    else end.setDate(end.getDate() + (view === 'day' ? 1 : 7));
+  const T = typeof module !== 'undefined' ? require('./time.js') : root.asterTime;
+  function range(date, view, timeZone = 'system') {
+    const civil = T.civil(date, timeZone); civil.setUTCHours(0, 0, 0, 0);
+    if (view === 'week') civil.setUTCDate(civil.getUTCDate() - (civil.getUTCDay() + 6) % 7);
+    if (view === 'quarter') civil.setUTCMonth(Math.floor(civil.getUTCMonth() / 3) * 3, 1);
+    if (view === 'month') civil.setUTCDate(1);
+    const start = T.fromWall(civil.toISOString().slice(0, 19), timeZone, false);
+    const end = T.add(start, ['quarter', 'month'].includes(view) ? { months: view === 'quarter' ? 3 : 1 } : { days: view === 'day' ? 1 : 7 }, timeZone);
     return { start, end };
   }
-  function move(date, view, direction) {
-    const next = new Date(date);
-    if (view === 'quarter') next.setMonth(next.getMonth() + direction * 3, 1);
-    else next.setDate(next.getDate() + direction * (view === 'day' ? 1 : 7));
-    return next;
+  function move(date, view, direction, timeZone = 'system') {
+    return T.add(date, ['quarter', 'month'].includes(view) ? { months: direction * (view === 'quarter' ? 3 : 1) } : { days: direction * (view === 'day' ? 1 : 7) }, timeZone);
   }
   function mode(preference, width) { return ['day', 'week', 'quarter'].includes(preference) ? preference : width < 700 ? 'day' : 'week'; }
   const calendar = { range, move, mode };

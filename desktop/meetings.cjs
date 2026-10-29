@@ -14,4 +14,10 @@ function countdown(event, now = Date.now()) {
   const label = minutes < 60 ? `${minutes} мин` : `${Math.floor(minutes / 60)} ч${minutes % 60 ? ` ${minutes % 60} м` : ''}`;
   return { label: active ? `Сейчас · ${label}` : label, detail: active ? 'до окончания встречи' : 'до начала встречи', active };
 }
-module.exports = { httpsURL, meetingLink, upcomingMeetings, countdown };
+function pollingRange(now = new Date()) {
+  // Load whole days: OWA recurring-event expansion must include today's occurrences.
+  const T = require('../src/time.js'), C = require('../src/calendar.js');
+  const today = C.range(now, 'day').start;
+  return { start: T.add(today, { days: -1 }).toISOString(), end: T.add(today, { days: 8 }).toISOString() };
+}
+module.exports = { httpsURL, meetingLink, upcomingMeetings, countdown, pollingRange };

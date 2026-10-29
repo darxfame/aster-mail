@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const { OWAClient } = require('./owa.cjs');
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences } = require('./notifications.cjs');
-const { httpsURL, meetingLink, upcomingMeetings, countdown } = require('./meetings.cjs');
+const { httpsURL, meetingLink, upcomingMeetings, countdown, pollingRange } = require('./meetings.cjs');
 let widgetWindow, widgetEvents = [], widgetDetail = null;
 let window, client, account, accountSession, tray, createWindow, quitting = false;
 let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false;
@@ -28,7 +28,7 @@ function reveal(navigation) {
 }
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), events, countdown: countdown(events[0]), lastPoll, error: lastPollError };
+  return { connected: Boolean(client), events, countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
 }
 function refreshWidget() {
   const state = widgetState();
@@ -95,8 +95,7 @@ async function pollNotifications() {
     }
     if (active === client) {
       try {
-        const now = new Date(), end = new Date(now.getTime() + 7 * 86400000);
-        const events = await active.calendar({ start: now.toISOString(), end: end.toISOString() });
+        const events = await active.calendar(pollingRange());
         if (active !== client) return;
         const next = upcomingMeetings(events)[0];
         if (next) {
@@ -159,6 +158,32 @@ function transport(url, options = {}) {
     req.end();
   });
 }
+let imageSession;
+async function fetchContentImage(url) {
+  require('./content-images.cjs').sourceURL(url);
+  imageSession ||= session.fromPartition(`aster-images-${crypto.randomUUID()}`, { cache: false });
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    let response;
+    for (let redirect = 0; redirect <= 4; redirect++) {
+      response = await imageSession.fetch(url, { credentials: 'omit', redirect: 'manual', referrerPolicy: 'no-referrer', signal: controller.signal });
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const next = require('./content-images.cjs').sourceURL(new URL(response.headers.get('location'), url).href);
+      if (url.startsWith('https:') && !next.startsWith('https:')) throw new Error('Небезопасное перенаправление изображения');
+      await response.body?.cancel(); url = next;
+    }
+    if (!response.ok) throw new Error(`Изображение: HTTP ${response.status}`);
+    const type = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type)) { controller.abort(); throw new Error('Неподдерживаемый формат изображения'); }
+    const chunks = []; let size = 0;
+    for await (const chunk of response.body) {
+      size += chunk.length;
+      if (size > 5 * 1024 * 1024) { controller.abort(); throw new Error('Изображение превышает 5 МБ'); }
+      chunks.push(Buffer.from(chunk));
+    }
+    return { ContentType: type, Content: Buffer.concat(chunks).toString('base64') };
+  } finally { clearTimeout(timer); }
+}
 async function connect(data, remember, restoring = false) {
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
   client = null;
@@ -167,7 +192,7 @@ async function connect(data, remember, restoring = false) {
   accountSession = session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false });
   const candidate = new OWAClient(account, transport,
     async () => (await accountSession.cookies.get({ url: `${account.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value,
-    () => accountSession.clearStorageData({ storages: ['cookies'] }));
+    () => accountSession.clearStorageData({ storages: ['cookies'] }), fetchContentImage);
   try { await candidate.authenticate(); client = candidate; }
   catch (error) { account.password = ''; await accountSession.clearStorageData(); throw error; }
   if (remember) {
@@ -180,12 +205,12 @@ async function connect(data, remember, restoring = false) {
   void pollNotifications();
   return { server: account.server, username: account.username };
 }
-const methods = new Set(['folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage']);
+const methods = new Set(['folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
   if (['change', 'move', 'respond'].includes(operation) && typeof data.ref?.id !== 'string') throw new Error('Invalid item reference');
-  if (['updateEvent', 'eventMessage', 'eventImage'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid meeting reference');
+  if (['updateEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
   if (data.scope !== undefined && !['single', 'series'].includes(data.scope)) throw new Error('Invalid meeting scope');
   if (operation === 'change' && typeof data.value !== 'boolean') throw new Error('Invalid value');
   if (operation === 'messages' && (typeof data.folder !== 'string' || !Number.isInteger(data.offset || 0) || (data.offset || 0) < 0)) throw new Error('Invalid folder or offset');
@@ -216,12 +241,13 @@ app.whenReady().then(async () => {
       validate(operation, data);
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, error: lastPollError, supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
+        require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings;
         notificationSettings = preferences(data);
         if (!before.mail && notificationSettings.mail) { tracker.mailSeen.clear(); tracker.baseline = null; }
         await fs.mkdir(app.getPath('userData'), { recursive: true });
         await fs.writeFile(settingsFile(), JSON.stringify(notificationSettings), { mode: 0o600 });
-        void pollNotifications(); return { ok: true, value: notificationSettings };
+        refreshWidget(); void pollNotifications(); return { ok: true, value: notificationSettings };
       }
       if (operation === 'testNotification') {
         if (!['mail', 'meeting'].includes(data.kind)) throw new Error('Invalid sound');
@@ -264,7 +290,9 @@ app.whenReady().then(async () => {
         return { ok: true, value: !result.canceled };
       }
       if (!methods.has(operation)) throw new Error('Unknown operation');
-      return { ok: true, value: await client[operation](data) };
+      const value = await client[operation](data);
+      if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
+      return { ok: true, value };
     } catch (error) { return { ok: false, error: error.message }; }
   });
   createWindow();

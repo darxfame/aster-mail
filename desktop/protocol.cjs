@@ -1,5 +1,6 @@
 // OWA payload shapes adapted from mac-owa-widget (MIT); see THIRD_PARTY_NOTICES.md.
 const { XMLParser, XMLValidator } = require('fast-xml-parser');
+const T = require('../src/time.js');
 const typed = (name, fields = {}) => ({ __type: `${name}:#Exchange`, ...fields });
 const folder = id => typed(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive', 'contacts', 'calendar', 'msgfolderroot'].includes(id) ? 'DistinguishedFolderId' : 'FolderId', { Id: id });
 const item = ref => typed('ItemId', { Id: ref.id, ...(ref.changeKey ? { ChangeKey: ref.changeKey } : {}) });
@@ -28,7 +29,7 @@ function getItems(refs) {
   return request('GetItem', {
     ItemShape: typed('ItemResponseShape', {
       BaseShape: 'AllProperties', BodyType: 'HTML', FilterHtmlContent: true,
-      BlockExternalImagesIfSenderUntrusted: true, MaximumBodySize: 2097152,
+      BlockExternalImagesIfSenderUntrusted: false, MaximumBodySize: 2097152,
     }),
     ItemIds: refs.map(item), ShapeName: 'ItemNormalizedBody',
   }, 'V2017_08_18');
@@ -65,11 +66,11 @@ function message(o) {
   return {
     id: o.ItemId.Id, changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
     from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address),
-    date: o.DateTimeReceived || o.DateTimeSent, preview: o.Preview || '', read: Boolean(o.IsRead),
+    date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: o.Preview || '', read: Boolean(o.IsRead),
     flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
     html: body.BodyType === 'Text' ? null : body.Value || '', text: body.BodyType === 'Text' ? body.Value : '',
-    attachments: (o.Attachments || []).filter(a => a.AttachmentId).map(a => ({ id: a.AttachmentId.Id, name: a.Name, size: a.Size })),
-    meeting: o.AssociatedCalendarItemId?.Id ? { id: o.AssociatedCalendarItemId.Id, changeKey: o.AssociatedCalendarItemId.ChangeKey, start: o.Start, end: o.End, location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName, cancelled: o.IsCancelled === true || o.ItemClass === 'IPM.Schedule.Meeting.Canceled' } : null,
+    attachments: (o.Attachments || []).filter(a => a.AttachmentId).map(a => ({ id: a.AttachmentId.Id, name: a.Name, size: a.Size, type: a.ContentType || '', contentId: a.ContentId || '', inline: Boolean(a.IsInline) })),
+    meeting: o.AssociatedCalendarItemId?.Id ? { id: o.AssociatedCalendarItemId.Id, changeKey: o.AssociatedCalendarItemId.ChangeKey, start: T.exchange(o.Start), end: T.exchange(o.End), location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName, cancelled: o.IsCancelled === true || o.ItemClass === 'IPM.Schedule.Meeting.Canceled' } : null,
   };
 }
 const escapeXML = value => String(value ?? '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);

@@ -11,6 +11,7 @@ window.asterDemo = (() => {
     { id: 'demo-6', subject: 'Итоги встречи и следующие шаги', from: person('Анна Смирнова', 'anna@example.com'), date: at(-1, 15, 10), read: true, preview: 'Зафиксировала договорённости. Начнём с самого важного, остальное добавим по мере необходимости.', text: 'Зафиксировала договорённости.\n\n1. Проверяем подключение.\n2. Дорабатываем почту.\n3. Собираем обратную связь.\n\nАнна', folder: 'inbox' },
     { id: 'demo-7', subject: 'Доступ к рабочим инструментам', from: person('Команда поддержки', 'support@example.com'), date: at(-1, 12), read: true, preview: 'Добро пожаловать! Всё, что нужно для комфортного начала работы.', text: 'Добро пожаловать!\n\nПо вопросам подключения обратитесь к вашему администратору Exchange.', folder: 'inbox' },
   ].map(m => ({ ...m, to: [person('Вы', 'you@example.com')], cc: [], attachments: m.attachments || [] }));
+  messages[0].html += '<table bgcolor="#ffffff"><tr><td><img src="cid:demo-logo" alt="Логотип Aster" width="80" height="80"><p><a href="https://example.com/project">Открыть материалы проекта</a> — ссылка остаётся в тексте письма.</p></td></tr></table>';
   const events = [
     { id: 'demo-event-1', title: 'Обсуждение проекта', start: at(1, 11), end: at(1, 11, 45), location: 'Переговорная «Кедр»', preview: 'Идеи, приоритеты и следующие шаги', organizer: person('Михаил Волков', 'mikhail@example.com') },
     { id: 'demo-event-2', title: 'Командная встреча', start: at(0, 10), end: at(0, 10, 30), location: 'Онлайн', preview: 'Сверим планы на сегодня', organizer: person('Анна Смирнова', 'anna@example.com') },
@@ -18,6 +19,10 @@ window.asterDemo = (() => {
     { id: 'demo-event-4', title: 'Время для фокуса', start: at(2, 9), end: at(2, 11), location: '', preview: 'Без встреч и отвлечений', organizer: person('Вы', 'you@example.com') },
     { id: 'demo-event-5', title: 'Итоги недели', start: at(2, 16), end: at(2, 16, 45), location: 'Переговорная «Сосна»', preview: 'Что получилось и что можно улучшить', organizer: person('Дмитрий Соколов', 'dmitry@example.com') },
   ];
+  events.push(
+    { id: 'demo-overlap-1', title: 'Техническое обсуждение', start: at(0, 10, 15), end: at(0, 11), location: 'Онлайн' },
+    { id: 'demo-overlap-2', title: 'Проверка макетов', start: at(0, 10, 20), end: at(0, 10, 50), location: 'Дизайн' },
+  );
   const contacts = [
     { id: 'c1', name: 'Анна Смирнова', email: 'anna@example.com', company: 'Продуктовая команда', phone: '+7 000 000-00-01' },
     { id: 'c2', name: 'Михаил Волков', email: 'mikhail@example.com', company: 'Разработка', phone: '+7 000 000-00-02' },

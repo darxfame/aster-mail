@@ -1,9 +1,12 @@
 // Pure notification policy, independent of Electron and real mailboxes.
-const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
+const T = require('../src/time.js');
+const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, timeZone: 'system', theme: 'light' };
 function preferences(value = {}) {
   const result = { ...defaults };
   for (const key of ['mail', 'meetings', 'sounds', 'preview']) if (typeof value[key] === 'boolean') result[key] = value[key];
   if ([0, 5, 10, 15, 30].includes(Number(value.minutes))) result.minutes = Number(value.minutes);
+  try { if (typeof value.timeZone === 'string') { T.zone(value.timeZone); result.timeZone = value.timeZone || 'system'; } } catch { /* Invalid saved zone falls back to the computer. */ }
+  if (['light', 'dark'].includes(value.theme)) result.theme = value.theme;
   return result;
 }
 class NotificationTracker {

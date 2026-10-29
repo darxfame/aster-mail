@@ -17,13 +17,14 @@ function loginForm(html, origin) {
   return { url: url.href, fields };
 }
 class OWAClient {
-  constructor(account, transport, cookieToken, clearCookies = async () => {}) {
+  constructor(account, transport, cookieToken, clearCookies = async () => {}, imageTransport = null) {
     this.origin = P.normalizeServer(account.server);
     this.account = account;
     this.transport = transport;
     this.cookieToken = cookieToken;
     this.clearCookies = clearCookies;
     this.canary = null;
+    this.imageTransport = imageTransport;
   }
   async token(html = '') {
     const cookie = await this.cookieToken();
@@ -184,7 +185,7 @@ class OWAClient {
   }
   async calendar({ start, end }) {
     const json = await this.call('GetCalendarView', P.request('GetCalendarView', {
-      CalendarId: P.target('calendar'), RangeStart: new Date(start).toISOString(), RangeEnd: new Date(end).toISOString(),
+      CalendarId: P.target('calendar'), RangeStart: new Date(start).toISOString().slice(0, 19), RangeEnd: new Date(end).toISOString().slice(0, 19),
     }, 'V2017_08_18'), { headerBody: true });
     if (!Array.isArray(json.Body.Items)) throw new Error('OWA GetCalendarView: неподдерживаемый формат календаря');
     return json.Body.Items.filter(o => o.ItemId?.Id).map(calendarEvents.normalize);
@@ -232,6 +233,16 @@ class OWAClient {
     const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
     if (!image) throw new Error('Exchange не вернул изображение');
     return calendarEvents.imageData(image);
+  }
+  async contentImages(data) {
+    if (!['message', 'event'].includes(data.kind)) throw new Error('Некорректный тип содержимого');
+    const current = data.kind === 'event' ? await this.eventDetails(data.ref) : await this.message(data.ref);
+    return require('./content-images.cjs').load(current, async id => {
+      const response = await this.ews('GetAttachment', P.soap(`<m:GetAttachment><m:AttachmentIds><t:AttachmentId Id="${P.escapeXML(id)}"/></m:AttachmentIds></m:GetAttachment>`));
+      const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
+      if (!image) throw new Error('Exchange не вернул изображение');
+      return image;
+    }, this.imageTransport);
   }
 
   async createEvent(data) { await this.ews('CreateItem', P.eventSOAP(data)); return true; }

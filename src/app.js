@@ -4,9 +4,15 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const initials = name => (name || '?').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
 const avatar = (name, tone = 0) => `<div class="avatar tone-${tone % 5}">${esc(initials(name))}</div>`;
-const dateFormat = (value, options) => value && Number.isFinite(new Date(value).getTime()) ? new Intl.DateTimeFormat('ru-RU', options).format(new Date(value)) : '';
+const T = window.asterTime;
+let timeZone = localStorage.getItem('aster-time-zone') || 'system';
+try { T.zone(timeZone); } catch { timeZone = 'system'; }
+const dateFormat = (value, options) => value && Number.isFinite(new Date(value).getTime()) ? T.format(value, options, timeZone) : '';
 const time = value => dateFormat(value, { hour: '2-digit', minute: '2-digit' });
-const dayKey = value => { const d = new Date(value); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+const dayKey = value => T.wall(value, timeZone).slice(0, 10);
+const civil = value => T.civil(value, timeZone);
+const addDays = (value, days) => T.add(value, { days }, timeZone);
+const calendarDate = value => T.fromWall(`${value}T00:00`, timeZone, false);
 const bytes = n => n > 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`;
 const ref = value => ({ id: value.id, changeKey: value.changeKey });
 const systemFolders = [
@@ -19,7 +25,7 @@ let calendarPreference = localStorage.getItem('aster-calendar-view') || 'auto';
 let renderedCalendarMode;
 let navigationPlacement = localStorage.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
 const calendarMode = () => window.asterCalendar.mode(calendarPreference, $('#workspace').clientWidth);
-const calendarRange = () => window.asterCalendar.range(state.week, calendarMode());
+const calendarRange = () => window.asterCalendar.range(state.week, calendarMode(), timeZone);
 let syncSignature = localStorage.getItem('aster-signature-sync') === 'true';
 let serverSignature = null;
 let sidebarCollapsed = localStorage.getItem('aster-sidebar-collapsed') === 'true';
@@ -138,7 +144,7 @@ async function loadView(append = false) {
       if (state.messages.length && !append && matchMedia('(min-width: 901px)').matches) await openMessage(state.messages[0].id, generation);
     } else if (state.view === 'calendar') {
       const requestedMode = calendarMode();
-      const { start, end } = window.asterCalendar.range(state.week, requestedMode);
+      const { start, end } = window.asterCalendar.range(state.week, requestedMode, timeZone);
       const events = state.demo ? structuredClone(window.asterDemo.events).filter(e => new Date(e.start) < end && new Date(e.end) > start) : await api('calendar', { start: start.toISOString(), end: end.toISOString() });
       if (generation !== state.generation) return;
       if (requestedMode !== calendarMode()) return loadView();
@@ -181,6 +187,14 @@ async function openMessage(id, generation = state.generation) {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
     if (generation !== state.generation || state.selected?.id !== id) return;
     state.selected = { ...summary, ...detail }; renderReader();
+    if (state.selected.meeting?.id && !state.selected.meeting.cancelled) {
+      const selected = state.selected;
+      try {
+        const meeting = state.demo ? window.asterDemo.events.find(e => e.id === selected.meeting.id) : await api('event', ref(selected.meeting));
+        if (meeting) Object.assign(selected.meeting, { ...meeting, statusLoaded: true });
+      } catch (error) { selected.meeting.statusError = error.message; }
+      if (state.selected === selected && generation === state.generation) renderReader();
+    }
     if (!summary.read && state.folder !== 'drafts') {
       if (!state.demo) {
         const updated = await api('change', { ref: ref(state.selected), field: 'IsRead', value: true });
@@ -194,59 +208,70 @@ async function openMessage(id, generation = state.generation) {
     }
   } catch (error) { if (generation === state.generation) showError(error); }
 }
-function rsvpButtons(id, changeKey, cancelled = false) {
+function rsvpButtons(id, changeKey, cancelled = false, response, isOrganizer = false, statusError = '') {
   if (cancelled) return '<p class="form-note" role="status">Встреча отменена организатором. Ответ не требуется.</p>';
-  return `<div class="rsvp">${[['AcceptItem', 'Принять'], ['TentativelyAcceptItem', 'Под вопросом'], ['DeclineItem', 'Отклонить']].map(([response, name]) => `<button class="secondary" data-action="rsvp" data-response="${response}" data-id="${esc(id)}" data-key="${esc(changeKey || '')}">${name}</button>`).join('')}</div>`;
+  if (statusError) return `<p class="form-note" role="status">Не удалось проверить ответ: ${esc(statusError)}. Обновите письмо.</p>`;
+  if (response === undefined) return '<p class="form-note" role="status">Проверяем ваш ответ в календаре Exchange…</p>';
+  const status = window.asterEvents.responseState({ response, isOrganizer });
+  if (status === 'organizer') return '<p class="form-note">Вы организатор встречи.</p>';
+  const current = { accepted: 'AcceptItem', tentative: 'TentativelyAcceptItem', declined: 'DeclineItem' }[status];
+  const buttons = [['AcceptItem', 'Принять'], ['TentativelyAcceptItem', 'Под вопросом'], ['DeclineItem', 'Отклонить']].map(([value, name]) => `<button class="secondary" data-action="rsvp" data-response="${value}" data-id="${esc(id)}" data-key="${esc(changeKey || '')}" ${value === current ? 'disabled aria-current="true"' : ''}>${name}${value === current ? ' ✓' : ''}</button>`).join('');
+  return `<div class="rsvp ${current ? 'rsvp-answered' : ''}">${current ? `<span class="rsvp-status">${esc(responseName(response))}</span><details class="rsvp-change"><summary>Изменить ответ</summary><div class="rsvp-menu">${buttons}</div></details>` : buttons}</div>`;
+}
+
+let demoImageData;
+async function demoContentImages(html) {
+  const images = {}, doc = new DOMParser().parseFromString(html || '', 'text/html');
+  doc.querySelectorAll('img').forEach(img => { const src = img.getAttribute('src'); if (src?.startsWith('data:image/')) images[src] = src; });
+  if (doc.querySelector('img[src="cid:demo-logo"]')) {
+    demoImageData ||= new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; canvas.getContext('2d').drawImage(img, 0, 0); resolve(canvas.toDataURL('image/png')); };
+      img.onerror = () => reject(new Error('Демоизображение недоступно')); img.src = '../assets/icon.png';
+    });
+    images['cid:demo-logo'] = await demoImageData;
+  }
+  return { images, errors: {} };
 }
 function renderReader() {
   const m = state.selected;
   if (!m) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content"><div class="eyebrow">${icon(m.meeting ? 'calendar' : 'mail')}${m.meeting ? 'Приглашение на встречу' : 'Личная переписка'}</div><h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email)}<div><strong>${esc(m.from.name || m.from.email)}</strong><small>${esc(m.from.email)} · кому: ${esc(m.to?.map(a => a.name || a.email).join(', ') || 'вам')}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled)}</div>` : ''}<div class="privacy-note">${icon('shield')}Внешние изображения и активное содержимое заблокированы</div><div id="message-body"></div>${m.attachments?.length ? `<div class="attachments">${m.attachments.map(a => `<button class="attachment" data-action="attachment" data-id="${esc(a.id)}" data-name="${esc(a.name)}">${icon('file')}<span><strong>${esc(a.name)}</strong><small>${bytes(a.size || 0)} · Скачать</small></span></button>`).join('')}</div>` : ''}<div class="reply-actions"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div></div></div>`;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content"><div class="eyebrow">${icon(m.meeting ? 'calendar' : 'mail')}${m.meeting ? 'Приглашение на встречу' : 'Личная переписка'}</div><h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email)}<div><strong>${esc(m.from.name || m.from.email)}</strong><small>${esc(m.from.email)} · кому: ${esc(m.to?.map(a => a.name || a.email).join(', ') || 'вам')}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}<div class="privacy-note">${icon('shield')}Изображения отображаются автоматически · активное содержимое отключено</div><div id="message-body"></div>${m.attachments?.length ? `<div class="attachments">${m.attachments.map(a => `<button class="attachment" data-action="attachment" data-id="${esc(a.id)}" data-name="${esc(a.name)}">${icon('file')}<span><strong>${esc(a.name)}</strong><small>${bytes(a.size || 0)} · Скачать</small></span></button>`).join('')}</div>` : ''}<div class="reply-actions"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div></div></div>`;
   if (m.html) {
-    const clean = DOMPurify.sanitize(m.html, { WHOLE_DOCUMENT: false, FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'video', 'audio', 'svg', 'math'], FORBID_ATTR: ['style', 'background', 'srcset', 'action'] });
-    const doc = new DOMParser().parseFromString(clean, 'text/html');
-    doc.querySelectorAll('img').forEach(img => { const alt = doc.createElement('span'); alt.textContent = img.alt ? `[${img.alt}]` : '[Изображение заблокировано]'; img.replaceWith(alt); });
-    const links = [];
-    doc.querySelectorAll('a').forEach(a => { const href = a.getAttribute('href'); a.removeAttribute('href'); if (/^https?:\/\//i.test(href || '')) links.push(href); });
-    const iframe = document.createElement('iframe'); iframe.className = 'email-frame'; iframe.title = 'Содержимое письма'; iframe.setAttribute('sandbox', '');
-    iframe.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>body{font:13px/1.9 -apple-system,BlinkMacSystemFont,sans-serif;color:#4d5063;margin:0 7px 0 0;overflow-wrap:anywhere}p{margin:0 0 18px}h3{font-size:13px;font-weight:600;margin:24px 0 12px}ul{padding-left:20px}li{padding:3px 0}a{color:#7760d6}table{max-width:100%;border-collapse:collapse}td{padding:5px;border:1px solid #eee}blockquote{border-left:2px solid #ddd;padding-left:15px;color:#888}</style></head><body>${doc.body.innerHTML}</body></html>`;
-    // No same-origin permission: an email cannot inspect the app or invoke its IPC bridge.
-    iframe.style.height = `${Math.min(800, Math.max(340, doc.body.textContent.length / 2.4))}px`;
-    $('#message-body').append(iframe);
-    if (links.length) {
-      const container = document.createElement('div'); container.className = 'picked-files'; container.innerHTML = `<p>Ссылки в письме</p>${[...new Set(links)].map(url => `<button class="secondary" data-action="link" data-url="${esc(url)}">${icon('globe')}${esc(url.slice(0, 70))}</button>`).join(' ')}`; $('#message-body').append(container);
-    }
+    window.asterRichContent.render($('#message-body'), m.html, {
+      dark: state.theme === 'dark', title: 'Содержимое письма',
+      loadImages: () => m.contentImages ||= state.demo ? demoContentImages(m.html) : api('contentImages', { ref: ref(m), kind: 'message' }),
+      openLink: url => window.aster ? api('openLink', { url }).catch(showError) : toast(`Демо: ссылка ${url}`),
+    });
   } else $('#message-body').innerHTML = `<div class="plain-body">${esc(m.text || m.preview || 'Нет текстового содержимого')}</div>`;
 }
 function calendarEvents(events, day) {
-  const next = new Date(day); next.setDate(next.getDate() + 1);
+  const next = addDays(day, 1);
   return events.filter(e => new Date(e.start) < next && new Date(e.end) > day).sort((a, b) => a.start.localeCompare(b.start));
 }
 function quarterMarkup(start, events) {
   return `<div class="quarter">${Array.from({ length: 3 }, (_, month) => {
-    const first = new Date(start); first.setMonth(first.getMonth() + month);
-    const offset = (first.getDay() + 6) % 7;
-    const count = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const first = T.add(start, { months: month }, timeZone);
+    const offset = (civil(first).getUTCDay() + 6) % 7;
+    const count = new Date(Date.UTC(civil(first).getUTCFullYear(), civil(first).getUTCMonth() + 1, 0)).getUTCDate();
     return `<section class="quarter-month"><h2>${esc(dateFormat(first, { month: 'long' }))}</h2><div class="month-grid">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => `<span class="weekday">${d}</span>`).join('')}${'<span></span>'.repeat(offset)}${Array.from({ length: count }, (_, i) => {
-      const day = new Date(first); day.setDate(i + 1);
+      const day = addDays(first, i);
       const daily = calendarEvents(events, day);
-      const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      const date = dayKey(day);
       return `<button class="month-day ${dayKey(day) === dayKey(new Date()) ? 'is-today' : ''} ${daily.length ? 'has-events' : ''}" data-action="calendar-day" data-date="${date}" aria-label="${esc(dateFormat(day, { day: 'numeric', month: 'long' }))}, встреч: ${daily.length}" title="${esc(daily.map(e => e.title).join(' · ') || 'Нет встреч')}"><span>${i + 1}</span><small>${daily.length || ''}</small></button>`;
     }).join('')}</div></section>`;
   }).join('')}</div>`;
 }
 function renderCalendar() {
+  const previousScroll = document.querySelector('.timeline-scroll')?.scrollTop;
   const mode = calendarMode(); renderedCalendarMode = mode;
   const { start, end } = calendarRange();
   const events = state.events.filter(e => !state.query || `${e.title} ${e.location} ${e.preview}`.toLowerCase().includes(state.query.toLowerCase()));
-  const title = mode === 'day' ? dateFormat(start, { day: 'numeric', month: 'long', year: 'numeric' }) : mode === 'quarter' ? `${Math.floor(start.getMonth() / 3) + 1}-й квартал · ${start.getFullYear()}` : dateFormat(start, { month: 'long', year: 'numeric' });
+  const title = mode === 'day' ? dateFormat(start, { day: 'numeric', month: 'long', year: 'numeric' }) : mode === 'quarter' ? `${Math.floor(civil(start).getUTCMonth() / 3) + 1}-й квартал · ${civil(start).getUTCFullYear()}` : dateFormat(start, { month: 'long', year: 'numeric' });
   const period = mode === 'day' ? 'день' : mode === 'quarter' ? 'квартал' : 'неделю';
-  const grid = mode === 'quarter' ? quarterMarkup(start, events) : `<div class="week ${mode === 'day' ? 'day-view' : ''}">${Array.from({ length: mode === 'day' ? 1 : 7 }, (_, i) => {
-    const day = new Date(start); day.setDate(day.getDate() + i);
-    const daily = calendarEvents(events, day);
-    return `<div class="week-day ${dayKey(day) === dayKey(new Date()) ? 'today' : ''}"><div class="day-heading">${esc(dateFormat(day, { weekday: mode === 'day' ? 'long' : 'short' }))}<span class="day-number">${day.getDate()}</span></div>${daily.map(e => `<button class="event-card event-${window.asterEvents.kind(e, state.account?.username || '')}" data-action="event" data-id="${esc(e.id)}"><time>${e.allDay ? 'Весь день' : `${esc(time(e.start))} — ${esc(time(e.end))}`}</time><strong>${esc(e.title)}</strong><small>${esc(e.location || 'Рабочий календарь')}</small></button>`).join('') || '<div class="no-events">Нет встреч</div>'}</div>`;
-  }).join('')}</div>`;
-  $('#workspace').innerHTML = `<div class="calendar-view"><div class="page-header"><div><h1>${esc(title)}</h1><p>${mode === 'day' ? 'Встречи выбранного дня.' : 'Ваши встречи в удобном масштабе.'}</p></div><div class="calendar-controls"><select id="calendar-mode" aria-label="Вид календаря">${[['auto', `Авто · ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? 'день' : 'неделя'}`], ['day', 'День'], ['week', 'Неделя'], ['quarter', 'Квартал']].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">Сегодня</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? 'Предыдущая неделя' : `Предыдущий ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? 'Следующая неделя' : `Следующий ${period}`}">${icon('chevron')}</button></div><button class="primary" data-action="new-event">${icon('plus')}Встреча</button></div></div>${grid}<div class="calendar-legend" aria-label="Цвета встреч"><span class="pending">Без ответа / под вопросом</span><span class="accepted">Принято</span><span class="organized">Вы организатор</span></div><div class="calendar-caption"><span>${icon('clock')} ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</span><span>${events.length} встреч за ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
+  const grid = mode === 'quarter' ? quarterMarkup(start, events) : timelineMarkup(start, mode, events);
+  $('#workspace').innerHTML = `<div class="calendar-view"><div class="page-header"><div><h1>${esc(title)}</h1><p>${mode === 'day' ? 'Встречи выбранного дня.' : 'Ваши встречи в удобном масштабе.'}</p></div><div class="calendar-controls"><select id="calendar-mode" aria-label="Вид календаря">${[['auto', `Авто · ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? 'день' : 'неделя'}`], ['day', 'День'], ['week', 'Неделя'], ['quarter', 'Квартал']].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">Сегодня</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? 'Предыдущая неделя' : `Предыдущий ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? 'Следующая неделя' : `Следующий ${period}`}">${icon('chevron')}</button></div><button class="primary" data-action="new-event">${icon('plus')}Встреча</button></div></div>${grid}<div class="calendar-legend" aria-label="Цвета встреч"><span class="pending">Без ответа / под вопросом</span><span class="accepted">Принято</span><span class="organized">Вы организатор</span></div><div class="calendar-caption"><span>${icon('clock')} ${esc(T.zone(timeZone))}</span><span>${events.length} встреч за ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
+  restoreCalendarScroll(start, mode, previousScroll);
 }
 function colleaguesKey() { return `aster-colleagues:${state.demo ? 'demo' : `${state.account?.server || ''}|${state.account?.username || ''}`}`; }
 function colleagues() {
@@ -312,17 +337,18 @@ function plannerFingerprint(form) { return ['start', 'end', 'attendees'].map(nam
 async function runPlanner(button) {
   const form = $('#event-form'); if (!form) return;
   const box = $('#planner-results'), fingerprint = plannerFingerprint(form);
-  const start = new Date(form.elements.start.value), end = new Date(form.elements.end.value);
+  let start, end;
   box.innerHTML = '<p class="form-note">Проверяем календарь участников…</p>'; button.disabled = true;
   try {
+    start = T.fromWall(form.elements.start.value, timeZone); end = T.fromWall(form.elements.end.value, timeZone);
     if (!Number.isFinite(+start) || !Number.isFinite(+end) || end <= start || end - start > 86400000) throw new Error('Укажите начало и окончание встречи в пределах суток.');
     const emails = form.elements.attendees.value.split(/[,;\n]/).map(s => s.trim().toLowerCase()).filter(Boolean);
     const own = state.demo ? 'you@example.com' : state.account?.username;
     if (/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(own || '')) emails.push(own.toLowerCase());
     const unique = [...new Set(emails)];
 
-    const from = new Date(start); from.setHours(0, 0, 0, 0);
-    const to = new Date(end); to.setHours(0, 0, 0, 0); to.setDate(to.getDate() + 1);
+    const from = window.asterCalendar.range(start, 'day', timeZone).start;
+    const to = window.asterCalendar.range(end, 'day', timeZone).end;
     const people = unique.length ? await fetchAvailability(unique, from, to) : [];
     if (!unique.includes(own?.toLowerCase())) {
       const mine = await api('calendar', { start: from.toISOString(), end: to.toISOString() });
@@ -331,7 +357,7 @@ async function runPlanner(button) {
     if (!$('#event-form') || $('#event-form') !== form || plannerFingerprint(form) !== fingerprint) return;
     const duration = Math.ceil((end - start) / 60000);
     const free = window.asterAvailability.available(people, start, end);
-    const suggestions = window.asterAvailability.suggestions(people, start, duration);
+    const suggestions = window.asterAvailability.suggestions(people, start, duration, Date.now(), timeZone);
     const unknown = people.some(p => window.asterAvailability.status(p, +start).kind === 'unknown');
     box.innerHTML = `<div class="planner-verdict ${free ? 'free' : 'busy'}">${free ? 'Выбранное время свободно у всех проверенных участников' : unknown ? 'Есть недоступные данные или пересечения — свободное время не подтверждено' : 'Выбранное время пересекается с занятостью участников'}</div><div class="planner-people">${people.map(p => { const status = availabilityLabel(p, +start); return `<div><strong>${esc(colleagues().find(c => c.email.toLowerCase() === p.email.toLowerCase())?.name || (['__self__', own?.toLowerCase()].includes(p.email) ? 'Вы' : p.email))}</strong><span class="availability ${status.kind}"><i></i>${esc(status.text)}</span></div>`; }).join('')}</div><h4>Общее свободное время · ${esc(dateFormat(start, { day: 'numeric', month: 'long' }))}</h4><div class="planner-slots">${suggestions.map(slot => `<button type="button" class="secondary" data-action="planner-slot" data-start="${slot}" data-duration="${duration}">${esc(time(slot))}–${esc(time(new Date(Date.parse(slot) + duration * 60000)))}</button>`).join('') || '<p class="form-note">Общих интервалов с 09:00 до 18:00 не найдено. Выберите другой день или проверьте доступ к календарям.</p>'}</div><p class="form-note">${state.demo ? 'Деморежим: занятость вымышлена. ' : ''}Проверка с шагом 15 минут, с учётом всей длительности встречи. Ваш календарь включён. Перед отправкой можно проверить время повторно.</p>`;
   } catch (error) { if (box.isConnected && plannerFingerprint(form) === fingerprint) box.innerHTML = `<p class="form-error">${esc(error.message)}</p>`; }
@@ -357,11 +383,11 @@ async function compose(mode = 'new', contact = null) {
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
   modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : 'Отправка через корпоративный Exchange по HTTPS.', `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients, 'text', true)}${field('cc', 'Копия')}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
 }
-function localDate(value) { const d = new Date(value); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
+function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
 function eventModal() {
   if (!ready()) return connectModal();
-  const start = new Date(); start.setHours(start.getHours() + 1, 0, 0, 0); const end = new Date(start.getTime() + 3600000);
-  modal('Новая встреча', 'Участники получат приглашения от вашего аккаунта Exchange.', `<form id="event-form">${field('title', 'Название встречи', '', 'text', true)}<div class="form-row">${field('start', 'Начало', localDate(start), 'datetime-local', true)}${field('end', 'Окончание', localDate(end), 'datetime-local', true)}</div>${field('location', 'Место или ссылка на встречу')}${field('attendees', 'Участники · email через запятую')}${textField('body', 'Описание и повестка')}<section class="planner"><h3>${icon('clock')}Помощник планирования</h3>${colleagues().length ? `<details><summary>Добавить избранных коллег</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}Проверить занятость и найти время</button><div id="planner-results" aria-live="polite"></div></section><p class="form-note">Часовой пояс: ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}. Без участников событие сохранится только в вашем календаре.</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}Создать и отправить приглашения</button></div></form>`);
+  const start = new Date(Math.ceil(Date.now() / 3600000) * 3600000), end = new Date(+start + 3600000);
+  modal('Новая встреча', 'Участники получат приглашения от вашего аккаунта Exchange.', `<form id="event-form">${field('title', 'Название встречи', '', 'text', true)}<div class="form-row">${field('start', 'Начало', localDate(start), 'datetime-local', true)}${field('end', 'Окончание', localDate(end), 'datetime-local', true)}</div>${field('location', 'Место или ссылка на встречу')}${field('attendees', 'Участники · email через запятую')}${textField('body', 'Описание и повестка')}<section class="planner"><h3>${icon('clock')}Помощник планирования</h3>${colleagues().length ? `<details><summary>Добавить избранных коллег</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}Проверить занятость и найти время</button><div id="planner-results" aria-live="polite"></div></section><p class="form-note">Часовой пояс: ${esc(T.zone(timeZone))}. Без участников событие сохранится только в вашем календаре.</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}Создать и отправить приглашения</button></div></form>`);
 }
 function contactModal() {
   if (!ready()) return connectModal();
@@ -369,6 +395,7 @@ function contactModal() {
 }
 async function settingsModal() {
   if (window.aster) notificationPreferences = await api('notificationSettings');
+  const zones = [...new Set([T.zone(), T.zone(timeZone), 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
   const p = notificationPreferences;
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal('Настройки Aster', 'Спокойное пространство, настроенное под вас.', `<form id="settings-form">
@@ -378,6 +405,9 @@ async function settingsModal() {
     <button class="secondary" type="button" data-action="refresh-signature">Обновить подпись из OWA</button>
     <p id="signature-status" class="form-note" role="status">Подпись загружается с сервера при создании письма. Настройки сервера не изменяются.</p>
     <label class="field"><span>Оформление</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>Светлое</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>Тёмное</option></select></label>
+    <h3 class="settings-heading">Дата и время</h3>
+    <label class="field"><span>Часовой пояс</span><select name="timeZone"><option value="system" ${timeZone === 'system' ? 'selected' : ''}>Как на компьютере · ${esc(T.zone())}</option>${zones.map(zone => `<option value="${esc(zone)}" ${timeZone === zone ? 'selected' : ''}>${esc(zone.replaceAll('_', ' '))}</option>`).join('')}</select></label>
+    <p class="form-note">Пояс применяется к календарю, письмам, виджету и времени создания встреч. Отсчёт до встречи не зависит от пояса отображения. «Как на компьютере» следует системным настройкам.</p>
     <h3 class="settings-heading">Навигация</h3>
     <label class="field"><span>Размещение карточек разделов</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>Слева · под папками, над аккаунтом</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>Внизу окна · горизонтальная панель</option></select></label>
     <h3 class="settings-heading">Уведомления и звуки</h3>
@@ -446,7 +476,13 @@ async function handleAction(button) {
     else { playSound(button.dataset.kind); toast('Проверка звука. Баннеры работают в настольном приложении.'); }
     return;
   }
-  if (action === 'theme') { state.theme = state.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('aster-theme', state.theme); document.body.classList.toggle('dark', state.theme === 'dark'); return; }
+  if (action === 'theme') {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('aster-theme', state.theme); document.body.classList.toggle('dark', state.theme === 'dark');
+    if (state.selected) renderReader();
+    if (activeMeeting && $('#modal').open && $('#modal').dataset.meetingCard === 'true') renderMeetingBody(activeMeeting);
+    if (window.aster) notificationPreferences = await api('saveNotifications', { ...notificationPreferences, theme: state.theme });
+    return;
+  }
   if (action === 'disconnect') {
     await api('disconnect'); state.account = null; state.demo = false; state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = []; $('#modal').close(); return loadView();
   }
@@ -460,12 +496,12 @@ async function handleAction(button) {
   if (action === 'save-draft') return sendCompose(true);
   if (action === 'new-event') return eventModal();
   if (action === 'new-contact') return contactModal();
-  if (action === 'calendar-day') { state.week = new Date(`${button.dataset.date}T00:00:00`); calendarPreference = 'day'; localStorage.setItem('aster-calendar-view', calendarPreference); return loadView(); }
+  if (action === 'calendar-day') { state.week = calendarDate(button.dataset.date); calendarPreference = 'day'; localStorage.setItem('aster-calendar-view', calendarPreference); return loadView(); }
   if (action === 'today' || ['calendar-prev', 'calendar-next'].includes(action)) {
     if (action === 'today') {
       state.week = new Date();
       if ($('#workspace').clientWidth < 700) { calendarPreference = 'auto'; localStorage.setItem('aster-calendar-view', calendarPreference); }
-    } else state.week = window.asterCalendar.move(state.week, calendarMode(), action === 'calendar-next' ? 1 : -1);
+    } else state.week = window.asterCalendar.move(state.week, calendarMode(), action === 'calendar-next' ? 1 : -1, timeZone);
     return loadView();
   }
   if (action === 'event') { const e = state.events.find(e => e.id === button.dataset.id); if (e) return openMeeting(e); return; }
@@ -498,6 +534,7 @@ async function handleAction(button) {
   if (action === 'write-contact') return compose('new', state.contacts.find(c => c.id === button.dataset.id));
   if (action === 'rsvp') {
     const buttons = [...button.closest('.rsvp').querySelectorAll('button')];
+    const disabled = buttons.map(b => b.disabled);
     buttons.forEach(b => { b.disabled = true; });
     try {
       const scope = $('#modal').dataset.meetingCard === 'true' ? meetingScope() : 'single';
@@ -511,6 +548,7 @@ async function handleAction(button) {
         const response = { AcceptItem: 'Accept', TentativelyAcceptItem: 'Tentative', DeclineItem: 'Decline' }[button.dataset.response];
         const selected = state.events.find(e => e.id === button.dataset.id);
         if (selected) selected.response = response;
+        if (state.selected?.meeting?.id === button.dataset.id) { state.selected.meeting.response = response; renderReader(); }
         if (state.demo) for (const e of window.asterDemo.events.filter(e => scope === 'series' && selected?.seriesId ? e.seriesId === selected.seriesId : e.id === button.dataset.id)) e.response = response;
         if ($('#modal').open) $('#modal').close();
         if (state.view === 'calendar') await loadView();
@@ -519,7 +557,7 @@ async function handleAction(button) {
     } catch (error) {
       if ($('#modal').open && $('#modal .form-error')) $('#modal .form-error').textContent = error.message;
       else throw error;
-    } finally { buttons.forEach(b => { b.disabled = false; }); } return;
+    } finally { buttons.forEach((b, i) => { b.disabled = disabled[i]; }); } return;
   }
   if (action === 'attachment') {
     if (state.demo) { const blob = new Blob(['Это демонстрационное вложение Aster Mail. Реальные файлы загружаются из Exchange.'], { type: 'text/plain;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Aster-demo.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
@@ -580,9 +618,9 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('change', event => {
   if (event.target.name === 'allDay' && event.target.closest('#event-form')) {
-    const form = $('#event-form'), start = new Date(form.elements.start.value);
-    if (event.target.checked) {
-      start.setHours(0, 0, 0, 0); const end = new Date(start); end.setDate(end.getDate() + 1);
+    const form = $('#event-form');
+    if (event.target.checked && form.elements.start.value) {
+      const start = calendarDate(form.elements.start.value.slice(0, 10)), end = addDays(start, 1);
       form.elements.start.value = localDate(start); form.elements.end.value = localDate(end);
     }
     if ($('#planner-results')) $('#planner-results').textContent = 'Время изменилось. Проверьте занятость повторно.';
@@ -605,8 +643,11 @@ document.addEventListener('submit', event => {
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
     submitForm(form, async data => {
-      const next = { mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), minutes: Number(data.minutes) };
+      const next = { mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme };
+      T.zone(next.timeZone);
       notificationPreferences = window.aster ? await api('saveNotifications', next) : next;
+      timeZone = next.timeZone; localStorage.setItem('aster-time-zone', timeZone);
+      miniMonthCursor = null;
       if (data.syncSignature) await getServerSignature();
       syncSignature = Boolean(data.syncSignature); localStorage.setItem('aster-signature-sync', String(syncSignature));
       if (!syncSignature) state.signature = data.signature;
@@ -616,6 +657,7 @@ document.addEventListener('submit', event => {
       renderSidebar();
       localStorage.setItem('aster-signature', state.signature); localStorage.setItem('aster-theme', state.theme);
       document.body.classList.toggle('dark', state.theme === 'dark'); $('#modal').close(); toast('Настройки сохранены');
+      if (ready()) await loadView();
     }); return;
   }
   if (form.id === 'connect-form') submitForm(form, async data => {
@@ -626,7 +668,7 @@ document.addEventListener('submit', event => {
     try { state.folders = await api('folders'); renderSidebar(); } catch { toast('Системные папки доступны. Дополнительные папки загрузить не удалось.'); }
   });
   if (form.id === 'event-form') submitForm(form, async data => {
-    data.start = new Date(data.start).toISOString(); data.end = new Date(data.end).toISOString();
+    data.start = T.fromWall(data.start, timeZone).toISOString(); data.end = T.fromWall(data.end, timeZone).toISOString();
     if (new Date(data.end) <= new Date(data.start)) throw new Error('Окончание должно быть позже начала');
     if (state.demo) window.asterDemo.events.push({ id: `demo-event-${Date.now()}`, title: data.title, start: data.start, end: data.end, location: data.location, preview: data.body, organizer: { name: 'Вы', email: 'you@example.com' } }); else await api('createEvent', data);
     state.week = new Date(data.start); state.view = 'calendar'; state.query = ''; $('#search').value = ''; $('#modal').close(); toast(state.demo ? 'Демо: встреча создана' : 'Встреча создана в Exchange'); await loadView();
@@ -639,6 +681,9 @@ document.addEventListener('submit', event => {
 async function boot() {
   renderSidebar(); welcome();
   if (window.aster) {
+    const savedSettings = await api('notificationSettings');
+    timeZone = savedSettings.timeZone || 'system'; localStorage.setItem('aster-time-zone', timeZone);
+    notificationPreferences = savedSettings;
     window.aster.onSound(playSound);
     window.aster.onNavigate(async data => {
       if (!['mail', 'calendar'].includes(data.view)) return;
