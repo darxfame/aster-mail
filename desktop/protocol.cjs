@@ -64,7 +64,7 @@ function address(value) {
   return { name: o.Name || '', email: o.RoutingType === 'EX' ? '' : o.EmailAddress || '' };
 }
 function message(o) {
-  const body = o.UniqueBody || o.NormalizedBody || o.Body || {};
+  const body = o.NormalizedBody || o.Body || o.UniqueBody || {};
   return {
     id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
     from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address),
@@ -114,7 +114,7 @@ function sendSOAP(data, save = false) {
   const subject = `<t:Subject>${escapeXML(data.subject)}</t:Subject>`;
   const bodyType = data.bodyHtml ? 'HTML' : 'Text';
   const body = escapeXML(data.bodyHtml || data.body);
-  const recipientXML = `${to.length ? `<t:ToRecipients>${recipients(to)}</t:ToRecipients>` : ''}${cc.length ? `<t:CcRecipients>${recipients(cc)}</t:CcRecipients>` : ''}`;
+  const recipientXML = `${to.length ? `<t:ToRecipients>${recipients(to)}</t:ToRecipients>` : ''}${cc.length || data.kind === 'reply-all' ? `<t:CcRecipients>${recipients(cc)}</t:CcRecipients>` : ''}`;
   let messageXML;
   if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
     const kind = { reply: 'ReplyToItem', 'reply-all': 'ReplyAllToItem', forward: 'ForwardItem' }[data.kind];

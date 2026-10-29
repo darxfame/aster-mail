@@ -112,7 +112,7 @@ function modal(title, description, body) {
   if (modalBusy) return;
   delete $('#modal').dataset.eventId;
   delete $('#modal').dataset.meetingCard;
-  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog');
+  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog', 'compose-dialog');
   $('#modal-content').innerHTML = `<div class="modal-header"><div><h2>${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button class="icon-button" data-action="close" aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
   if (!$('#modal').open) $('#modal').showModal();
 }
@@ -447,15 +447,28 @@ function refreshProtocolNote() {
 
 async function compose(mode = 'new', contact = null) {
   if (!ready()) return connectModal();
+  const m = state.selected, composeAccount = state.account, composeDemo = state.demo;
   const source = syncSignature ? await getServerSignature() : null;
   const useServer = source && (mode === 'new' ? source.autoAddSignature : source.autoAddSignatureOnReply);
   const signatureText = source ? '' : state.signature;
-  const m = state.selected;
+  if (composeAccount !== state.account || composeDemo !== state.demo) return;
   composeData = { kind: mode, reference: mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? source : null };
-  const recipients = mode === 'reply-all' ? [...new Set([m.from.email, ...(m.to || []).map(a => a.email), ...(m.cc || []).map(a => a.email)].filter(e => e && e.toLowerCase() !== state.account?.username?.toLowerCase()))].join(', ') : mode === 'reply' ? m.from.email : contact?.email || '';
+  let recipients = { to: contact?.email || '', cc: '' };
+  if (mode.startsWith('reply')) {
+    const identity = state.demo ? { emails: ['you@example.com'] } : await api('identity');
+    if (mode === 'reply-all' && !identity.emails.length) throw new Error('OWA не вернул ваш почтовый адрес. Для «Ответить всем» подключитесь с основным email вместо DOMAIN\\login.');
+    recipients = window.asterRecipients.reply(m, identity.emails, mode === 'reply-all');
+  }
+  if (composeAccount !== state.account || composeDemo !== state.demo) return;
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
-  modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : `Отправка через корпоративный Exchange по ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients, 'text', true)}${field('cc', 'Копия')}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}${useServer ? '<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>' : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
+  modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : `Отправка через корпоративный Exchange по ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients.to, 'text', true)}${field('cc', 'Копия', recipients.cc)}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}<div class="compose-message-area">${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}${mode !== 'new' && m ? `<details class="compose-history" open><summary>Предыдущая переписка · ${esc(m.from.name || m.from.email)}</summary><div id="compose-history-body"></div></details>` : ''}</div>${useServer ? '<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>' : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
+  $('#modal').classList.add('compose-dialog');
   if (useServer) renderSignaturePreview($('#compose-signature-preview'), source);
+  if (mode !== 'new' && m) {
+    const target = $('#compose-history-body');
+    if (m.html) window.asterRichContent.render(target, m.html, { dark: state.theme === 'dark', title: 'Предыдущая переписка', loadImages: () => m.contentImages ||= state.demo ? demoContentImages(m.html) : api('contentImages', { ref: ref(m), kind: 'message' }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : toast(`Демо: ссылка ${url}`) });
+    else target.textContent = m.text || m.preview || '';
+  }
 }
 function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
 function eventModal(requestedStart) {
@@ -496,7 +509,7 @@ async function settingsModal() {
     <p class="form-note">Оригинальные звуки Aster — CC0: можно свободно использовать и изменять. ${window.aster ? 'Проверка показывает баннер и воспроизводит звук. На macOS Aster играет звук напрямую, с обычной громкостью аудиовыхода.' : 'В браузере проверяются звук и плашка с вымышленным письмом. Системные уведомления доступны в приложении.'}</p>
     <p class="form-note">Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. Плашка в клиенте остаётся до открытия или закрытия. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.</p>
     ${p.lastMailPoll ? `<p class="form-note">Последняя проверка почты: ${esc(time(p.lastMailPoll))}</p>` : ''}${p.lastPoll ? `<p class="form-note">Последняя проверка календаря: ${esc(time(p.lastPoll))}</p>` : ''}${p.error ? `<p class="form-error">${esc(p.error)}</p>` : ''}
-    <p class="form-note">Подпись хранится на этом компьютере. Письма и вложения не сохраняются для офлайн-доступа в версии 0.1.</p>
+    <p class="form-note">Подпись хранится на этом компьютере. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). На диск письма и вложения не сохраняются; при выходе кэш очищается.</p>
     ${formError()}<div class="modal-footer"><button class="secondary ${state.account ? 'danger' : ''}" type="button" data-action="${state.account ? 'disconnect' : 'connect'}">${state.account ? 'Выйти и удалить пароль' : 'Подключить Exchange'}</button><button class="primary" type="submit">Сохранить</button></div></form>`);
   if (syncSignature) await refreshSignatureField();
 }
@@ -580,7 +593,7 @@ async function handleAction(button) {
     await api('disconnect'); state.account = null; state.demo = false; state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = []; $('#modal').close(); return loadView();
   }
   if (action === 'folder') { state.view = 'mail'; state.folder = button.dataset.folder; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView(); }
-  if (action === 'refresh') return loadView();
+  if (action === 'refresh') { if (window.aster && !state.demo) await api('clearMailCache'); return loadView(); }
   if (action === 'more') return loadView(true);
   if (action === 'filter') { state.filter = button.dataset.filter; return loadView(); }
   if (action === 'mail-star' || action === 'mail-important') { button.disabled = true; try { await toggleMailProperty(button.dataset.id, action === 'mail-star' ? 'Flag' : 'Importance'); } finally { button.disabled = false; } return; }

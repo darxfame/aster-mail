@@ -70,3 +70,17 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .file-extension { flex: none; padding: 7px 5px; font-size: 9px; font-weight: 750; border-radius: 5px; color: var(--accent); background: var(--accent-bg); min-width: 36px; text-align: center; }
 .extension-pdf { color: #d78080; background: #c85a5a20; }.extension-document { color: #669ddd; background: #608acd20; }.extension-sheet { color: #72ae8c; background: #58967320; }.extension-image { color: #ad88ce; background: #9468b520; }.extension-archive { color: #c19b61; background: #b78b4620; }
 .message-open { user-select: none; -webkit-user-drag: none; }.mail-dragging { cursor: grabbing; }
+
+.compose-dialog { width: 980px; max-width: calc(100vw - 32px); }
+.compose-dialog #compose-form { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+.compose-dialog #compose-form > :nth-child(n+3) { grid-column: 1 / -1; }
+.compose-history { margin: 10px 0 18px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.compose-history summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+#compose-history-body { max-height: 240px; overflow: auto; margin-top: 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.7; }
+.compose-history .email-frame { min-height: 160px; }
+@media (max-width: 620px) { .compose-dialog #compose-form { grid-template-columns: 1fr; } .compose-dialog #compose-form > * { grid-column: 1; } }
+
+.compose-message-area:has(.compose-history) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.compose-message-area > .field { min-width: 0; }
+.compose-message-area .compose-history { min-width: 0; margin-top: 14px; }
+@media (max-width: 760px) { .compose-message-area:has(.compose-history) { grid-template-columns: minmax(0, 1fr); gap: 0; } }

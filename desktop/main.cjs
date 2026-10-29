@@ -29,7 +29,7 @@ async function pollMail() {
   mailPolling = true;
   const active = client;
   try {
-    const page = await active.messages({ folder: 'inbox', offset: 0 });
+    const page = await active.messages({ folder: 'inbox', offset: 0, refresh: true });
     if (active !== client || !notificationSettings.mail) return;
     lastMailPoll = new Date().toISOString(); lastMailError = '';
     const fresh = tracker.newMail(page.items);
@@ -208,7 +208,7 @@ async function fetchContentImage(url) {
 }
 async function connect(data, remember, restoring = false) {
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
-  client = null; mailAlerts = []; publishMailAlerts();
+  client?.mailCache.clear(); client = null; mailAlerts = []; publishMailAlerts();
   account = { server: normalizeServer(data.server, data.allowHttp === true), allowHttp: data.allowHttp === true, username: data.username.trim(), password: data.password };
   // An in-memory partition prevents session cookies from being persisted to disk.
   accountSession = session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false });
@@ -227,7 +227,7 @@ async function connect(data, remember, restoring = false) {
   void pollNotifications();
   return { server: account.server, username: account.username };
 }
-const methods = new Set(['folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const methods = new Set(['identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
@@ -302,7 +302,7 @@ app.whenReady().then(async () => {
         return { ok: true, value: await connect(saved, false, true) };
       }
       if (operation === 'disconnect') {
-        client = null; if (account) account.password = ''; account = null;
+        client?.mailCache.clear(); client = null; if (account) account.password = ''; account = null;
         if (accountSession) await accountSession.clearStorageData();
         mailAlerts = []; publishMailAlerts();
         tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
@@ -330,6 +330,7 @@ app.whenReady().then(async () => {
         if (!result.canceled) await fs.writeFile(result.filePath, await client.attachment(data.id));
         return { ok: true, value: !result.canceled };
       }
+      if (operation === 'clearMailCache') { client.mailCache.clear(); return { ok: true, value: true }; }
       if (!methods.has(operation)) throw new Error('Unknown operation');
       const value = await client[operation](data);
       if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }

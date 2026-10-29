@@ -24,6 +24,7 @@ class OWAClient {
     this.cookieToken = cookieToken;
     this.clearCookies = clearCookies;
     this.canary = null;
+    this.mailCache = new (require('./mail-cache.cjs').MailCache)();
     this.imageTransport = imageTransport;
   }
   async token(html = '') {
@@ -59,7 +60,11 @@ class OWAClient {
     if (!this.canary) this.canary = await this.token((await this.transport(`${this.origin}/owa/`, {})).text);
     if (!this.canary) { this.authRejected = true; throw new Error('Сервер не выдал OWA CANARY. Возможны неверный пароль, MFA или неподдерживаемая форма входа.'); }
   }
-  async call(action, payload, { retry = true, headerBody = false } = {}) {
+  async call(action, payload, options) {
+    try { return await this.requestJSON(action, payload, options); }
+    finally { if (['UpdateItem', 'MoveItem', 'DeleteItem'].includes(action)) this.mailCache.clear(); }
+  }
+  async requestJSON(action, payload, { retry = true, headerBody = false } = {}) {
     if (!this.canary) await this.authenticate();
     const body = JSON.stringify(payload);
     const response = await this.transport(`${this.origin}/owa/service.svc?action=${action}&EP=1&ID=-100&AC=1`, {
@@ -80,9 +85,14 @@ class OWAClient {
     let json;
     try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch { throw new Error(`OWA ${action}: вместо JSON получена страница входа или неподдерживаемый ответ.`); }
     if (action === 'GetUserAvailabilityInternal' && availability.rows(json, payload.request.Body.MailboxDataArray.length)) return json;
+    if (action === 'GetOwaUserConfiguration' && !json.Body && json.UserSessionSettings) return P.checkJSON({ Body: json });
     return P.checkJSON(json);
   }
   async ews(action, xml) {
+    try { return await this.requestSOAP(action, xml); }
+    finally { if (['CreateItem', 'CreateAttachment', 'SendItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'UpdateInboxRules'].includes(action)) this.mailCache.clear(); }
+  }
+  async requestSOAP(action, xml) {
     if (!this.canary) await this.authenticate();
     // Sending is deliberately never retried: a lost reply does not mean the server did not send.
     const response = await this.transport(`${this.origin}/EWS/Exchange.asmx`, {
@@ -94,7 +104,21 @@ class OWAClient {
     if (response.status >= 400) throw new Error(`EWS ${action}: HTTP ${response.status}. Проверьте доступность /EWS/Exchange.asmx. Операция не повторялась.`);
     return P.parseSOAP(response.text, action);
   }
-  async folders() {
+  async identity() {
+    if (!this.identityPromise) this.identityPromise = (async () => {
+      const valid = value => typeof value === 'string' && /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(value);
+      let settings = {};
+      try {
+        const json = await this.call('GetOwaUserConfiguration', P.request('GetOwaUserConfiguration', {}));
+        settings = P.walk(json, value => value.UserSessionSettings)[0]?.UserSessionSettings || {};
+      } catch { /* A UPN login remains usable if the server restricts configuration reads. */ }
+      const emails = [...new Set([settings.UserEmailAddress, settings.UserPrincipalName, this.account.username].filter(valid).map(value => value.toLowerCase()))];
+      return { email: valid(settings.UserEmailAddress) ? settings.UserEmailAddress : emails[0] || '', emails };
+    })();
+    return this.identityPromise;
+  }
+  async folders(data = {}) { return this.mailCache.get('folders', () => this.fetchFolders(), { ttl: 60000, refresh: data.refresh === true }); }
+  async fetchFolders() {
     const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
     const known = await Promise.allSettled(aliases.map(async alias => {
       const result = await this.call('GetFolder', P.request('GetFolder', { FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }), FolderIds: [P.folder(alias)] }));
@@ -118,13 +142,19 @@ class OWAClient {
     }
     return [...folders.values()].map(o => ({ id: o.FolderId.Id, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
   }
-  async messages({ folder = 'inbox', offset = 0, filter = 'all' }) {
+  async messages({ folder = 'inbox', offset = 0, filter = 'all', refresh = false }) {
+    return this.mailCache.get(`list:${folder}:${offset}:${filter}`, () => this.fetchMessages({ folder, offset, filter }), { refresh });
+  }
+  async fetchMessages({ folder, offset, filter }) {
     const json = await this.call('FindItem', P.findItems(folder, offset, filter));
     const root = P.walk(json, o => o.RootFolder)[0]?.RootFolder;
     if (!root) throw new Error('OWA FindItem: в ответе нет списка писем');
     return { items: (root.Items || []).filter(o => o.ItemId?.Id).map(P.message), more: root.IncludesLastItemInRange === false, total: root.TotalItemsInView };
   }
   async message(ref) {
+    return this.mailCache.get(`message:${ref.id}:${ref.changeKey || ''}`, () => this.fetchMessage(ref), { ttl: 300000, refresh: ref.refresh === true });
+  }
+  async fetchMessage(ref) {
     const json = await this.call('GetItem', P.getItems([ref]));
     const o = P.walk(json, o => o.ItemId?.Id && (o.Subject !== undefined || o.NormalizedBody || o.Body))[0];
     if (!o) throw new Error('Письмо не найдено');
@@ -156,7 +186,7 @@ class OWAClient {
     if (size > 20 * 1024 * 1024) throw new Error('Суммарный размер вложений превышает 20 МБ');
     if (!save && !P.emails(data.to).length) throw new Error('Укажите получателя');
     if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
-      const current = await this.message(data.reference);
+      const current = await this.message({ ...data.reference, refresh: true });
       if (!current.changeKey) throw new Error('Exchange не вернул ChangeKey исходного письма. Обновите письмо перед отправкой.');
       data = { ...data, reference: { id: current.id, changeKey: current.changeKey } };
     }

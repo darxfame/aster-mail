@@ -17,7 +17,16 @@
       seen.add(email); return true;
     }).slice(0, 8);
   }
-  const api = { token, replace, matches };
+  function reply(message, ownEmails = [], all = false) {
+    const seen = new Set(ownEmails.map(email => email.trim().toLowerCase()));
+    const take = people => people.map(person => (person?.email || '').trim()).filter(email => {
+      const key = email.toLowerCase(); if (!email || seen.has(key)) return false; seen.add(key); return true;
+    }).join(', ');
+    let to = take([message.from]), cc = all ? take(message.cc || []) : '';
+    if (!to && cc) { const addresses = cc.split(', '); to = addresses.shift(); cc = addresses.join(', '); }
+    return { to, cc };
+  }
+  const api = { token, replace, matches, reply };
   if (typeof module !== 'undefined') { module.exports = api; return; }
   root.asterRecipients = api;
   const inputs = new WeakMap(); let nextId = 0;

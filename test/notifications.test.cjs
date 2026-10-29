@@ -67,7 +67,7 @@ test('slow calendar polling does not block mail and duplicate concurrent mail po
   const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   const begin = source.indexOf('async function pollMail()'), end = source.indexOf('\nconst page =', begin);
   let finish, calls = 0; const alerts = [];
-  const client = { messages: async () => { calls++; return new Promise(resolve => { finish = resolve; }); } };
+  const client = { messages: async options => { assert.equal(options.refresh, true); calls++; return new Promise(resolve => { finish = resolve; }); } };
   const context = vm.createContext({ client, polling: true, mailPolling: false, notificationSettings: { mail: true }, tracker: { newMail: page => page }, queueMailAlert: message => ({ ...message, navigation: { id: message.id } }), mailAlert: require('../desktop/notifications.cjs').mailAlert, notify: (...args) => alerts.push(args), lastPollError: '' });
   vm.runInContext(source.slice(begin, end), context);
   const first = context.pollMail(); await context.pollMail(); assert.equal(calls, 1);
