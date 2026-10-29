@@ -20,13 +20,20 @@ function createTransport(net, credentials, accountSession, signal) {
         callback(credentials.username, credentials.password);
       });
       req.on('redirect', (_status, _method, destination) => {
+        if (options.followRedirects === false) {
+          finish(null, { status: _status, text: '', headers: { location: destination } });
+          req.abort(); return;
+        }
         if (++redirects > 5 || new URL(destination).origin !== origin) {
           finish(new Error('OWA перенаправляет на другой сервер. Межсерверный SSO пока не поддерживается.'));
           req.abort(); return;
         }
         req.followRedirect();
       });
-      req.on('error', () => finish(new Error('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.')));
+      req.on('error', error => {
+        const code = /\bERR_(?:CERT_[A-Z_]+|SSL_[A-Z_]+|NAME_NOT_RESOLVED|CONNECTION_[A-Z_]+|TIMED_OUT)\b/.exec(String(error?.code || '') + ' ' + String(error?.message || ''))?.[0];
+        finish(Object.assign(new Error('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.'), code ? { code } : {}));
+      });
       req.on('response', res => {
         const chunks = []; let size = 0;
         res.on('data', chunk => {
@@ -35,7 +42,7 @@ function createTransport(net, credentials, accountSession, signal) {
           else chunks.push(chunk);
         });
         res.on('error', () => finish(new Error('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.')));
-        res.on('end', () => { const buffer = Buffer.concat(chunks); finish(null, { status: res.statusCode, text: options.binary ? '' : buffer.toString('utf8'), buffer }); });
+        res.on('end', () => { const buffer = Buffer.concat(chunks); finish(null, { status: res.statusCode, text: options.binary ? '' : buffer.toString('utf8'), buffer, headers: Object.fromEntries(['www-authenticate', 'content-type', 'ms-asprotocolversions', 'ms-asprotocolcommands', 'x-responsecode'].filter(key => res.headers?.[key] !== undefined).map(key => [key, res.headers[key]])) }); });
       });
       for (const [key, value] of Object.entries(options.headers || {})) req.setHeader(key, value);
       req.setHeader('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 AsterMail/0.1');

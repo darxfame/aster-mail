@@ -473,8 +473,30 @@ function renderContacts() {
 }
 function connectModal() {
   const server = state.account?.server || '', protocol = 'https';
-  modal('Подключить Exchange', 'Адрес и логин вашего корпоративного OWA.', `<form id="connect-form"><div class="server-address"><label class="field"><span>Протокол</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="custom">Свой · полный URL</option></select></label>${field('server', 'Адрес OWA-сервера', server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', 'Логин · name@company.ru или DOMAIN\\login', state.account?.username || '', 'text', true)}${field('password', 'Пароль', '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">Запомнить пароль в защищённом системном хранилище</label><p class="form-note">Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.</p>${formError()}${window.aster && !state.account ? '<button type="button" class="secondary" data-action="reset-local-data">Сбросить локальные настройки входа…</button>' : ''}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">Посмотреть демо</button><button class="primary" type="submit">Подключиться ${icon('chevron')}</button></div></form>`);
+  modal('Подключить Exchange', 'Адрес и логин вашего корпоративного OWA.', `<form id="connect-form"><div class="server-address"><label class="field"><span>Протокол</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="custom">Свой · полный URL</option></select></label>${field('server', 'Адрес OWA-сервера', server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', 'Логин · name@company.ru или DOMAIN\\login', state.account?.username || '', 'text', true)}${field('password', 'Пароль', '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">Запомнить пароль в защищённом системном хранилище</label><p class="form-note">Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.</p>${diagnosticsControls()}${formError()}${window.aster && !state.account ? '<button type="button" class="secondary" data-action="reset-local-data">Сбросить локальные настройки входа…</button>' : ''}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">Посмотреть демо</button><button class="primary" type="submit">Подключиться ${icon('chevron')}</button></div></form>`);
   refreshProtocolNote();
+}
+function diagnosticsControls() {
+  const email = state.account?.username?.includes('@') ? state.account.username : '';
+  return `<h3 class="settings-heading">Диагностика протоколов</h3><p class="form-note">Проверка OWA, функций EWS, Autodiscover, MAPI/HTTP и ActiveSync. Только чтение, без отправки писем. Может занять до 90 секунд.</p>${field('diagnosticEmail', 'Основной адрес почты · для Autodiscover, необязательно', email, 'email')}<button type="button" class="secondary" data-action="diagnose-protocols">Проверить протоколы и функции</button><div class="protocol-report" aria-live="polite"></div>`;
+}
+async function diagnoseProtocols(button) {
+  const form = button.closest('form'), target = form.querySelector('.protocol-report');
+  const account = state.account, version = modalSequence;
+  const data = { email: form.elements.diagnosticEmail.value.trim() };
+  if (form.id === 'connect-form') {
+    Object.assign(data, window.asterServer.address(form.elements.protocol.value, form.elements.server.value), { username: form.elements.username.value, password: form.elements.password.value });
+  }
+  button.disabled = true; target.textContent = 'Проверяем службы и функции сервера…';
+  try {
+    if (!window.aster) throw new Error('Диагностика сервера доступна в настольном приложении.');
+    const report = await api('diagnoseProtocols', data);
+    if (state.account !== account || modalSequence !== version || !target.isConnected) return;
+    const labels = { ok: 'Работает', detected: 'Объявлено сервером', unknown: 'Не подтверждено', skipped: 'Не проверялось' };
+    const text = `Диагностика Aster Mail\n${report.server}\n${report.checkedAt}\n\n` + report.rows.map(row => `${row.name} — ${labels[row.status] || labels.unknown}\n${row.detail}`).join('\n\n');
+    target.innerHTML = `<p class="form-note">${esc(report.server)} · ${esc(dateFormat(report.checkedAt, { dateStyle: 'short', timeStyle: 'short' }))}</p><p class="form-note">Отчёт показывает доступ из Aster. Он не гарантирует совместимость авторизации Outlook или Apple Mail. Autodiscover проверяется только на указанном сервере.</p>${report.rows.map(row => `<div class="protocol-result"><strong>${esc(row.name)}</strong><span class="protocol-status" data-status="${esc(row.status)}">${esc(labels[row.status] || labels.unknown)}</span><p>${esc(row.detail)}</p></div>`).join('')}<label class="field"><span>Текст отчёта · можно скопировать для разбора</span><textarea readonly rows="8" aria-label="Отчёт диагностики">${esc(text)}</textarea></label>`;
+  } catch (error) { if (target.isConnected && modalSequence === version) target.textContent = error.message; }
+  finally { data.password = ''; button.disabled = false; }
 }
 function refreshProtocolNote() {
   const form = $('#connect-form'); if (!form) return;
@@ -630,6 +652,7 @@ async function settingsModal() {
     <h3 class="settings-section-title">Аккаунт Exchange</h3>
     <p class="form-note">${state.account ? `Аккаунт: ${esc(state.account.username)} · ${esc(state.account.server)}` : state.demo ? 'Сейчас открыт демонстрационный аккаунт.' : 'Аккаунт Exchange пока не подключён.'}</p>
     <button class="secondary ${state.account ? 'danger' : ''}" type="button" data-action="${state.account ? 'disconnect' : 'connect'}">${state.account ? 'Выйти и удалить пароль' : 'Подключить Exchange'}</button>
+    ${state.account ? diagnosticsControls() : ''}
     <h3 class="settings-heading">Данные на компьютере</h3>
     <p class="form-note">Подпись, коллеги и настройки сохраняются зашифрованными и удаляются при выходе. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). На диск письма и вложения не сохраняются; при выходе кэш очищается.</p>
     <h3 class="settings-heading">Приложение</h3>
@@ -751,6 +774,7 @@ async function handleAction(button) {
     $('#modal').close(); state.demo = true; state.folder = 'inbox'; state.view = 'mail'; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView();
   }
   if (action === 'updates') return updatesModal();
+  if (action === 'diagnose-protocols') return diagnoseProtocols(button);
   if (action === 'settings') return settingsModal();
   if (action === 'settings-tab') return selectSettingsTab(button);
   if (action === 'refresh-signature') {

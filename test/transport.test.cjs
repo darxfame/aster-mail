@@ -35,3 +35,28 @@ test('cross-origin requests, redirects and proxy credential challenges are block
   await assert.rejects(pending, /другой сервер/); assert.equal(calls[0].req.followed, undefined);
   controller.abort();
 });
+
+test('diagnostic redirects are reported without following or forwarding credentials', async () => {
+  const { calls, controller, transport } = setup();
+  const pending = transport('https://mail.example.com/autodiscover/autodiscover.xml', { followRedirects: false });
+  calls[0].req.emit('redirect', 302, 'GET', 'https://login.example.com/sso');
+  const response = await pending;
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, 'https://login.example.com/sso');
+  assert.equal(calls[0].req.followed, undefined);
+  assert.equal(calls[0].req.aborted, true);
+  controller.abort();
+});
+
+test('transport exposes diagnostic headers but excludes cookies and unrelated headers', async () => {
+  const { calls, controller, transport } = setup();
+  const pending = transport('https://mail.example.com/Microsoft-Server-ActiveSync', { method: 'OPTIONS' });
+  const response = new EventEmitter();
+  Object.assign(response, { statusCode: 200, headers: { 'ms-asprotocolversions': ['14.1,16.0'], 'set-cookie': ['private-cookie'], 'x-private': ['private'] } });
+  calls[0].req.emit('response', response);
+  response.emit('data', Buffer.from(''));
+  response.emit('end');
+  const result = await pending;
+  assert.deepEqual(result.headers, { 'ms-asprotocolversions': ['14.1,16.0'] });
+  controller.abort();
+});
