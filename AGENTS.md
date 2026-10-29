@@ -45,7 +45,7 @@ generator are CC0; preserve their separate license.
 `desktop/updates.cjs` checks stable GitHub releases and verifies installer size
 and SHA-256 before opening. Keep update traffic separate from OWA, allow only
 HTTPS GitHub/CDN destinations, and never auto-quit or replace the unsigned app.
-`src/server.js` defaults to HTTPS; HTTP requires explicit opt-in. Preserve
+`src/server.js` accepts HTTPS only, including restored accounts. Preserve
 same-origin authentication and TLS validation for HTTPS.
 
 `src/mail-ui.js` owns drag-to-folder, rule prompts, signature previews and
