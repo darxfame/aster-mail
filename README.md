@@ -1,7 +1,14 @@
 # Aster Mail
 
-[![Checks](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-8b64cb.svg)](LICENSE)
+[![Релиз](https://img.shields.io/github/v/release/darxfame/aster-mail?style=flat&label=%D0%A0%D0%B5%D0%BB%D0%B8%D0%B7&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/releases/latest)
+[![Скачивания](https://img.shields.io/github/downloads/darxfame/aster-mail/total?style=flat&label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/releases)
+[![Звёзды](https://img.shields.io/github/stars/darxfame/aster-mail?style=flat&label=%D0%97%D0%B2%D1%91%D0%B7%D0%B4%D1%8B&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/stargazers)
+[![Форки](https://img.shields.io/github/forks/darxfame/aster-mail?style=flat&label=%D0%A4%D0%BE%D1%80%D0%BA%D0%B8&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/forks)
+[![Участники](https://img.shields.io/github/contributors/darxfame/aster-mail?style=flat&label=%D0%A3%D1%87%D0%B0%D1%81%D1%82%D0%BD%D0%B8%D0%BA%D0%B8&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/graphs/contributors)
+
+[![Проверки](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
+[![Сборка установщиков](https://github.com/darxfame/aster-mail/actions/workflows/release.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/release.yml)
+[![Лицензия MIT](https://img.shields.io/badge/License-MIT-8b64cb.svg)](LICENSE)
 
 **Ранняя open-source версия · macOS Apple Silicon · Windows x64**
 
@@ -9,6 +16,8 @@
 Доступны установщики для **macOS Apple Silicon (DMG)** и **Windows x64 (EXE)**.
 Основа — Electron. Интерфейс на русском, светлая и тёмная темы, навигация в духе Mustang
 и Outlook. Лицензия MIT.
+
+<sub>Скачивания — загрузки файлов релизов, а не число уникальных пользователей. Статистика использования приложения не собирается.</sub>
 
 ![Aster Mail — деморежим](docs/aster-sidebar-cards-0.1.3.jpg)
 
