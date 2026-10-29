@@ -1,17 +1,17 @@
 let updateSnapshot = { installed: '0.1.17', status: 'idle', autoCheck: true, available: null, error: '' };
 function updateStatus(value) {
-  if (value.status === 'checking') return 'Проверяем GitHub…';
-  if (value.status === 'downloading') return `Загрузка установщика · ${value.progress}%`;
-  if (value.status === 'ready') return 'Установщик загружен, SHA-256 проверен';
-  if (value.available) return `Доступна версия ${value.available.version}`;
-  if (value.status === 'current') return 'У вас актуальная версия';
-  return 'Обновления ещё не проверялись';
+  if (value.status === 'checking') return tr('Проверяем GitHub…');
+  if (value.status === 'downloading') return `${tr("Загрузка установщика ·")} ${value.progress}%`;
+  if (value.status === 'ready') return tr('Установщик загружен, SHA-256 проверен');
+  if (value.available) return `${tr("Доступна версия")} ${value.available.version}`;
+  if (value.status === 'current') return tr('У вас актуальная версия');
+  return tr('Обновления ещё не проверялись');
 }
 function receiveUpdate(value) {
   updateSnapshot = value;
   const button = document.querySelector('.statusbar .version');
   if (button) {
-    button.textContent = value.available ? `${value.installed} · ${value.status === 'ready' ? 'Установить' : 'Обновление'}` : value.installed;
+    button.textContent = value.available ? `${value.installed} · ${value.status === 'ready' ? tr('Установить') : tr('Обновление')}` : value.installed;
     button.classList.toggle('update-available', Boolean(value.available));
     button.title = updateStatus(value);
   }
@@ -21,20 +21,20 @@ function renderUpdates() {
   const panel = document.querySelector('#updates-panel'); if (!panel) return;
   const value = updateSnapshot, busy = ['checking', 'downloading'].includes(value.status);
   panel.innerHTML = `<p class="update-status" role="status">${esc(updateStatus(value))}</p>
-    ${value.lastChecked ? `<p class="form-note">Последняя проверка: ${esc(new Date(value.lastChecked).toLocaleString('ru-RU'))}</p>` : ''}
-    ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="Загрузка обновления"></progress>` : ''}
-    ${value.available?.notes ? `<details class="update-notes"><summary>Что нового в ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
+    ${value.lastChecked ? `<p class="form-note">${tr("Последняя проверка:")} ${esc(new Date(value.lastChecked).toLocaleString(window.asterI18n.locale))}</p>` : ''}
+    ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="${tr("Загрузка обновления")}"></progress>` : ''}
+    ${value.available?.notes ? `<details class="update-notes"><summary>${tr("Что нового в")} ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
     ${value.error ? `<p class="form-error" role="alert">${esc(value.error)}</p>` : ''}
-    <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy ? 'disabled' : ''}>Проверить обновления</button>
-    ${value.available ? `<button class="primary" data-update="${value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'ready' ? 'Открыть установщик' : 'Скачать установщик'}</button>` : ''}</div>`;
+    <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
+    ${value.available ? `<button class="primary" data-update="${value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}</div>`;
 }
 async function updatesModal() {
   if (window.aster) updateSnapshot = await api('updateState');
-  modal('Обновления Aster Mail', `Установлена версия ${updateSnapshot.installed}`, `<label class="checkbox"><input id="automatic-updates" type="checkbox" ${updateSnapshot.autoCheck ? 'checked' : ''} ${window.aster ? '' : 'disabled'}>Проверять при запуске и каждые 6 часов</label>
-    <p class="form-note">Установщик загружается из GitHub Releases, его SHA-256 сверяется с данными GitHub. Загрузка и установка запускаются вами.</p>
-    <p class="form-note">На macOS откройте DMG, завершите Aster через ⌘Q и перенесите новую версию в «Программы». На Windows откройте EXE и следуйте установщику. Приложение не закрывается автоматически. Настройки и аккаунт остаются на компьютере.</p>
-    <p class="form-note">Установщики не подписаны Developer ID / сертификатом Windows. SHA-256 проверяет целостность файла и не заменяет подпись издателя. Версию 0.1.8 нужно один раз обновить вручную.</p>
-    ${window.aster ? '<div id="updates-panel"></div>' : '<p class="form-note">Проверка и загрузка доступны в настольном приложении.</p>'}`);
+  modal(tr('Обновления Aster Mail'), `${tr("Установлена версия")} ${updateSnapshot.installed}`, `<label class="checkbox"><input id="automatic-updates" type="checkbox" ${updateSnapshot.autoCheck ? 'checked' : ''} ${window.aster ? '' : 'disabled'}>${tr("Проверять при запуске и каждые 6 часов")}</label>
+    <p class="form-note">${tr("Установщик загружается из GitHub Releases, его SHA-256 сверяется с данными GitHub. Загрузка и установка запускаются вами.")}</p>
+    <p class="form-note">${tr("На macOS откройте DMG, завершите Aster через ⌘Q и перенесите новую версию в «Программы». На Windows откройте EXE и следуйте установщику. Приложение не закрывается автоматически. Настройки и аккаунт остаются на компьютере.")}</p>
+    <p class="form-note">${tr("Установщики не подписаны Developer ID / сертификатом Windows. SHA-256 проверяет целостность файла и не заменяет подпись издателя. Версию 0.1.8 нужно один раз обновить вручную.")}</p>
+    ${window.aster ? '<div id="updates-panel"></div>' : tr('<p class="form-note">Проверка и загрузка доступны в настольном приложении.</p>')}`);
   renderUpdates();
 }
 document.addEventListener('click', async event => {

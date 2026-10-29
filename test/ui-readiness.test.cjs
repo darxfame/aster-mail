@@ -13,7 +13,7 @@ test('background rerenders restore the same mail action without moving focus fro
   let buttons = [oldButton];
   const container = { contains: element => element === oldButton, querySelectorAll: () => buttons };
   const document = { activeElement: oldButton };
-  const context = vm.createContext({ document });
+  const context = vm.createContext({ tr: value => value, document });
   vm.runInContext(source.slice(source.indexOf('function preserveListFocus('), source.indexOf('let modalDirty =')), context);
   const restore = context.preserveListFocus(container);
   buttons = [other, replacement]; restore();
@@ -26,7 +26,7 @@ test('background rerenders restore the same mail action without moving focus fro
 test('unsaved form changes reach native lifecycle protection and stay protected after cancellation', () => {
   const events = {}, windowEvents = {}, flags = [];
   let onClose;
-  const context = vm.createContext({
+  const context = vm.createContext({ tr: value => value,
     window: { aster: { setUnsavedChanges: value => flags.push(value) }, addEventListener: (name, callback) => { windowEvents[name] = callback; } },
     document: { addEventListener(name, callback) { events[name] = callback; } },
     $: () => ({ addEventListener(_name, callback) { onClose = callback; } }),
@@ -54,7 +54,7 @@ test('keyboard move offers nested folders and rejects a navigation that overtook
   const handlers = {}, moved = [];
   let markup, submission;
   const state = { selected: { id: 'mail-1', subject: 'Report', parentId: 'real-inbox' }, folder: 'inbox', generation: 4, demo: false, folders: [{ id: 'real-inbox', name: 'Inbox', wellKnown: 'inbox' }, { id: 'projects', name: 'Projects', parentId: 'real-inbox' }] };
-  const context = vm.createContext({
+  const context = vm.createContext({ tr: value => value,
     state, document: { addEventListener: (name, callback) => { handlers[name] = callback; } },
     window: { asterFolders: require('../src/folders.js') }, systemFolders: [['inbox', 'Inbox', 'inbox'], ['archive', 'Archive', 'archive']],
     $: selector => selector === '#modal' ? { open: false, close() {} } : { focus() {} },

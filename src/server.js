@@ -1,17 +1,18 @@
 (function (root) {
+  const tr = typeof module !== 'undefined' ? require('./i18n.js').text : root.asterI18n.text;
   function normalize(value) {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !['/', '/owa', '/owa/'].includes(url.pathname)) throw new Error('Укажите адрес сервера без логина и параметров, например mail.company.ru/owa/. Разрешён только HTTPS.');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !['/', '/owa', '/owa/'].includes(url.pathname)) throw new Error(tr('Укажите адрес сервера без логина и параметров, например mail.company.ru/owa/. Разрешён только HTTPS.'));
     return url.origin;
   }
   function address(protocol, value) {
-    if (!['https', 'custom'].includes(protocol)) throw new Error('Выберите протокол подключения');
+    if (!['https', 'custom'].includes(protocol)) throw new Error(tr('Выберите протокол подключения'));
     const input = String(value || '').trim();
-    if (!input) throw new Error('Укажите адрес OWA-сервера');
+    if (!input) throw new Error(tr('Укажите адрес OWA-сервера'));
     const full = /^[a-z][a-z\d+.-]*:\/\//i.test(input);
-    if (protocol === 'custom' && !full) throw new Error('В режиме полного URL укажите https://');
+    if (protocol === 'custom' && !full) throw new Error(tr('В режиме полного URL укажите https://'));
     const url = new URL(full ? input : `${protocol}://${input}`);
-    if (protocol !== 'custom' && url.protocol !== `${protocol}:`) throw new Error('Протокол в адресе не совпадает с выбранным');
+    if (protocol !== 'custom' && url.protocol !== `${protocol}:`) throw new Error(tr('Протокол в адресе не совпадает с выбранным'));
     return { server: normalize(url.href), allowHttp: false };
   }
   const api = { normalize, address };

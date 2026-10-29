@@ -13,7 +13,7 @@ function client(handler) {
   value.canary = 'canary'; return { value, calls };
 }
 function renderer(extra = {}) {
-  const context = vm.createContext({ ...extra });
+  const context = vm.createContext({ tr: value => value, ...extra });
   vm.runInContext(source.slice(source.indexOf('function mailRecipientDetails(')), context);
   return context;
 }

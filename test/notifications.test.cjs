@@ -68,7 +68,7 @@ test('slow calendar polling does not block mail and duplicate concurrent mail po
   const begin = source.indexOf('async function pollMail()'), end = source.indexOf('\nconst page =', begin);
   let finish, calls = 0; const alerts = [];
   const client = { mailCache: {generation:0}, inboxStatus: async () => null, messages: async options => { assert.equal(options.refresh, true); calls++; return new Promise(resolve => { finish = resolve; }); } };
-  const context = vm.createContext({ client, window: null, polling: true, mailPolling: false, notificationSettings: { mail: true }, tracker: { newMail: page => page }, queueMailAlert: message => ({ ...message, navigation: { id: message.id } }), mailAlert: require('../desktop/notifications.cjs').mailAlert, notify: (...args) => alerts.push(args), lastPollError: '' });
+  const context = vm.createContext({ tr: value => value, client, window: null, polling: true, mailPolling: false, notificationSettings: { mail: true }, tracker: { newMail: page => page }, queueMailAlert: message => ({ ...message, navigation: { id: message.id } }), mailAlert: require('../desktop/notifications.cjs').mailAlert, notify: (...args) => alerts.push(args), lastPollError: '' });
   vm.runInContext(source.slice(begin, end), context);
   const first = context.pollMail(); await context.pollMail(); assert.equal(calls, 1);
   finish({ items: [{ id: 'fresh', title: 'Anna', body: 'Preview' }] }); await first;
@@ -79,7 +79,7 @@ test('slow calendar polling does not block mail and duplicate concurrent mail po
 test('persistent preview queue is bounded and replaces duplicates without replaying old entries', () => {
   const vm = require('node:vm'), source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   const snapshots = [];
-  const context = vm.createContext({ window: { isDestroyed: () => false, webContents: { send: (_channel, alerts) => snapshots.push(alerts) } }, notificationSettings: { preview: true }, mailAlert: require('../desktop/notifications.cjs').mailAlert });
+  const context = vm.createContext({ tr: value => value, window: { isDestroyed: () => false, webContents: { send: (_channel, alerts) => snapshots.push(alerts) } }, notificationSettings: { preview: true }, mailAlert: require('../desktop/notifications.cjs').mailAlert });
   vm.runInContext(source.slice(source.indexOf('let mailAlerts ='), source.indexOf('async function pollMail()')), context);
   for (let id = 0; id < 25; id++) context.queueMailAlert({ id: String(id), from: { name: 'Anna' }, subject: 'Subject' });
   assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].id, '24');
@@ -90,7 +90,7 @@ test('inbox synchronizes with notifications disabled and rejects a snapshot over
   const vm=require('node:vm'), source=fs.readFileSync(path.join(__dirname,'../desktop/main.cjs'),'utf8');
   const snapshots=[];
   const client={syncId:'session',mailCache:{generation:0},messages:async()=>({items:[{id:'new'}],more:false}),inboxStatus:async()=>({id:'inbox',unread:1})};
-  const context=vm.createContext({client,window:{isDestroyed:()=>false,webContents:{send:(channel,data)=>snapshots.push({channel,data})}},mailPolling:false,notificationSettings:{mail:false},tracker:{newMail:page=>page},queueMailAlert:()=>assert.fail('Notifications are disabled'),notify:()=>assert.fail('Notifications are disabled')});
+  const context=vm.createContext({ tr: value => value,client,window:{isDestroyed:()=>false,webContents:{send:(channel,data)=>snapshots.push({channel,data})}},mailPolling:false,notificationSettings:{mail:false},tracker:{newMail:page=>page},queueMailAlert:()=>assert.fail('Notifications are disabled'),notify:()=>assert.fail('Notifications are disabled')});
   vm.runInContext(source.slice(source.indexOf('async function pollMail()'),source.indexOf('\nconst page =')),context);
   await context.pollMail(); assert.equal(snapshots.length,1); assert.equal(snapshots[0].channel,'aster-inbox'); assert.equal(snapshots[0].data.sessionId,'session'); assert.equal(snapshots[0].data.page.items[0].id,'new');
   client.messages=async()=>{client.mailCache.generation++;return {items:[{id:'obsolete'}]};};

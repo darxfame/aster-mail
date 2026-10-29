@@ -9,7 +9,7 @@ function renderer(api = async () => assert.fail('Unexpected request')) {
   const selected = {id:'old',html:'<b>Open message</b>'}, state = {account:{sessionId:'session'},generation:1,view:'mail',folder:'inbox',filter:'all',query:'',folders:[{id:'inbox-id',wellKnown:'inbox',unread:1}],messages:[{id:'old',read:true}],selected,more:false};
   const list = {scrollTop:0,querySelectorAll:()=>[],insertAdjacentHTML(){}}, status = {};
   let renders = 0;
-  const context = vm.createContext({state,api,mailWrites:0,mailWriteEpoch:0,$:selector=>selector==='#messages'?list:status,document:{querySelector:()=>null},renderSidebar(){},renderMessages(){renders++;},time:()=> '10:00'});
+  const context = vm.createContext({ tr: value => value,state,api,mailWrites:0,mailWriteEpoch:0,$:selector=>selector==='#messages'?list:status,document:{querySelector:()=>null},renderSidebar(){},renderMessages(){renders++;},time:()=> '10:00'});
   vm.runInContext(functions,context);
   return {state,context,selected,list,get renders(){return renders;}};
 }
@@ -42,7 +42,7 @@ test('message list becomes readable before a slow folder tree finishes loading',
   const source=fs.readFileSync(require.resolve('../src/app.js'),'utf8');
   let finish, rendered=false;
   const folders=new Promise(resolve=>{finish=resolve;});
-  const context=vm.createContext({state:{generation:0,view:'mail',folder:'inbox',filter:'all',query:'',account:{},messages:[]},$:()=>({}),ready:()=>true,renderSidebar(){},clearError(){},icon:()=>'',time:()=>'',api:async operation=>operation==='messages'?{items:[],more:false}:folders,renderMail(){rendered=true;},refreshMailFolders:()=>folders,showError(){}});
+  const context=vm.createContext({ tr: value => value,state:{generation:0,view:'mail',folder:'inbox',filter:'all',query:'',account:{},messages:[]},$:()=>({}),ready:()=>true,renderSidebar(){},clearError(){},icon:()=>'',time:()=>'',api:async operation=>operation==='messages'?{items:[],more:false}:folders,renderMail(){rendered=true;},refreshMailFolders:()=>folders,showError(){}});
   vm.runInContext(source.slice(source.indexOf('async function loadView('),source.indexOf('function filteredMessages(')),context);
   const loading=context.loadView(); await new Promise(resolve=>setImmediate(resolve));
   try {assert.equal(rendered,true);} finally {finish([]); await loading;}
@@ -55,7 +55,7 @@ test('previews separate HTML blocks and joined Cyrillic names without changing U
 });
 test('recipient roles stay separate and names are escaped with contact buttons by group and index',()=>{
   const source=fs.readFileSync(require.resolve('../src/mail-ui.js'),'utf8');
-  const context=vm.createContext({esc:value=>String(value).replace(/[<>&"]/g,char=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[char])),avatar:()=>'',icon:()=>''});
+  const context=vm.createContext({ tr: value => value,esc:value=>String(value).replace(/[<>&"]/g,char=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[char])),avatar:()=>'',icon:()=>''});
   vm.runInContext(source.slice(source.indexOf('function mailRecipientDetails(')),context);
   const html=context.mailRecipientDetails({to:Array.from({length:100},(_,i)=>({name:i===0?'<b>Анна</b>':`Участник ${i}`,email:`person${i}@example.com`})),cc:[{name:'Елена',email:'elena@example.com'}]});
   assert.match(html,/<details class="mail-recipients" open><summary>/);

@@ -1,3 +1,4 @@
+const tr = require('../src/i18n.js').text;
 // OWA payload shapes adapted from mac-owa-widget (MIT); see THIRD_PARTY_NOTICES.md.
 const { XMLParser, XMLValidator } = require('fast-xml-parser');
 const T = require('../src/time.js');
@@ -84,7 +85,7 @@ function contact(o) {
 function message(o) {
   const body = o.NormalizedBody || o.Body || o.UniqueBody || {};
   return {
-    id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
+    id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || tr('(Без темы)'),
     from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address), bcc: (o.BccRecipients || []).map(address), isDraft: o.IsDraft === true,
     date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: mailPreview(body.Value || o.Preview, Boolean(body.Value && body.BodyType !== 'Text')), read: Boolean(o.IsRead),
     importance: o.Importance || 'Normal', flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
@@ -113,7 +114,7 @@ function signatureFromConfiguration(data) {
     const key = String(entry.DictionaryKey.Value || '').toLowerCase();
     options[key] = entry.DictionaryValue.Value ?? '';
   }
-  if (!Object.hasOwn(options, 'signaturehtml') && !Object.hasOwn(options, 'signaturetext')) throw new Error('В настройках OWA не найдена подпись. Проверьте подпись в веб-интерфейсе Exchange.');
+  if (!Object.hasOwn(options, 'signaturehtml') && !Object.hasOwn(options, 'signaturetext')) throw new Error(tr('В настройках OWA не найдена подпись. Проверьте подпись в веб-интерфейсе Exchange.'));
   const flag = key => Object.hasOwn(options, key) ? String(options[key]).toLowerCase() === 'true' : true;
   // Exchange may leave XML numeric CR/LF entities inside dictionary string values.
   const lines = value => String(value || '').replace(/&#(?:x0*d|0*13);/gi, '\r').replace(/&#(?:x0*a|0*10);/gi, '\n').replace(/\r\n?/g, '\n');
@@ -122,12 +123,12 @@ function signatureFromConfiguration(data) {
 function emails(value) {
   if (typeof value !== 'string' || value.length > 10000) throw new Error('Invalid recipients');
   const result = value.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
-  if (result.some(email => !/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email))) throw new Error('Укажите адреса через запятую: name@company.ru');
+  if (result.some(email => !/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email))) throw new Error(tr('Укажите адреса через запятую: name@company.ru'));
   return result;
 }
 function sendSOAP(data, save = false) {
   const to = emails(data.to), cc = emails(data.cc || ''), bcc = emails(data.bcc || '');
-  if (!save && !to.length && !cc.length && !bcc.length) throw new Error('Укажите получателя');
+  if (!save && !to.length && !cc.length && !bcc.length) throw new Error(tr('Укажите получателя'));
   const recipients = values => values.map(email => `<t:Mailbox><t:EmailAddress>${escapeXML(email)}</t:EmailAddress></t:Mailbox>`).join('');
   const subject = `<t:Subject>${escapeXML(data.subject)}</t:Subject>`;
   const bodyType = data.bodyHtml ? 'HTML' : 'Text';
@@ -142,7 +143,7 @@ function sendSOAP(data, save = false) {
 }
 function eventSOAP(data) {
   const start = new Date(data.start), end = new Date(data.end), attendees = emails(data.attendees || '');
-  if (!data.title?.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) throw new Error('Укажите название и корректное время встречи');
+  if (!data.title?.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) throw new Error(tr('Укажите название и корректное время встречи'));
   return soap(`<m:CreateItem SendMeetingInvitations="${attendees.length ? 'SendToAllAndSaveCopy' : 'SendToNone'}"><m:SavedItemFolderId><t:DistinguishedFolderId Id="calendar"/></m:SavedItemFolderId><m:Items><t:CalendarItem><t:Subject>${escapeXML(data.title)}</t:Subject><t:Body BodyType="Text">${escapeXML(data.body)}</t:Body><t:ReminderIsSet>true</t:ReminderIsSet><t:ReminderMinutesBeforeStart>15</t:ReminderMinutesBeforeStart><t:Start>${start.toISOString()}</t:Start><t:End>${end.toISOString()}</t:End><t:Location>${escapeXML(data.location)}</t:Location>${attendees.length ? `<t:RequiredAttendees>${attendees.map(email => `<t:Attendee><t:Mailbox><t:EmailAddress>${escapeXML(email)}</t:EmailAddress></t:Mailbox></t:Attendee>`).join('')}</t:RequiredAttendees>` : ''}</t:CalendarItem></m:Items></m:CreateItem>`);
 }
 const normalizeServer = require('../src/server.js').normalize;

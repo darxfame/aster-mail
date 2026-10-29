@@ -1,9 +1,10 @@
+const tr = require('../src/i18n.js').text;
 // OWA request shape and per-mailbox matching adapted from mac-owa-widget (MIT).
 const P = require('./protocol.cjs');
 function query(data) {
   const emails = [...new Set(P.emails(data.emails).map(email => email.toLowerCase()))];
   const start = new Date(data.start), end = new Date(data.end);
-  if (!emails.length || emails.length > 50 || !Number.isFinite(+start) || !Number.isFinite(+end) || end <= start || end - start > 7 * 86400000) throw new Error('Укажите до 50 участников и период не более семи дней');
+  if (!emails.length || emails.length > 50 || !Number.isFinite(+start) || !Number.isFinite(+end) || end <= start || end - start > 7 * 86400000) throw new Error(tr('Укажите до 50 участников и период не более семи дней'));
   const payload = P.request('GetUserAvailabilityInternal', {});
   payload.Body = P.typed('GetUserAvailabilityRequest', {
     MailboxDataArray: emails.map(email => P.typed('MailboxData', { Email: P.typed('EmailAddress', { Address: email }) })),
@@ -30,7 +31,7 @@ function normalize(data, request) {
     const failure = P.walk(row, o => o.ResponseCode && o.ResponseCode !== 'NoError')[0];
     const merged = view?.MergedFreeBusy || '';
     const count = Math.ceil((Date.parse(request.end) - Date.parse(request.start)) / 900000);
-    if (failure || !/^[0-4]+$/.test(merged) || merged.length < count) return { ...result, error: failure?.ResponseCode || 'Нет полных данных занятости' };
+    if (failure || !/^[0-4]+$/.test(merged) || merged.length < count) return { ...result, error: failure?.ResponseCode || tr('Нет полных данных занятости') };
     for (let slot = 0; slot < count; slot++) {
       const type = ['Free', 'Tentative', 'Busy', 'OOF', 'NoData'][Number(merged[slot])];
       if (type !== 'Free') result.blocks.push({ start: new Date(Date.parse(request.start) + slot * 900000).toISOString(), end: new Date(Math.min(Date.parse(request.end), Date.parse(request.start) + (slot + 1) * 900000)).toISOString(), type });

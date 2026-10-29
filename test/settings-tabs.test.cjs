@@ -12,7 +12,7 @@ test('settings tabs expose only the selected panel without replacing form values
     getAttribute: () => id,
     setAttribute(name, value) { this[name] = value; },
   }));
-  const context = vm.createContext({});
+  const context = vm.createContext({ tr: value => value,});
   vm.runInContext(source.slice(source.indexOf('function selectSettingsTab('), source.indexOf('async function settingsModal(')), context);
   context.selectSettingsTab(tabs[1]);
   assert.equal(panels['#general'].hidden, true);

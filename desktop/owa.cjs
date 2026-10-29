@@ -1,3 +1,4 @@
+const tr = require('../src/i18n.js').text;
 const P = require('./protocol.cjs');
 const calendarEvents = require('./calendar-events.cjs');
 const availability = require('./availability.cjs');
@@ -8,7 +9,7 @@ function attributes(tag) {
 function loginForm(html, origin) {
   const action = attributes(html.match(/<form\b[^>]*>/i)?.[0] || '').action || '/owa/auth.owa';
   const url = new URL(action, `${origin}/owa/`);
-  if (url.origin !== origin) throw new Error('Форма входа перенаправляет пароль на другой сервер. Такой вход пока не поддерживается.');
+  if (url.origin !== origin) throw new Error(tr('Форма входа перенаправляет пароль на другой сервер. Такой вход пока не поддерживается.'));
   const fields = new URLSearchParams({ destination: `${origin}/owa/`, flags: '4', forcedownlevel: '0', isUtf8: '1' });
   for (const tag of html.match(/<input\b[^>]*>/gi) || []) {
     const a = attributes(tag);
@@ -33,7 +34,7 @@ class OWAClient {
     return html.match(/(?:"canary"\s*:\s*"|canary\s*=\s*["'])([^"']+)/i)?.[1] || null;
   }
   async authenticate() {
-    if (this.authRejected) throw new Error('Автоматический вход остановлен после отказа сервера. Подключите аккаунт заново в настройках.');
+    if (this.authRejected) throw new Error(tr('Автоматический вход остановлен после отказа сервера. Подключите аккаунт заново в настройках.'));
     if (this.authentication) return this.authentication;
     this.authentication = this.performAuthentication();
     try { return await this.authentication; } finally { this.authentication = null; }
@@ -42,8 +43,8 @@ class OWAClient {
     this.canary = null;
     await this.clearCookies();
     const page = await this.transport(`${this.origin}/owa/`, {});
-    if (page.status === 401) { this.authRejected = true; throw new Error('Сервер отклонил логин или пароль. Проверьте также домен: DOMAIN\\login.'); }
-    if (page.status >= 400) throw new Error(`Страница OWA недоступна (HTTP ${page.status}). Проверьте адрес и VPN.`);
+    if (page.status === 401) { this.authRejected = true; throw new Error(tr('Сервер отклонил логин или пароль. Проверьте также домен: DOMAIN\\login.')); }
+    if (page.status >= 400) throw new Error(`${tr("Страница OWA недоступна (HTTP")} ${page.status}${tr("). Проверьте адрес и VPN.")}`);
     this.canary = await this.token(page.text);
     if (this.canary) return;
     const form = loginForm(page.text, this.origin);
@@ -55,10 +56,10 @@ class OWAClient {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: this.origin, Referer: `${this.origin}/owa/` },
       body: form.fields.toString(),
     });
-    if (auth.status >= 400) { if ([401, 440].includes(auth.status)) this.authRejected = true; throw new Error(`Вход не выполнен (HTTP ${auth.status}). Проверьте логин, пароль и VPN.`); }
+    if (auth.status >= 400) { if ([401, 440].includes(auth.status)) this.authRejected = true; throw new Error(`${tr("Вход не выполнен (HTTP")} ${auth.status}${tr("). Проверьте логин, пароль и VPN.")}`); }
     this.canary = await this.token(auth.text);
     if (!this.canary) this.canary = await this.token((await this.transport(`${this.origin}/owa/`, {})).text);
-    if (!this.canary) { this.authRejected = true; throw new Error('Сервер не выдал OWA CANARY. Возможны неверный пароль, MFA или неподдерживаемая форма входа.'); }
+    if (!this.canary) { this.authRejected = true; throw new Error(tr('Сервер не выдал OWA CANARY. Возможны неверный пароль, MFA или неподдерживаемая форма входа.')); }
   }
   async call(action, payload, options) {
     try {
@@ -89,9 +90,9 @@ class OWAClient {
       this.canary = null;
       this.onConnectionState?.('reconnecting');
       if (retry) { await this.authenticate(); return this.call(action, payload, { retry: false, headerBody }); }
-      throw Object.assign(new Error('Сессия истекла. Соединение восстанавливается; операция не повторялась.'), { connectionError: true });
+      throw Object.assign(new Error(tr('Сессия истекла. Соединение восстанавливается; операция не повторялась.')), { connectionError: true });
     }
-    if ([408, 429, 502, 503, 504].includes(response.status)) throw Object.assign(new Error('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.'), { connectionError: true });
+    if ([408, 429, 502, 503, 504].includes(response.status)) throw Object.assign(new Error(tr('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.')), { connectionError: true });
     if (response.status >= 400) throw new Error(`OWA ${action}: HTTP ${response.status}`);
     let json;
     try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch {
@@ -99,7 +100,7 @@ class OWAClient {
         this.canary = null; this.onConnectionState?.('reconnecting');
         if (retry) { await this.authenticate(); return this.call(action, payload, { retry: false, headerBody }); }
       }
-      throw Object.assign(new Error(`OWA ${action}: вместо JSON получена страница входа или неподдерживаемый ответ.`), { connectionError: /^\s*(?:<!doctype|<html|<form)/i.test(response.text) });
+      throw Object.assign(new Error(`OWA ${action}${tr(": вместо JSON получена страница входа или неподдерживаемый ответ.")}`), { connectionError: /^\s*(?:<!doctype|<html|<form)/i.test(response.text) });
     }
     if (action === 'GetUserAvailabilityInternal' && availability.rows(json, payload.request.Body.MailboxDataArray.length)) return json;
     if (action === 'GetOwaUserConfiguration' && !json.Body && (json.UserSessionSettings || json.SessionSettings)) return P.checkJSON({ Body: json });
@@ -119,7 +120,7 @@ class OWAClient {
       }, body: xml,
     });
     if ([401, 440, 449].includes(response.status)) this.canary = null;
-    if (response.status >= 400) throw new Error(`EWS ${action}: HTTP ${response.status}. Проверьте доступность /EWS/Exchange.asmx. Операция не повторялась.`);
+    if (response.status >= 400) throw new Error(`EWS ${action}: HTTP ${response.status}${tr(". Проверьте доступность /EWS/Exchange.asmx. Операция не повторялась.")}`);
     return P.parseSOAP(response.text, action);
   }
   async identity() {
@@ -180,7 +181,7 @@ class OWAClient {
   async fetchMessages({ folder, offset, filter }) {
     const json = await this.call('FindItem', P.findItems(folder, offset, filter));
     const root = P.walk(json, o => o.RootFolder)[0]?.RootFolder;
-    if (!root) throw new Error('OWA FindItem: в ответе нет списка писем');
+    if (!root) throw new Error(tr('OWA FindItem: в ответе нет списка писем'));
     return { items: (root.Items || []).filter(o => o.ItemId?.Id).map(P.message), more: root.IncludesLastItemInRange === false, total: root.TotalItemsInView };
   }
   async message(ref) {
@@ -189,7 +190,7 @@ class OWAClient {
   async fetchMessage(ref) {
     const json = await this.call('GetItem', P.getItems([ref]));
     const o = P.walk(json, o => o.ItemId?.Id && (o.Subject !== undefined || o.NormalizedBody || o.Body))[0];
-    if (!o) throw new Error('Письмо не найдено');
+    if (!o) throw new Error(tr('Письмо не найдено'));
     return P.message(o);
   }
   async change(data) {
@@ -204,39 +205,39 @@ class OWAClient {
   }
   async outgoing(data, save) {
     const attachments = data.attachments || [];
-    if (!Array.isArray(attachments) || attachments.length > 100) throw new Error('Слишком много вложений');
+    if (!Array.isArray(attachments) || attachments.length > 100) throw new Error(tr('Слишком много вложений'));
     let size = 0;
     for (const a of attachments) {
-      if (typeof a.name !== 'string' || !a.name || a.name.length > 500 || typeof a.content !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(a.content)) throw new Error('Некорректное вложение');
-      if (a.inline !== undefined && typeof a.inline !== 'boolean') throw new Error('Некорректное inline-вложение');
+      if (typeof a.name !== 'string' || !a.name || a.name.length > 500 || typeof a.content !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(a.content)) throw new Error(tr('Некорректное вложение'));
+      if (a.inline !== undefined && typeof a.inline !== 'boolean') throw new Error(tr('Некорректное inline-вложение'));
       if (a.inline) {
-        if (typeof a.contentId !== 'string' || !/^[a-zA-Z0-9@._-]{1,160}$/.test(a.contentId)) throw new Error('Некорректный Content-ID подписи');
+        if (typeof a.contentId !== 'string' || !/^[a-zA-Z0-9@._-]{1,160}$/.test(a.contentId)) throw new Error(tr('Некорректный Content-ID подписи'));
         calendarEvents.imageData({ ContentType: a.type, Content: a.content });
       }
       size += Buffer.from(a.content, 'base64').length;
     }
-    if (size > 20 * 1024 * 1024) throw new Error('Суммарный размер вложений превышает 20 МБ');
-    if (!save && ![data.to, data.cc, data.bcc].some(value => P.emails(value || '').length)) throw new Error('Укажите получателя');
+    if (size > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
+    if (!save && ![data.to, data.cc, data.bcc].some(value => P.emails(value || '').length)) throw new Error(tr('Укажите получателя'));
     if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
       const current = await this.message({ ...data.reference, refresh: true });
-      if (!current.changeKey) throw new Error('Exchange не вернул ChangeKey исходного письма. Обновите письмо перед отправкой.');
+      if (!current.changeKey) throw new Error(tr('Exchange не вернул ChangeKey исходного письма. Обновите письмо перед отправкой.'));
       data = { ...data, reference: { id: current.id, changeKey: current.changeKey } };
     }
     const xml = P.sendSOAP(data, save || attachments.length > 0);
     let response;
     try { response = await this.ews('CreateItem', xml); }
-    catch (error) { throw new Error(`${error.message}\nРезультат операции может быть неизвестен. Проверьте «Черновики»${save ? '' : ' и «Отправленные»'} в OWA перед повтором. Операция не повторялась.`); }
+    catch (error) { throw new Error(`${error.message}${tr("\nРезультат операции может быть неизвестен. Проверьте «Черновики»")}${save ? '' : tr(' и «Отправленные»')} ${tr("в OWA перед повтором. Операция не повторялась.")}`); }
     if (!attachments.length) return true;
     const draft = P.walk(response, o => o.ItemId?.['@_Id'])[0]?.ItemId;
     const draftID = draft?.['@_Id'];
-    if (!draftID) throw new Error('Черновик создан, но сервер не вернул его ID. Проверьте папку «Черновики».');
+    if (!draftID) throw new Error(tr('Черновик создан, но сервер не вернул его ID. Проверьте папку «Черновики».'));
     try {
-      if (!draft['@_ChangeKey']) throw new Error('Exchange не вернул ChangeKey черновика');
+      if (!draft['@_ChangeKey']) throw new Error(tr('Exchange не вернул ChangeKey черновика'));
       const attached = await this.ews('CreateAttachment', P.soap(`<m:CreateAttachment><m:ParentItemId Id="${P.escapeXML(draftID)}" ChangeKey="${P.escapeXML(draft['@_ChangeKey'])}"/><m:Attachments>${attachments.map(a => `<t:FileAttachment><t:Name>${P.escapeXML(a.name)}</t:Name><t:ContentType>${P.escapeXML(a.type || 'application/octet-stream')}</t:ContentType>${a.inline ? `<t:ContentId>${P.escapeXML(a.contentId)}</t:ContentId>` : ''}<t:IsInline>${a.inline === true}</t:IsInline><t:Content>${a.content}</t:Content></t:FileAttachment>`).join('')}</m:Attachments></m:CreateAttachment>`));
       const latest = P.walk(attached, o => o['@_RootItemChangeKey']).at(-1);
-      if (!save && (!latest?.['@_RootItemChangeKey'] || latest['@_RootItemId'] !== draftID)) throw new Error('Exchange не вернул актуальный ChangeKey черновика после вложений');
+      if (!save && (!latest?.['@_RootItemChangeKey'] || latest['@_RootItemId'] !== draftID)) throw new Error(tr('Exchange не вернул актуальный ChangeKey черновика после вложений'));
       if (!save) await this.ews('SendItem', P.soap(`<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="${P.escapeXML(draftID)}" ChangeKey="${P.escapeXML(latest['@_RootItemChangeKey'])}"/></m:ItemIds><m:SavedItemFolderId><t:DistinguishedFolderId Id="sentitems"/></m:SavedItemFolderId></m:SendItem>`));
-    } catch (error) { throw new Error(`${error.message}\nЧерновик уже создан. Проверьте «Черновики» и «Отправленные» перед повторной отправкой.`); }
+    } catch (error) { throw new Error(`${error.message}${tr("\nЧерновик уже создан. Проверьте «Черновики» и «Отправленные» перед повторной отправкой.")}`); }
     return true;
   }
   async send(data) { return this.outgoing(data, false); }
@@ -250,8 +251,8 @@ class OWAClient {
     return task;
   }
   async searchObjects({ query, kind, offset = 0 }) {
-    if (!['calendar', 'contacts'].includes(kind)) throw new Error('Неизвестный тип объектов поиска');
-    if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error('Проверьте поисковый запрос');
+    if (!['calendar', 'contacts'].includes(kind)) throw new Error(tr('Неизвестный тип объектов поиска'));
+    if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error(tr('Проверьте поисковый запрос'));
     // Use the OWA JSON FindItem transport; no EWS connection or calendar date window.
     const json = await this.call('FindItem', P.request('FindItem', {
       ParentFolderIds: [P.folder(kind)], Traversal: 'Shallow', Paging: P.paging(offset),
@@ -259,15 +260,15 @@ class OWAClient {
       QueryString: P.typed('QueryStringType', { Value: query.trim() }),
     }, 'Exchange2016'));
     const root = P.walk(json, value => value.RootFolder)[0]?.RootFolder;
-    if (!root || !Array.isArray(root.Items)) throw new Error('OWA FindItem: неподдерживаемый формат результатов поиска');
+    if (!root || !Array.isArray(root.Items)) throw new Error(tr('OWA FindItem: неподдерживаемый формат результатов поиска'));
     const items = root.Items.filter(value => value.ItemId?.Id).map(kind === 'calendar' ? calendarEvents.normalize : P.contact);
     const more = root.IncludesLastItemInRange === false;
     const nextOffset = Number(root.IndexedPagingOffset);
-    if (more && (!items.length || Number.isFinite(nextOffset) && nextOffset <= offset)) throw new Error('OWA FindItem: сервер не продвинул страницу поиска');
+    if (more && (!items.length || Number.isFinite(nextOffset) && nextOffset <= offset)) throw new Error(tr('OWA FindItem: сервер не продвинул страницу поиска'));
     return { items, more, nextOffset: Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : offset + root.Items.length };
   }
   async performSearch({ query, offset = 0 }) {
-    if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error('Введите поисковый запрос');
+    if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error(tr('Введите поисковый запрос'));
     const scope = [P.typed('PrimaryMailboxSearchScopeType', { FolderScope: P.typed('SearchFolderScopeType', { BaseFolderId: P.folder('msgfolderroot') }) })];
     if (!offset || !this.searchSession || this.searchQuery !== query) {
       if (this.searchSession) await this.call('EndSearchSession', P.request('EndSearchSession', { SearchSessionId: this.searchSession }));
@@ -284,14 +285,14 @@ class OWAClient {
       ResultRowCount: 50, MaxResultsCountHint: 250, MaxPreviewLength: 160, PropertySetName: 'Owa16',
       SortOrder: 'DateTime', IncludeDeleted: false, Scenario: 'MailSearch',
     }, 'V2016_06_15'));
-    if (!Object.hasOwn(json.Body, 'SearchResults')) throw new Error('OWA ExecuteSearch: неподдерживаемый формат результатов');
+    if (!Object.hasOwn(json.Body, 'SearchResults')) throw new Error(tr('OWA ExecuteSearch: неподдерживаемый формат результатов'));
     return { items: (json.Body.SearchResults?.Items || []).filter(o => o.ItemId?.Id).map(P.message), more: Boolean(json.Body.SearchResults?.MoreResultsAvailable) };
   }
   async calendar({ start, end }) {
     const json = await this.call('GetCalendarView', P.request('GetCalendarView', {
       CalendarId: P.target('calendar'), RangeStart: new Date(start).toISOString().slice(0, 19), RangeEnd: new Date(end).toISOString().slice(0, 19),
     }, 'V2017_08_18'), { headerBody: true });
-    if (!Array.isArray(json.Body.Items)) throw new Error('OWA GetCalendarView: неподдерживаемый формат календаря');
+    if (!Array.isArray(json.Body.Items)) throw new Error(tr('OWA GetCalendarView: неподдерживаемый формат календаря'));
     return json.Body.Items.filter(o => o.ItemId?.Id).map(calendarEvents.normalize);
   }
 
@@ -300,7 +301,7 @@ class OWAClient {
       EventIds: [P.item(ref)], ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties', BodyType: 'Text', MaximumBodySize: 65536 }),
     }, 'V2017_08_18'));
     const o = P.walk(json, o => o.ItemId?.Id && o.Subject !== undefined)[0];
-    if (!o) throw new Error('Встреча не найдена');
+    if (!o) throw new Error(tr('Встреча не найдена'));
     const detail = calendarEvents.normalize(o);
     return { ...detail, ref: { id: detail.id, changeKey: detail.changeKey } };
   }
@@ -309,18 +310,18 @@ class OWAClient {
     if (scope === 'series') {
       const occurrence = await this.eventDetails({ ...data, scope: 'single' });
       if (occurrence.calendarType === 'RecurringMaster') return occurrence;
-      if (!occurrence.recurring) throw new Error('Эта встреча не является частью ряда');
+      if (!occurrence.recurring) throw new Error(tr('Эта встреча не является частью ряда'));
     }
     const response = await this.ews('GetItem', calendarEvents.getSOAP(data, scope));
     const o = P.walk(response, o => o.ItemId?.['@_Id'] && o.Start !== undefined)[0];
-    if (!o) throw new Error('Exchange не вернул карточку календаря');
+    if (!o) throw new Error(tr('Exchange не вернул карточку календаря'));
     const detail = calendarEvents.normalize(o);
-    if (!detail.changeKey) throw new Error('Exchange не вернул версию встречи');
+    if (!detail.changeKey) throw new Error(tr('Exchange не вернул версию встречи'));
     return { ...detail, ref: { id: detail.id, changeKey: detail.changeKey } };
   }
   async updateEvent(data) {
     const current = await this.eventDetails({ ...data.ref, scope: data.scope || 'single' });
-    if (!data.expectedChangeKey || current.changeKey !== data.expectedChangeKey) throw new Error('Встреча изменилась на сервере. Откройте карточку заново перед сохранением.');
+    if (!data.expectedChangeKey || current.changeKey !== data.expectedChangeKey) throw new Error(tr('Встреча изменилась на сервере. Откройте карточку заново перед сохранением.'));
     await this.ews('UpdateItem', calendarEvents.updateSOAP(current, data.changes));
     return true;
   }
@@ -332,20 +333,20 @@ class OWAClient {
   async eventImage(data) {
     const current = await this.eventDetails(data.ref);
     const attachment = current.attachments.find(a => a.id === data.id);
-    if (!attachment || attachment.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.type)) throw new Error('Недоступное изображение');
+    if (!attachment || attachment.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.type)) throw new Error(tr('Недоступное изображение'));
     const response = await this.ews('GetAttachment', P.soap(`<m:GetAttachment><m:AttachmentIds><t:AttachmentId Id="${P.escapeXML(data.id)}"/></m:AttachmentIds></m:GetAttachment>`));
     const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
-    if (!image) throw new Error('Exchange не вернул изображение');
+    if (!image) throw new Error(tr('Exchange не вернул изображение'));
     const checked = require('./raster-images.cjs').inspect(image);
     return { dataURL: checked.dataURL, decodedBytes: checked.decodedBytes };
   }
   async contentImages(data) {
-    if (!['message', 'event'].includes(data.kind)) throw new Error('Некорректный тип содержимого');
+    if (!['message', 'event'].includes(data.kind)) throw new Error(tr('Некорректный тип содержимого'));
     const current = data.kind === 'event' ? await this.eventDetails(data.ref) : await this.message(data.ref);
     return require('./content-images.cjs').load(current, id => this.mailCache.get(`image:attachment:${id}`, async () => {
       const response = await this.ews('GetAttachment', P.soap(`<m:GetAttachment><m:AttachmentIds><t:AttachmentId Id="${P.escapeXML(id)}"/></m:AttachmentIds></m:GetAttachment>`));
       const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
-      if (!image) throw new Error('Exchange не вернул изображение');
+      if (!image) throw new Error(tr('Exchange не вернул изображение'));
       calendarEvents.imageData(image);
       return image;
     }, { ttl: 300000 }), this.imageTransport ? url => this.mailCache.get(`image:remote:${url}`, async () => {
@@ -357,7 +358,7 @@ class OWAClient {
   async respond(data) {
     if (!['AcceptItem', 'TentativelyAcceptItem', 'DeclineItem'].includes(data.response)) throw new Error('Invalid RSVP');
     const current = data.scope === 'series' ? await this.eventDetails({ ...data.ref, scope: 'series' }) : await this.event(data.ref);
-    if (current.isOrganizer === true) throw new Error('Организатор не отвечает на собственное приглашение');
+    if (current.isOrganizer === true) throw new Error(tr('Организатор не отвечает на собственное приглашение'));
     if (current.cancelled) return { status: 'cancelled' };
     const latest = current.ref;
     const ref = `<t:ReferenceItemId Id="${P.escapeXML(latest.id)}"${latest.changeKey ? ` ChangeKey="${P.escapeXML(latest.changeKey)}"` : ''}/>`;
@@ -382,17 +383,17 @@ class OWAClient {
       ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties' }),
     }));
     const root = P.walk(json, o => o.RootFolder)[0]?.RootFolder;
-    if (!root) throw new Error('OWA FindItem: в ответе нет контактов');
+    if (!root) throw new Error(tr('OWA FindItem: в ответе нет контактов'));
     return { items: (root.Items || []).map(P.contact), more: root.IncludesLastItemInRange === false };
   }
   async createContact(data) {
     const email = P.emails(data.email)[0];
-    if (!data.name?.trim() || !email) throw new Error('Укажите имя и email');
+    if (!data.name?.trim() || !email) throw new Error(tr('Укажите имя и email'));
     await this.ews('CreateItem', P.soap(`<m:CreateItem><m:SavedItemFolderId><t:DistinguishedFolderId Id="contacts"/></m:SavedItemFolderId><m:Items><t:Contact><t:DisplayName>${P.escapeXML(data.name)}</t:DisplayName><t:GivenName>${P.escapeXML(data.name)}</t:GivenName><t:CompanyName>${P.escapeXML(data.company)}</t:CompanyName><t:EmailAddresses><t:Entry Key="EmailAddress1">${P.escapeXML(email)}</t:Entry></t:EmailAddresses>${data.phone ? `<t:PhoneNumbers><t:Entry Key="BusinessPhone">${P.escapeXML(data.phone)}</t:Entry></t:PhoneNumbers>` : ''}</t:Contact></m:Items></m:CreateItem>`));
     return true;
   }
   async personPhoto({ email }) {
-    if (P.emails(email).length !== 1) throw new Error('Укажите один адрес');
+    if (P.emails(email).length !== 1) throw new Error(tr('Укажите один адрес'));
     this.photoCache ||= new Map();
     const key = email.toLowerCase(), saved = this.photoCache.get(key);
     if (saved && saved.expires > Date.now()) return saved.image;
@@ -418,19 +419,19 @@ class OWAClient {
       return `${prefix}${quote}${this.origin}${src}${quote}`;
     });
     const loaded = await require('./content-images.cjs').load({ html: signature.html, attachments: [] }, null, async src => {
-      if (!this.imageTransport) throw new Error('Внешние изображения недоступны');
+      if (!this.imageTransport) throw new Error(tr('Внешние изображения недоступны'));
       return this.imageTransport(src);
     }, this.origin);
     return { ...signature, ...loaded };
   }
   async attachment(id) {
-    if (typeof id !== 'string' || !id || id.length > 16000) throw new Error('Некорректное вложение');
+    if (typeof id !== 'string' || !id || id.length > 16000) throw new Error(tr('Некорректное вложение'));
     if (!this.canary) await this.authenticate();
     const url = new URL(`${this.origin}/owa/service.svc/s/GetFileAttachment`);
     url.searchParams.set('id', id); url.searchParams.set('X-OWA-CANARY', this.canary);
     const response = await this.transport(url.href, { binary: true });
     if ([401, 440, 449].includes(response.status)) this.canary = null;
-    if (response.status !== 200 || !Buffer.isBuffer(response.buffer)) throw new Error(`Вложение: HTTP ${response.status}. Обновите подключение и попробуйте снова.`);
+    if (response.status !== 200 || !Buffer.isBuffer(response.buffer)) throw new Error(`${tr("Вложение: HTTP")} ${response.status}${tr(". Обновите подключение и попробуйте снова.")}`);
     return response.buffer;
   }
 }

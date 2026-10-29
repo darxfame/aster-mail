@@ -1,4 +1,5 @@
 (function (root) {
+  const tr = typeof module !== 'undefined' ? require('./i18n.js').text : root.asterI18n.text;
   function organizer(event, email = '') {
     if (typeof event.isOrganizer === 'boolean') return event.isOrganizer;
     return event.response === 'Organizer' || Boolean(email.includes('@') && event.organizer?.email?.toLowerCase() === email.toLowerCase());
@@ -21,11 +22,11 @@
       .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   }
   function countdown(event, now = Date.now()) {
-    if (!event || !Number.isFinite(Date.parse(event.start)) || !(Date.parse(event.end) > now)) return { label: 'Свободно', duration: '', detail: 'Нет ближайших встреч', active: false };
+    if (!event || !Number.isFinite(Date.parse(event.start)) || !(Date.parse(event.end) > now)) return { label: tr('Свободно'), duration: '', detail: tr('Нет ближайших встреч'), active: false };
     const active = Date.parse(event.start) <= now;
     const minutes = Math.max(1, Math.ceil((Date.parse(active ? event.end : event.start) - now) / 60000));
-    const duration = minutes < 60 ? `${minutes} мин` : `${Math.floor(minutes / 60)} ч${minutes % 60 ? ` ${minutes % 60} м` : ''}`;
-    return { label: active ? `До конца · ${duration}` : `Через ${duration}`, duration, detail: active ? 'до окончания встречи' : 'до начала встречи', active };
+    const duration = minutes < 60 ? `${minutes} ${tr("мин")}` : `${Math.floor(minutes / 60)} ${tr("ч")}${minutes % 60 ? ` ${minutes % 60} ${tr("м")}` : ''}`;
+    return { label: active ? `${tr("До конца ·")} ${duration}` : `${tr("Через")} ${duration}`, duration, detail: active ? tr('до окончания встречи') : tr('до начала встречи'), active };
   }
   function links(event) {
     const text = `${event.joinUrl || ''}\n${event.location || ''}\n${event.body || ''}\n${event.html || ''}`.replace(/&amp;/g, '&');

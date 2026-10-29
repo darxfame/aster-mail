@@ -32,7 +32,7 @@ depends on your server configuration. The app is at an early stage.
 | EWS access | Required for sending, editing drafts, and some calendar and contact operations |
 | Authentication | SSO/MFA through a separate domain is not supported yet |
 | Offline use | No offline database yet |
-| Interface language | Russian |
+| Interface language | Russian and English; choose Settings → General → Interface language |
 | Accounts | One account; no shared mailboxes yet |
 | Message encryption | No PGP/S/MIME support yet |
 

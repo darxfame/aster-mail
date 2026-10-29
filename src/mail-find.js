@@ -40,8 +40,8 @@
     const frame = reader.querySelector('.email-frame');
     const panel = document.createElement('div');
     panel.className = 'mail-find'; panel.hidden = !saved.opened;
-    panel.setAttribute('role', 'search'); panel.setAttribute('aria-label', 'Поиск в тексте письма');
-    panel.innerHTML = '<input type="search" maxlength="256" aria-label="Найти в тексте письма" placeholder="Найти в письме"><span role="status" aria-live="polite"></span><button type="button" class="icon-button" aria-label="Предыдущее совпадение" title="Предыдущее · Shift+Enter">↑</button><button type="button" class="icon-button" aria-label="Следующее совпадение" title="Следующее · Enter">↓</button><button type="button" class="icon-button" aria-label="Закрыть поиск" title="Закрыть · Escape">×</button>';
+    panel.setAttribute('role', 'search'); panel.setAttribute('aria-label', tr('Поиск в тексте письма'));
+    panel.innerHTML = tr('<input type="search" maxlength="256" aria-label="Найти в тексте письма" placeholder="Найти в письме"><span role="status" aria-live="polite"></span><button type="button" class="icon-button" aria-label="Предыдущее совпадение" title="Предыдущее · Shift+Enter">↑</button><button type="button" class="icon-button" aria-label="Следующее совпадение" title="Следующее · Enter">↓</button><button type="button" class="icon-button" aria-label="Закрыть поиск" title="Закрыть · Escape">×</button>');
     reader.querySelector('.reader-toolbar').after(panel);
     const input = panel.querySelector('input'), status = panel.querySelector('[role="status"]');
     const [previous, next, close] = panel.querySelectorAll('button');
@@ -53,7 +53,7 @@
     };
     function paint(scroll = false) {
       clear();
-      status.textContent = saved.query ? ranges.length ? `${saved.index + 1} из ${ranges.length}${truncated ? '+' : ''}` : 'Не найдено' : 'Введите текст';
+      status.textContent = saved.query ? ranges.length ? `${saved.index + 1} ${tr("из")} ${ranges.length}${truncated ? '+' : ''}` : tr('Не найдено') : tr('Введите текст');
       previous.disabled = next.disabled = !ranges.length;
       if (!saved.opened || !ranges.length) return;
       const view = highlightedDoc.defaultView;

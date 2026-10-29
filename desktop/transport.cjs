@@ -1,10 +1,11 @@
+const tr = require('../src/i18n.js').text;
 const { normalizeServer } = require('./protocol.cjs');
 function createTransport(net, credentials, accountSession, signal) {
   const origin = normalizeServer(credentials.server);
   function transport(url, options = {}) {
     return new Promise((resolve, reject) => {
-      if (signal.aborted) return reject(new Error('Сессия аккаунта завершена; операция не повторялась.'));
-      if (new URL(url).origin !== origin) return reject(new Error('Запрос к постороннему серверу заблокирован'));
+      if (signal.aborted) return reject(new Error(tr('Сессия аккаунта завершена; операция не повторялась.')));
+      if (new URL(url).origin !== origin) return reject(new Error(tr('Запрос к постороннему серверу заблокирован')));
       const req = net.request({ url, method: options.method || 'GET', session: accountSession, useSessionCookies: true, redirect: 'manual' });
       let attempts = 0, redirects = 0, settled = false;
       const finish = (error, result) => {
@@ -12,8 +13,8 @@ function createTransport(net, credentials, accountSession, signal) {
         settled = true; clearTimeout(timer); signal.removeEventListener('abort', cancel);
         error ? reject(error) : resolve(result);
       };
-      const timer = setTimeout(() => { finish(Object.assign(new Error('Сервер не ответил за 30 секунд. Проверьте VPN и подключение.'), { connectionError: true })); req.abort(); }, 30000);
-      const cancel = () => { finish(new Error('Сессия аккаунта завершена. Результат начатой операции неизвестен; проверьте OWA перед повтором.')); req.abort(); };
+      const timer = setTimeout(() => { finish(Object.assign(new Error(tr('Сервер не ответил за 30 секунд. Проверьте VPN и подключение.')), { connectionError: true })); req.abort(); }, 30000);
+      const cancel = () => { finish(new Error(tr('Сессия аккаунта завершена. Результат начатой операции неизвестен; проверьте OWA перед повтором.'))); req.abort(); };
       signal.addEventListener('abort', cancel, { once: true });
       req.on('login', (info, callback) => {
         if (signal.aborted || info.isProxy || info.host !== new URL(origin).hostname || attempts++ > 0) return callback();
@@ -25,23 +26,23 @@ function createTransport(net, credentials, accountSession, signal) {
           req.abort(); return;
         }
         if (++redirects > 5 || new URL(destination).origin !== origin) {
-          finish(new Error('OWA перенаправляет на другой сервер. Межсерверный SSO пока не поддерживается.'));
+          finish(new Error(tr('OWA перенаправляет на другой сервер. Межсерверный SSO пока не поддерживается.')));
           req.abort(); return;
         }
         req.followRedirect();
       });
       req.on('error', error => {
         const code = /\bERR_(?:CERT_[A-Z_]+|SSL_[A-Z_]+|NAME_NOT_RESOLVED|CONNECTION_[A-Z_]+|TIMED_OUT)\b/.exec(String(error?.code || '') + ' ' + String(error?.message || ''))?.[0];
-        finish(Object.assign(new Error('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.'), { connectionError: true, ...(code ? { code } : {}) }));
+        finish(Object.assign(new Error(tr('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.')), { connectionError: true, ...(code ? { code } : {}) }));
       });
       req.on('response', res => {
         const chunks = []; let size = 0;
         res.on('data', chunk => {
           size += chunk.length;
-          if (size > 30 * 1024 * 1024) { finish(new Error('Ответ превышает лимит 30 МБ')); req.abort(); }
+          if (size > 30 * 1024 * 1024) { finish(new Error(tr('Ответ превышает лимит 30 МБ'))); req.abort(); }
           else chunks.push(chunk);
         });
-        res.on('error', () => finish(Object.assign(new Error('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.'), { connectionError: true })));
+        res.on('error', () => finish(Object.assign(new Error(tr('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.')), { connectionError: true })));
         res.on('end', () => { const buffer = Buffer.concat(chunks); finish(null, { status: res.statusCode, text: options.binary ? '' : buffer.toString('utf8'), buffer, headers: Object.fromEntries(['www-authenticate', 'content-type', 'ms-asprotocolversions', 'ms-asprotocolcommands', 'x-responsecode'].filter(key => res.headers?.[key] !== undefined).map(key => [key, res.headers[key]])) }); });
       });
       for (const [key, value] of Object.entries(options.headers || {})) req.setHeader(key, value);

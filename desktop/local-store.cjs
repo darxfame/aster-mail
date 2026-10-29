@@ -1,3 +1,4 @@
+const tr = require('../src/i18n.js').text;
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -9,7 +10,7 @@ class LocalStore {
     this.owner = null; this.data = {}; this.queue = Promise.resolve();
   }
   requireEncryption() {
-    if (!this.encryption.isEncryptionAvailable() || this.platform === 'linux' && this.encryption.getSelectedStorageBackend() === 'basic_text') throw new Error('Защищённое хранилище недоступно. Данные не сохранены.');
+    if (!this.encryption.isEncryptionAvailable() || this.platform === 'linux' && this.encryption.getSelectedStorageBackend() === 'basic_text') throw new Error(tr('Защищённое хранилище недоступно. Данные не сохранены.'));
   }
   run(action) {
     const task = this.queue.then(action);
@@ -42,8 +43,8 @@ class LocalStore {
   save(patch, guard) {
     return this.run(async () => {
       guard();
-      if (!this.owner || !patch || typeof patch !== 'object' || JSON.stringify(patch).length > 256000) throw new Error('Некорректные локальные настройки');
-      if (patch.values !== undefined && (!patch.values || typeof patch.values !== 'object' || Array.isArray(patch.values) || Object.entries(patch.values).some(([key, value]) => !key.startsWith('aster-') || typeof value !== 'string'))) throw new Error('Некорректные локальные настройки');
+      if (!this.owner || !patch || typeof patch !== 'object' || JSON.stringify(patch).length > 256000) throw new Error(tr('Некорректные локальные настройки'));
+      if (patch.values !== undefined && (!patch.values || typeof patch.values !== 'object' || Array.isArray(patch.values) || Object.entries(patch.values).some(([key, value]) => !key.startsWith('aster-') || typeof value !== 'string'))) throw new Error(tr('Некорректные локальные настройки'));
       const next = { ...this.data, ...patch };
       await this.write('local-data.enc', { owner: this.owner, data: next }, guard);
       guard(); this.data = next;
@@ -72,17 +73,17 @@ class LocalStore {
       this.owner = null; this.data = {};
       // Revoke before any enumeration: readdir can fail while writes still work.
       try { await fs.mkdir(this.directory, { recursive: true, mode: 0o700 }); }
-      catch { throw new Error('Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.'); }
+      catch { throw new Error(tr('Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.')); }
       let markerError;
       try { await fs.writeFile(path.join(this.directory, 'logout.pending'), 'revoked\n', { mode: 0o600 }); }
       catch (error) { markerError = error; }
       let names;
       try { names = await fs.readdir(this.directory); }
-      catch { throw new Error(markerError ? 'Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.' : 'Автовход заблокирован. Не удалось прочитать каталог приложения; повторите сброс локальных данных.'); }
+      catch { throw new Error(markerError ? tr('Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.') : tr('Автовход заблокирован. Не удалось прочитать каталог приложения; повторите сброс локальных данных.')); }
       const files = names.filter(name => ['local-data.enc', 'account.enc', 'notifications.json'].includes(name) || /^(?:local-data|account)\.enc\.[0-9a-f-]+\.tmp$/.test(name));
       const results = await Promise.allSettled(files.map(name => fs.rm(path.join(this.directory, name), { force: true })));
       if (results.some(result => result.status === 'rejected')) {
-        throw new Error(markerError ? 'Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.' : 'Сессия завершена, автовход заблокирован. Не удалось удалить часть локальных данных; повторите сброс в окне подключения.');
+        throw new Error(markerError ? tr('Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.') : tr('Сессия завершена, автовход заблокирован. Не удалось удалить часть локальных данных; повторите сброс в окне подключения.'));
       }
       await fs.rm(path.join(this.directory, 'logout.pending'), { force: true });
     });

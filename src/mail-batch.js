@@ -13,7 +13,7 @@ function renderMailBatchToolbar() {
   const target = $('#mail-batch-toolbar'); if (!target) return;
   const restoreFocus = preserveListFocus(target);
   const count = mailSelection.size;
-  target.innerHTML = `<div class="mail-selection-bar"><label><input type="checkbox" data-mail-select-all aria-label="Выбрать загруженные письма, до 100" ${count && filteredMessages().slice(0, 100).every(message => mailSelection.has(message.id)) ? 'checked' : ''} ${mailBatchBusy || !filteredMessages().length ? 'disabled' : ''}> <span>${count ? `Выбрано: ${count}` : 'Выбрать письма'}</span></label>${count ? '<button type="button" data-mail-batch="clear" ' + (mailBatchBusy ? 'disabled' : '') + '>Снять выбор</button>' : ''}</div>${count ? `<div class="mail-batch-actions" role="group" aria-label="Действия с выбранными письмами">${[['read','Прочитать'],['unread','Не прочитано'],['move','В папку…'],['archive','В архив'],['trash','В корзину']].map(([action, label]) => `<button type="button" class="secondary" data-mail-batch="${action}" ${mailBatchBusy ? 'disabled' : ''}>${label}</button>`).join('')}</div>` : ''}<p class="mail-batch-note" role="status">${mailBatchBusy ? 'Обрабатываем выбранные письма…' : count ? 'Выбраны только загруженные письма. Удаление переносит в корзину.' : ''}</p>`;
+  target.innerHTML = `<div class="mail-selection-bar"><label><input type="checkbox" data-mail-select-all aria-label="${tr("Выбрать загруженные письма, до 100")}" ${count && filteredMessages().slice(0, 100).every(message => mailSelection.has(message.id)) ? 'checked' : ''} ${mailBatchBusy || !filteredMessages().length ? 'disabled' : ''}> <span>${count ? `${tr("Выбрано:")} ${count}` : tr('Выбрать письма')}</span></label>${count ? '<button type="button" data-mail-batch="clear" ' + (mailBatchBusy ? 'disabled' : '') + tr('>Снять выбор</button>') : ''}</div>${count ? `<div class="mail-batch-actions" role="group" aria-label="${tr("Действия с выбранными письмами")}">${[['read',tr('Прочитать')],['unread',tr('Не прочитано')],['move',tr('В папку…')],['archive',tr('В архив')],['trash',tr('В корзину')]].map(([action, label]) => `<button type="button" class="secondary" data-mail-batch="${action}" ${mailBatchBusy ? 'disabled' : ''}>${label}</button>`).join('')}</div>` : ''}<p class="mail-batch-note" role="status">${mailBatchBusy ? tr('Обрабатываем выбранные письма…') : count ? tr('Выбраны только загруженные письма. Удаление переносит в корзину.') : ''}</p>`;
   const all = target.querySelector('[data-mail-select-all]');
   if (all) all.indeterminate = count > 0 && !filteredMessages().slice(0, 100).every(message => mailSelection.has(message.id));
   restoreFocus();
@@ -29,12 +29,12 @@ function mailBatchMoveDialog() {
   };
   visit(window.asterFolders.tree(state.demo ? window.asterDemo.folders : state.folders, systemFolders));
   const context = { scope: mailSelectionKey(), ids: [...mailSelection] };
-  modal('Переместить выбранные письма', `Выбрано: ${context.ids.length}`, `<form id="mail-batch-move-form"><label class="field"><span>Папка назначения</span><select name="folder" required>${choices.join('')}</select></label>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">Отмена</button><button type="submit" class="primary">Переместить</button></div></form>`);
+  modal(tr('Переместить выбранные письма'), `${tr("Выбрано:")} ${context.ids.length}`, `<form id="mail-batch-move-form"><label class="field"><span>${tr("Папка назначения")}</span><select name="folder" required>${choices.join('')}</select></label>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr("Отмена")}</button><button type="submit" class="primary">${tr("Переместить")}</button></div></form>`);
   const form = $('#mail-batch-move-form');
   form.addEventListener('submit', event => {
     event.preventDefault();
     if (context.scope !== mailSelectionKey() || context.ids.join('\n') !== [...mailSelection].join('\n')) {
-      form.querySelector('.form-error').textContent = 'Выбор изменился. Откройте перенос заново.'; return;
+      form.querySelector('.form-error').textContent = tr('Выбор изменился. Откройте перенос заново.'); return;
     }
     const folder = form.elements.folder.value;
     $('#modal').close(); void runMailBatch('move', folder).catch(showError);
@@ -50,7 +50,7 @@ async function runMailBatch(action, folder) {
     await Promise.allSettled(ids.map(id => readingMessages.get(id)).filter(Boolean));
     if (account !== state.account || scope !== mailSelectionKey() || generation !== state.generation) return;
     const refs = ids.map(id => state.messages.find(message => message.id === id)).filter(Boolean).map(ref);
-    if (refs.length !== ids.length) throw new Error('Список писем изменился. Выберите письма заново.');
+    if (refs.length !== ids.length) throw new Error(tr('Список писем изменился. Выберите письма заново.'));
     let result;
     if (state.demo) {
       for (const item of refs) {
@@ -66,14 +66,14 @@ async function runMailBatch(action, folder) {
     const skipped = result.results.filter(item => item.status === 'skipped').length;
     // Never leave an unconfirmed write preselected for an accidental repeated operation.
     mailSelection.clear();
-    const note = `Выполнено: ${done} из ${refs.length}.${uncertain ? ` Не подтверждено: 1. Не обработано: ${skipped}. ${uncertain.error}` : ''}`;
+    const note = `${tr("Выполнено:")} ${done} ${tr("из")} ${refs.length}.${uncertain ? ` ${tr("Не подтверждено: 1. Не обработано:")} ${skipped}. ${uncertain.error}` : ''}`;
     if (uncertain) showError(new Error(note)); else toast(note);
     await loadView();
     if (uncertain && account === state.account && scope === mailSelectionKey()) showError(new Error(note));
   } catch (error) {
     if (account === state.account && scope === mailSelectionKey()) {
       mailSelection.clear();
-      showError(new Error(`${error.message}\nРезультат операций может быть неизвестен. Проверьте выбранные письма в OWA перед повтором.`));
+      showError(new Error(`${error.message}${tr("\nРезультат операций может быть неизвестен. Проверьте выбранные письма в OWA перед повтором.")}`));
     }
   } finally {
     mailBatchBusy = false;
@@ -86,10 +86,10 @@ document.addEventListener('change', event => {
   if (box.hasAttribute('data-mail-select-all')) {
     mailSelection.clear();
     if (box.checked) for (const message of filteredMessages().slice(0, 100)) mailSelection.add(message.id);
-    if (box.checked && filteredMessages().length > 100) toast('Выбраны первые 100 загруженных писем.');
+    if (box.checked && filteredMessages().length > 100) toast(tr('Выбраны первые 100 загруженных писем.'));
     renderMessages();
   } else if (box.hasAttribute('data-mail-select')) {
-    if (box.checked && mailSelection.size >= 100) { box.checked = false; toast('За один раз можно выбрать до 100 писем.'); return; }
+    if (box.checked && mailSelection.size >= 100) { box.checked = false; toast(tr('За один раз можно выбрать до 100 писем.')); return; }
     if (box.checked) mailSelection.add(box.dataset.mailSelect); else mailSelection.delete(box.dataset.mailSelect);
     renderMailBatchToolbar();
   }

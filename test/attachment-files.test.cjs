@@ -51,7 +51,7 @@ test('opening through IPC uses current message metadata and rejects an unrelated
     async attachment(id) { assert.equal(id, 'file'); return Buffer.from('fictional'); },
   };
   let opens = 0;
-  const context = vm.createContext({ operation: 'openAttachment', activeClient, client: activeClient,
+  const context = vm.createContext({ tr: value => value, operation: 'openAttachment', activeClient, client: activeClient,
     data: { id: 'file', name: 'untrusted.exe', ref: { id: 'mail' } },
     attachmentFiles: { async open({ name, load, assertActive }) { opens++; assert.equal(name, 'server-name.pdf'); assertActive(); await load(); return true; } },
   });
@@ -98,7 +98,7 @@ test('Save As IPC also goes through the shared trust writer and session guard', 
   const vm = require('node:vm'), source = await fs.readFile(require.resolve('../desktop/main.cjs'), 'utf8');
   const start = source.indexOf("      if (operation === 'attachment')"), branch = source.slice(start, source.indexOf("      if (operation === 'clearMailCache')", start));
   const activeClient = { attachment: async () => Buffer.from('fictional') }; let writes = 0;
-  const context = vm.createContext({ operation: 'attachment', data: { id: 'file', name: 'report.doc' }, activeClient, client: activeClient, window: {}, safeName,
+  const context = vm.createContext({ tr: value => value, operation: 'attachment', data: { id: 'file', name: 'report.doc' }, activeClient, client: activeClient, window: {}, safeName,
     dialog: { showSaveDialog: async () => ({ canceled: false, filePath: 'chosen.doc' }) },
     writeAttachment: async (file, bytes, { assertActive }) => { writes++; assert.equal(file, 'chosen.doc'); assert.equal(bytes.toString(), 'fictional'); assertActive(); },
   });

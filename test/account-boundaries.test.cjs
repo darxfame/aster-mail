@@ -6,8 +6,8 @@ const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 
 test('logout clears renderer corporate data, signatures, drafts, meetings and local preference copies', () => {
   const nodes = { '#search': { value: 'private query' }, '#people-search-suggestions': { replaceChildren() { this.cleared = true; } } };
-  const context = vm.createContext({
-    window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
+  const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
+    applyLanguage() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
     state: { account: { sessionId: 'old' }, generation: 1, selected: { html: 'private mail' }, messages: ['private'], contacts: ['private'], events: ['private'], signature: 'private' },
     localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },
@@ -35,7 +35,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
 
 test('a renderer request carries its original session and discards late results after account switch', async () => {
   let complete, observed;
-  const context = vm.createContext({
+  const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
     state: { account: { sessionId: 'alice' } }, mailWrites: 0, mailWriteEpoch: 0,
     window: { aster: { invoke: (operation, data) => { observed = { operation, data }; return new Promise(resolve => { complete = resolve; }); } } },
   });
@@ -56,7 +56,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     }
     authenticate() { return new Promise(resolve => { this.finish = resolve; }); }
   }
-  const context = vm.createContext({
+  const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
     OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
     attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,

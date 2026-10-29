@@ -1,4 +1,5 @@
 (function (root) {
+  const tr = typeof module !== 'undefined' ? require('./i18n.js').text : root.asterI18n.text;
   const C = typeof module !== 'undefined' ? require('./calendar.js') : root.asterCalendar;
   function layout(events, day, timeZone = 'system') {
     const { start, end } = C.range(day, 'day', timeZone), dayMinutes = (end - start) / 60000;
@@ -32,13 +33,13 @@
   }
   function slot(start, end, y, height, step = 15) {
     const first = Date.parse(start), last = Date.parse(end);
-    if (!Number.isFinite(first) || !(last > first) || !(height > 0)) throw new Error('Некорректный день календаря');
+    if (!Number.isFinite(first) || !(last > first) || !(height > 0)) throw new Error(tr('Некорректный день календаря'));
     const minute = Math.max(0, Math.min((last - first) / 60000 - step, Math.round(y / height * (last - first) / 60000 / step) * step));
     return new Date(first + minute * 60000);
   }
   function moved(event, start) {
     const duration = Date.parse(event.end) - Date.parse(event.start);
-    if (!(duration > 0) || !Number.isFinite(+start)) throw new Error('Некорректное время встречи');
+    if (!(duration > 0) || !Number.isFinite(+start)) throw new Error(tr('Некорректное время встречи'));
     return { start: start.toISOString(), end: new Date(+start + duration).toISOString() };
   }
   const api = { layout, slot, moved };

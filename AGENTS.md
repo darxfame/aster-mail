@@ -84,7 +84,9 @@ was identified. Do not reintroduce diagnostic controls or probes unless requeste
 
 Use two-space indentation, semicolons, descriptive camelCase functions, and
 CommonJS `.cjs` modules for Electron and tests. Renderer scripts use plain browser
-JavaScript. Keep UI text in Russian and code/comments in English. No formatter
+JavaScript. Keep Russian/English UI strings in the shared `src/i18n.js` dictionary
+and code/comments in English. Never translate mailbox content, contact names,
+user folder names or protocol identifiers. No formatter
 or linter is configured; avoid introducing tooling without a concrete need.
 
 ## Testing Guidelines

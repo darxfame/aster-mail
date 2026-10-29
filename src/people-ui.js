@@ -1,14 +1,14 @@
 // Directory suggestions use the same Exchange GAL lookup as participant inputs.
 document.addEventListener('DOMContentLoaded', () => {
   const input = $('#search'), form = $('#search-form'), box = document.createElement('div');
-  box.id = 'people-search-suggestions'; box.className = 'people-search-suggestions'; box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Люди из каталога Exchange'); form.append(box);
+  box.id = 'people-search-suggestions'; box.className = 'people-search-suggestions'; box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', tr('Люди из каталога Exchange')); form.append(box);
   let sequence = 0, timer, results = [], active = -1;
   const accountKey = () => `${state.demo}|${state.account?.server}|${state.account?.username}`;
   function hide() { sequence++; clearTimeout(timer); box.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; }
   function show(people, note = '') {
     results = people; active = -1;
     const pinned = new Set(colleagues().map(person => person.email.toLowerCase()));
-    box.innerHTML = people.map((person, index) => `<div class="people-suggestion">${avatar(person.name || person.email, index, person.email)}<button type="button" data-person-select="${index}"><strong>${esc(person.name || person.email)}</strong><small>${esc(person.email)}</small></button><button type="button" class="secondary" data-person-pin="${index}" ${pinned.has(person.email.toLowerCase()) ? 'disabled' : ''} aria-label="Добавить в коллеги: ${esc(person.name || person.email)}">${pinned.has(person.email.toLowerCase()) ? 'В коллегах' : '+ В коллеги'}</button></div>`).join('') + (note ? `<p class="recipient-note" role="status">${esc(note)}</p>` : '');
+    box.innerHTML = people.map((person, index) => `<div class="people-suggestion">${avatar(person.name || person.email, index, person.email)}<button type="button" data-person-select="${index}"><strong>${esc(person.name || person.email)}</strong><small>${esc(person.email)}</small></button><button type="button" class="secondary" data-person-pin="${index}" ${pinned.has(person.email.toLowerCase()) ? 'disabled' : ''} aria-label="${tr("Добавить в коллеги:")} ${esc(person.name || person.email)}">${pinned.has(person.email.toLowerCase()) ? tr('В коллегах') : tr('+ В коллеги')}</button></div>`).join('') + (note ? `<p class="recipient-note" role="status">${esc(note)}</p>` : '');
     box.hidden = false; input.setAttribute('aria-expanded', 'true');
   }
   async function select(index) { const person = results[index]; if (!person) return; input.value = person.email; state.query = person.email; hide(); await loadView(); }
@@ -18,15 +18,15 @@ document.addEventListener('DOMContentLoaded', () => {
     input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-haspopup', 'dialog'); input.setAttribute('aria-controls', box.id); input.autocomplete = 'off';
     const query = input.value.trim(); if (query.length < 2 || query.length > 254) return;
     const local = state.demo ? window.asterDemo.contacts : [...colleagues(), ...state.contacts];
-    show(window.asterRecipients.matches(local, query), 'Поиск в каталоге…');
+    show(window.asterRecipients.matches(local, query), tr('Поиск в каталоге…'));
     const current = sequence, fingerprint = accountKey();
     timer = setTimeout(async () => {
       try {
         const result = state.demo ? { items: window.asterRecipients.matches(window.asterDemo.directory, query) } : await api('contacts', { query });
         if (sequence !== current || accountKey() !== fingerprint || state.view !== 'contacts' || input.value.trim() !== query) return;
         const found = window.asterRecipients.matches([...result.items, ...window.asterRecipients.matches(local, query)], '');
-        show(found, found.length ? '' : 'Совпадений не найдено');
-      } catch (error) { if (sequence === current && state.view === 'contacts') show(window.asterRecipients.matches(local, query), `Каталог недоступен: ${error.message}`); }
+        show(found, found.length ? '' : tr('Совпадений не найдено'));
+      } catch (error) { if (sequence === current && state.view === 'contacts') show(window.asterRecipients.matches(local, query), `${tr("Каталог недоступен:")} ${error.message}`); }
     }, 250);
   });
   box.addEventListener('pointerdown', event => event.preventDefault());
@@ -36,9 +36,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!pin || pin.disabled) return;
     const person = results[Number(pin.dataset.personPin)], list = colleagues();
     if (!person || list.some(p => p.email.toLowerCase() === person.email.toLowerCase())) return;
-    if (list.length >= 50) { toast('Можно закрепить до 50 коллег'); return; }
+    if (list.length >= 50) { toast(tr('Можно закрепить до 50 коллег')); return; }
     try { await saveColleagues([...list, person]); } catch (error) { showError(error); return; }
-    show(results); renderColleagues(); void refreshColleagues(); toast('Коллега добавлен');
+    show(results); renderColleagues(); void refreshColleagues(); toast(tr('Коллега добавлен'));
   });
   input.addEventListener('keydown', event => {
     if (box.hidden) return;

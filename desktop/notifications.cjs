@@ -1,12 +1,14 @@
+const tr = require('../src/i18n.js').text;
 // Pure notification policy, independent of Electron and real mailboxes.
 const T = require('../src/time.js');
-const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, timeZone: 'system', theme: 'light' };
+const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, timeZone: 'system', theme: 'light', language: 'ru' };
 function preferences(value = {}) {
   const result = { ...defaults };
   for (const key of ['mail', 'meetings', 'sounds', 'preview']) if (typeof value[key] === 'boolean') result[key] = value[key];
   if ([0, 5, 10, 15, 30].includes(Number(value.minutes))) result.minutes = Number(value.minutes);
   try { if (typeof value.timeZone === 'string') { T.zone(value.timeZone); result.timeZone = value.timeZone || 'system'; } } catch { /* Invalid saved zone falls back to the computer. */ }
   if (['light', 'dark'].includes(value.theme)) result.theme = value.theme;
+  if (['ru', 'en'].includes(value.language)) result.language = value.language;
   return result;
 }
 class NotificationTracker {
@@ -37,7 +39,7 @@ class NotificationTracker {
 }
 function mailAlert(message, preview = false) {
   const text = value => String(value || '').replace(/\s+/g, ' ').trim();
-  return { id: message.id, title: preview ? text(message.from?.name || message.from?.email) || 'Новое письмо' : 'Новое письмо',
-    body: preview ? [text(message.subject) || '(Без темы)', text(message.preview).slice(0, 240)].filter(Boolean).join('\n') : 'В Exchange получено новое письмо.', navigation: { view: 'mail', id: message.id } };
+  return { id: message.id, title: preview ? text(message.from?.name || message.from?.email) || tr('Новое письмо') : tr('Новое письмо'),
+    body: preview ? [text(message.subject) || tr('(Без темы)'), text(message.preview).slice(0, 240)].filter(Boolean).join('\n') : tr('В Exchange получено новое письмо.'), navigation: { view: 'mail', id: message.id } };
 }
 module.exports = { defaults, preferences, NotificationTracker, mailAlert };

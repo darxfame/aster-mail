@@ -1,3 +1,5 @@
+const i18n = require('../src/i18n.js');
+const tr = i18n.text;
 const { app, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
@@ -50,7 +52,7 @@ async function pollMail() {
     for (const message of [...fresh].reverse()) queueMailAlert(message);
     if (fresh.length) {
       const alert = mailAlert(fresh[0], notificationSettings.preview);
-      notify('mail', fresh.length > 1 ? `${alert.title} · ещё ${fresh.length - 1}` : alert.title, alert.body, alert.navigation);
+      notify('mail', fresh.length > 1 ? `${alert.title} ${tr("· ещё")} ${fresh.length - 1}` : alert.title, alert.body, alert.navigation);
     }
   } catch (error) { if (active === client) lastMailError = error.message; }
   finally { mailPolling = false; }
@@ -62,16 +64,16 @@ app.on('second-instance', () => { if (createWindow) reveal(); });
 
 function confirmDiscardChanges() {
   if (!unsavedChanges) return true;
-  const response = dialog.showMessageBoxSync(window, { type: 'warning', message: 'Есть несохранённые изменения', detail: 'Сохраните письмо или встречу перед выходом. Продолжить без сохранения?', buttons: ['Остаться', 'Не сохранять'], defaultId: 0, cancelId: 0 });
+  const response = dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Есть несохранённые изменения'), detail: tr('Сохраните письмо или встречу перед выходом. Продолжить без сохранения?'), buttons: [tr('Остаться'), tr('Не сохранять')], defaultId: 0, cancelId: 0 });
   if (response !== 1) return false;
   unsavedChanges = false;
   return true;
 }
 async function resetLocalData() {
-  if (client || connection || resettingLocalData) throw new Error('Сначала завершите подключение к аккаунту');
+  if (client || connection || resettingLocalData) throw new Error(tr('Сначала завершите подключение к аккаунту'));
   resettingLocalData = true;
   try {
-    const answer = await dialog.showMessageBox(window, { type: 'warning', message: 'Сбросить локальные данные?', detail: 'Сохранённый пароль, подпись, коллеги и настройки будут удалены с этого компьютера. Письма и календарь в Exchange сохранятся.', buttons: ['Отмена', 'Сбросить'], defaultId: 0, cancelId: 0 });
+    const answer = await dialog.showMessageBox(window, { type: 'warning', message: tr('Сбросить локальные данные?'), detail: tr('Сохранённый пароль, подпись, коллеги и настройки будут удалены с этого компьютера. Письма и календарь в Exchange сохранятся.'), buttons: [tr('Отмена'), tr('Сбросить')], defaultId: 0, cancelId: 0 });
     if (answer.response !== 1) return false;
     ++accountEpoch;
     const results = await Promise.allSettled([localStore.clear(), attachmentFiles.clear()]);
@@ -89,16 +91,23 @@ function reveal(navigation) {
     else window.webContents.send('aster-navigate', navigation);
   }
 }
+let trayMenuCurrent;
+function updateTrayMenu() {
+  if (!tray) return;
+  const trayMenu = Menu.buildFromTemplate([{ label: tr('Открыть Aster Mail'), click: () => reveal() }, { label: tr('Проверить почту и встречи'), click: () => { void pollNotifications(); } }, { type: 'separator' }, { label: tr('Завершить Aster Mail'), click: () => app.quit() }]);
+  if (process.platform === 'darwin') trayMenuCurrent = trayMenu;
+  else tray.setContextMenu(trayMenu);
+}
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastMailError || lastPollError };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, lastPoll, error: lastMailError || lastPollError };
 }
 function refreshWidget() {
   const state = widgetState();
   if (tray) {
     if (process.platform === 'darwin') tray.setTitle(client ? state.countdown.label : '');
-    tray.setToolTip(state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : 'Aster Mail · ближайшие встречи');
+    tray.setToolTip(state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.send('aster-widget-update', state);
 }
@@ -107,7 +116,7 @@ function toggleWidget() {
   const bounds = tray.getBounds(), area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea;
   const width = Math.min(360, area.width - 16), height = Math.min(520, area.height - 16);
   if (!widgetWindow || widgetWindow.isDestroyed()) {
-    widgetWindow = new BrowserWindow({ width, height, show: false, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, title: 'Aster · ближайшие встречи', backgroundColor: '#f8f6fc',
+    widgetWindow = new BrowserWindow({ width, height, show: false, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, title: tr('Aster · ближайшие встречи'), backgroundColor: '#f8f6fc',
       webPreferences: { preload: path.join(__dirname, 'widget-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     widgetWindow.loadFile(path.join(__dirname, '../src/widget.html'));
@@ -123,7 +132,7 @@ function toggleWidget() {
   if (!widgetWindow.webContents.isLoading()) { refreshWidget(); widgetWindow.show(); widgetWindow.focus(); }
 }
 function notify(kind, title, body, navigation) {
-  if (!Notification.isSupported()) { lastPollError = 'Системные уведомления недоступны'; return; }
+  if (!Notification.isSupported()) { lastPollError = tr('Системные уведомления недоступны'); return; }
   // Play our sound explicitly; system notification audio can be suppressed independently.
   const notification = new Notification({ title, body, silent: true,
     timeoutType: kind === 'mail' ? 'never' : 'default', groupId: `aster-${kind}`, icon: path.join(__dirname, '../assets/icon.png'),
@@ -131,14 +140,14 @@ function notify(kind, title, body, navigation) {
   activeNotifications.add(notification);
   notification.on('click', () => reveal(navigation));
   notification.on('close', () => activeNotifications.delete(notification));
-  notification.on('failed', () => { activeNotifications.delete(notification); lastPollError = 'macOS не показала уведомление. Проверьте разрешение для Aster Mail в настройках системы.'; });
+  notification.on('failed', () => { activeNotifications.delete(notification); lastPollError = tr('macOS не показала уведомление. Проверьте разрешение для Aster Mail в настройках системы.'); });
   notification.show();
   if (notificationSettings.sounds) {
     if (process.platform === 'darwin') {
       const sound = app.isPackaged ? path.join(process.resourcesPath, `aster-${kind}.wav`) : path.join(__dirname, `../assets/sounds/aster-${kind}.wav`);
       const player = spawn('/usr/bin/afplay', [sound], { stdio: 'ignore' });
-      player.on('error', () => { lastPollError = 'Не удалось воспроизвести звук уведомления'; });
-      player.on('exit', code => { if (code) lastPollError = 'Не удалось воспроизвести звук уведомления'; });
+      player.on('error', () => { lastPollError = tr('Не удалось воспроизвести звук уведомления'); });
+      player.on('exit', code => { if (code) lastPollError = tr('Не удалось воспроизвести звук уведомления'); });
     } else if (window && !window.isDestroyed()) window.webContents.send('aster-sound', kind);
   }
 }
@@ -169,7 +178,7 @@ async function pollNotifications() {
         widgetEvents = events;
         for (const event of notificationSettings.meetings ? tracker.reminders(events, notificationSettings.minutes) : []) {
           const minutes = Math.max(0, Math.ceil((new Date(event.start) - Date.now()) / 60000));
-          notify('meeting', minutes ? `Встреча через ${minutes} мин.` : 'Встреча начинается', notificationSettings.preview ? event.title : 'Откройте рабочий календарь.', { view: 'calendar', date: event.start });
+          notify('meeting', minutes ? `${tr("Встреча через")} ${minutes} ${tr("мин.")}` : tr('Встреча начинается'), notificationSettings.preview ? event.title : tr('Откройте рабочий календарь.'), { view: 'calendar', date: event.start });
         }
       } catch (e) { error ||= e.message; }
     }
@@ -192,8 +201,8 @@ function retireAccount() {
   return Promise.all([attachmentFiles?.clear(), ...(previous ? [previous.session.clearStorageData(), previous.images.clearStorageData()] : [])]);
 }
 async function connect(data, remember, restoring = false) {
-  if (resettingLocalData) throw new Error('Дождитесь завершения сброса локальных данных');
-  if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
+  if (resettingLocalData) throw new Error(tr('Дождитесь завершения сброса локальных данных'));
+  if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error(tr('Укажите логин и пароль'));
   const credentials = { server: normalizeServer(data.server), username: data.username.trim(), password: data.password };
   if (remember) localStore.requireEncryption();
   const epoch = ++accountEpoch;
@@ -202,7 +211,7 @@ async function connect(data, remember, restoring = false) {
     session: session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false }),
     images: session.fromPartition(`aster-images-${crypto.randomUUID()}`, { cache: false }) };
   connection = current; account = credentials;
-  const assertCurrent = () => { if (epoch !== accountEpoch || connection !== current) throw new Error('Сессия аккаунта завершена'); };
+  const assertCurrent = () => { if (epoch !== accountEpoch || connection !== current) throw new Error(tr('Сессия аккаунта завершена')); };
   const transport = createTransport(net, credentials, current.session, current.controller.signal);
   const candidate = new OWAClient(credentials, transport,
     async () => { assertCurrent(); return (await current.session.cookies.get({ url: `${credentials.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value; },
@@ -222,7 +231,9 @@ async function connect(data, remember, restoring = false) {
     else if (!restoring) await localStore.removeCredentials(assertCurrent);
     assertCurrent();
     candidate.syncId = crypto.randomUUID(); client = candidate;
-    notificationSettings = preferences(saved.notifications);
+    notificationSettings = preferences({ ...saved.notifications, language: saved.notifications?.language || i18n.language });
+    i18n.setLanguage(notificationSettings.language);
+    updateTrayMenu();
     refreshWidget(); void pollNotifications();
     return { server: credentials.server, username: credentials.username, sessionId: candidate.syncId, localData: saved.values || {}, notifications: notificationSettings };
   } catch (error) {
@@ -279,6 +290,11 @@ app.whenReady().then(async () => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
       validate(operation, data);
+      if (operation === 'setLanguage') {
+        if (!['ru', 'en'].includes(data.language)) throw new Error('Invalid language');
+        i18n.setLanguage(data.language); updateTrayMenu(); refreshWidget();
+        return { ok: true, value: i18n.language };
+      }
       if (operation === 'resetLocalData') return { ok: true, value: await resetLocalData() };
       if (operation === 'updateState') return { ok: true, value: updates.snapshot() };
       if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
@@ -293,11 +309,12 @@ app.whenReady().then(async () => {
         const before = notificationSettings, next = preferences(data);
         if (client) {
           const active = connection;
-          if (data.sessionId !== client.syncId) throw new Error('Сессия аккаунта завершена');
-          await localStore.save({ notifications: next }, () => { if (connection !== active) throw new Error('Сессия аккаунта завершена'); });
-          if (connection !== active) throw new Error('Сессия аккаунта завершена');
+          if (data.sessionId !== client.syncId) throw new Error(tr('Сессия аккаунта завершена'));
+          await localStore.save({ notifications: next }, () => { if (connection !== active) throw new Error(tr('Сессия аккаунта завершена')); });
+          if (connection !== active) throw new Error(tr('Сессия аккаунта завершена'));
         }
         notificationSettings = next;
+        i18n.setLanguage(next.language); updateTrayMenu();
         if (!before.mail && notificationSettings.mail) { tracker.mailSeen.clear(); tracker.baseline = null; }
         if (!notificationSettings.preview || !notificationSettings.mail) {
           mailAlerts = []; publishMailAlerts();
@@ -308,20 +325,20 @@ app.whenReady().then(async () => {
       if (operation === 'testNotification') {
         if (!['mail', 'meeting'].includes(data.kind)) throw new Error('Invalid sound');
         if (data.kind === 'mail') {
-          const alert = queueMailAlert({ id: 'test-mail', from: { name: 'Анна Новикова · проверка' }, subject: 'Материалы к встрече', preview: 'Добрый день! Отправляю документы для обсуждения завтра.' });
+          const alert = queueMailAlert({ id: 'test-mail', from: { name: tr('Анна Новикова · проверка') }, subject: tr('Материалы к встрече'), preview: tr('Добрый день! Отправляю документы для обсуждения завтра.') });
           notify('mail', alert.title, alert.body, { view: 'mail' });
-        } else notify('meeting', 'Встреча через 15 минут · проверка', 'Тестовое уведомление Aster Mail. Данные Exchange не использовались.', { view: 'calendar' });
+        } else notify('meeting', tr('Встреча через 15 минут · проверка'), tr('Тестовое уведомление Aster Mail. Данные Exchange не использовались.'), { view: 'calendar' });
         return { ok: true, value: true };
       }
       if (operation === 'connect') return { ok: true, value: await connect(data, Boolean(data.remember)) };
       if (operation === 'restore') {
         const epoch = accountEpoch;
-        const saved = await localStore.loadCredentials(() => { if (epoch !== accountEpoch) throw new Error('Сессия аккаунта завершена'); });
+        const saved = await localStore.loadCredentials(() => { if (epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); });
         if (!saved) return { ok: true, value: null };
         return { ok: true, value: await connect(saved, false, true) };
       }
       if (operation === 'disconnect') {
-        if (client && data.sessionId !== client.syncId) throw new Error('Сессия аккаунта завершена');
+        if (client && data.sessionId !== client.syncId) throw new Error(tr('Сессия аккаунта завершена'));
         ++accountEpoch;
         const retired = retireAccount();
         const results = await Promise.allSettled([retired, localStore.clear(), window.webContents.session.clearStorageData({ storages: ['localstorage', 'indexdb', 'cachestorage'] })]);
@@ -331,32 +348,32 @@ app.whenReady().then(async () => {
       }
       if (operation === 'openLink') {
         const url = new URL(data.url);
-        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Неподдерживаемая ссылка');
-        const answer = await dialog.showMessageBox(window, { type: 'question', message: 'Открыть ссылку в браузере?', detail: url.href.slice(0, 1500), buttons: ['Отмена', 'Открыть'], defaultId: 0, cancelId: 0 });
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error(tr('Неподдерживаемая ссылка'));
+        const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Открыть ссылку в браузере?'), detail: url.href.slice(0, 1500), buttons: [tr('Отмена'), tr('Открыть')], defaultId: 0, cancelId: 0 });
         if (answer.response === 1) await shell.openExternal(url.href);
         return { ok: true, value: true };
       }
-      if (!client) throw new Error('Сначала подключите аккаунт OWA');
+      if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
       const activeClient = client;
-      if (data.sessionId !== activeClient.syncId) throw new Error('Сессия аккаунта завершена');
+      if (data.sessionId !== activeClient.syncId) throw new Error(tr('Сессия аккаунта завершена'));
       if (operation === 'saveLocalData') {
         const active = connection;
-        await localStore.save({ values: data.values }, () => { if (connection !== active) throw new Error('Сессия аккаунта завершена'); });
+        await localStore.save({ values: data.values }, () => { if (connection !== active) throw new Error(tr('Сессия аккаунта завершена')); });
         return { ok: true, value: true };
       }
       if (operation === 'joinEvent') {
         const event = await activeClient.eventDetails(data);
-        if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
+        if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
         const url = meetingLink(event);
-        if (!url || event.cancelled) throw new Error('Ссылка на созвон недоступна');
+        if (!url || event.cancelled) throw new Error(tr('Ссылка на созвон недоступна'));
         await shell.openExternal(url); return { ok: true, value: true };
       }
       if (operation === 'openAttachment') {
         if (typeof data.id !== 'string' || data.id.length > 16000 || typeof data.ref?.id !== 'string' || data.ref.id.length > 16000) throw new Error('Invalid attachment');
-        const assertActive = () => { if (client !== activeClient) throw new Error('Сессия аккаунта завершена'); };
+        const assertActive = () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); };
         const message = await activeClient.message({ ...data.ref, refresh: true }); assertActive();
         const file = message.attachments.find(file => file.id === data.id);
-        if (!file) throw new Error('Вложение не найдено в письме. Обновите письмо.');
+        if (!file) throw new Error(tr('Вложение не найдено в письме. Обновите письмо.'));
         return { ok: true, value: await attachmentFiles.open({ name: file.name, load: () => activeClient.attachment(file.id), assertActive }) };
       }
       if (operation === 'attachment') {
@@ -364,15 +381,15 @@ app.whenReady().then(async () => {
         const result = await dialog.showSaveDialog(window, { defaultPath: safeName(data.name) });
         if (!result.canceled) {
           const bytes = await activeClient.attachment(data.id);
-          if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
-          await writeAttachment(result.filePath, bytes, { assertActive: () => { if (client !== activeClient) throw new Error('Сессия аккаунта завершена'); } });
+          if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+          await writeAttachment(result.filePath, bytes, { assertActive: () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); } });
         }
         return { ok: true, value: !result.canceled };
       }
       if (operation === 'clearMailCache') { client.mailCache.clear(); return { ok: true, value: true }; }
       if (!methods.has(operation)) throw new Error('Unknown operation');
       const value = await activeClient[operation](data);
-      if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
+      if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
       if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
       return { ok: true, value };
     } catch (error) { return { ok: false, error: error.message, connectionError: error.connectionError === true }; }
@@ -384,23 +401,22 @@ app.whenReady().then(async () => {
       if (operation === 'state') return { ok: true, value: widgetState() };
       if (operation === 'app') { widgetWindow.hide(); reveal(); return { ok: true }; }
       const meeting = widgetEvents.find(item => item.id === data?.id && !item.cancelled);
-      if (!meeting) throw new Error('Встреча больше не доступна. Дождитесь обновления календаря.');
+      if (!meeting) throw new Error(tr('Встреча больше не доступна. Дождитесь обновления календаря.'));
       if (operation === 'open') {
         widgetWindow.hide(); reveal({ view: 'calendar', date: meeting.start, eventId: meeting.id });
       } else if (operation === 'join') {
-        if (['Decline', 'Declined'].includes(meeting.response)) throw new Error('Встреча отклонена. Измените ответ в карточке встречи.');
+        if (['Decline', 'Declined'].includes(meeting.response)) throw new Error(tr('Встреча отклонена. Измените ответ в карточке встречи.'));
         const url = httpsURL(meetingLink(meeting));
-        if (!url) throw new Error('Ссылка на созвон не найдена. Откройте карточку встречи.');
+        if (!url) throw new Error(tr('Ссылка на созвон не найдена. Откройте карточку встречи.'));
         widgetWindow.hide(); await shell.openExternal(url);
       } else throw new Error('Unknown widget operation');
       return { ok: true };
     } catch (error) { return { ok: false, error: error.message }; }
   });
   const image = nativeImage.createFromPath(path.join(__dirname, '../assets/icon.png')).resize({ width: 18, height: 18 });
-  tray = new Tray(image); tray.setToolTip('Aster Mail · почта и встречи');
-  const trayMenu = Menu.buildFromTemplate([{ label: 'Открыть Aster Mail', click: () => reveal() }, { label: 'Проверить почту и встречи', click: () => { void pollNotifications(); } }, { type: 'separator' }, { label: 'Завершить Aster Mail', click: () => app.quit() }]);
-  if (process.platform === 'darwin') tray.on('right-click', () => tray.popUpContextMenu(trayMenu));
-  else tray.setContextMenu(trayMenu);
+  tray = new Tray(image); tray.setToolTip(tr('Aster Mail · почта и встречи'));
+  updateTrayMenu();
+  if (process.platform === 'darwin') tray.on('right-click', () => tray.popUpContextMenu(trayMenuCurrent));
   tray.on('click', toggleWidget);
   refreshWidget();
   const attachmentTimer = setInterval(() => { attachmentFiles.cleanupExpired().then(() => { attachmentCleanupError = ''; }, error => { attachmentCleanupError = error.message; }); }, 60000); attachmentTimer.unref();
@@ -418,7 +434,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', event => {
   if (!confirmDiscardChanges()) { event.preventDefault(); return; }
   try { attachmentFiles?.clearSync(); } catch {
-    const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: 'Временные вложения не удалены', detail: 'Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.', buttons: ['Остаться', 'Выйти'], defaultId: 0, cancelId: 0 });
+    const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Временные вложения не удалены'), detail: tr('Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.'), buttons: [tr('Остаться'), tr('Выйти')], defaultId: 0, cancelId: 0 });
     if (answer !== 1) { event.preventDefault(); return; }
   }
   quitting = true; connection?.controller.abort();

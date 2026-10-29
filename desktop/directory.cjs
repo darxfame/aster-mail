@@ -1,3 +1,4 @@
+const tr = require('../src/i18n.js').text;
 const P = require('./protocol.cjs');
 const validEmail = value => typeof value === 'string' && /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(value);
 function normalize(data) {
@@ -19,10 +20,10 @@ function normalize(data) {
   return { items, more: false, truncated: String(set?.['@_IncludesLastItemInRange']).toLowerCase() === 'false' };
 }
 async function search(client, query) {
-  if (typeof query !== 'string' || query.trim().length < 2 || query.length > 254 || /[\u0000-\u001f]/.test(query)) throw new Error('Для поиска в справочнике укажите от 2 до 254 символов');
+  if (typeof query !== 'string' || query.trim().length < 2 || query.length > 254 || /[\u0000-\u001f]/.test(query)) throw new Error(tr('Для поиска в справочнике укажите от 2 до 254 символов'));
   try {
     const data = await client.ews('ResolveNames', P.soap(`<m:ResolveNames ReturnFullContactData="true" SearchScope="ActiveDirectoryContacts" ContactDataShape="Default"><m:UnresolvedEntry>${P.escapeXML(query.trim())}</m:UnresolvedEntry></m:ResolveNames>`));
     return normalize(data);
-  } catch (error) { throw new Error(`Не удалось выполнить поиск в общем справочнике Exchange (EWS ResolveNames): ${error.message}`); }
+  } catch (error) { throw new Error(`${tr("Не удалось выполнить поиск в общем справочнике Exchange (EWS ResolveNames):")} ${error.message}`); }
 }
 module.exports = { search, normalize };

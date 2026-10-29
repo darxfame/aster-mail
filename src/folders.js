@@ -5,7 +5,7 @@
     const nodes = new Map();
     for (const [alias, name, symbol] of defaults) {
       const folder = known.get(alias);
-      nodes.set(alias, { ...folder, key: alias, name: folder?.name || name, symbol, children: [], parent: null });
+      nodes.set(alias, { ...folder, key: alias, name, symbol, children: [], parent: null });
     }
     for (const folder of folders) {
       if (folder.wellKnown || nodes.has(folder.id)) continue;

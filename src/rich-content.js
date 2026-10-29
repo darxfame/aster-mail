@@ -54,7 +54,7 @@
     doc.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';
       img.removeAttribute('src'); img.dataset.imageSource = src; img.hidden = true;
-      img.alt ||= 'Изображение'; img.title = 'Загрузка изображения…';
+      img.alt ||= tr('Изображение'); img.title = tr('Загрузка изображения…');
     });
     const imagesTask = doc.querySelector('img') ? Promise.resolve().then(loadImages) : Promise.resolve({ images: {}, errors: {} });
     imagesTask.catch(() => {}); // The frame's load listener reports the error.
@@ -69,9 +69,9 @@
         const placeholder = frame.contentDocument.createElement('span');
         placeholder.className = 'aster-image-unavailable';
         placeholder.setAttribute('role', 'img');
-        placeholder.setAttribute('aria-label', 'Изображение недоступно');
-        placeholder.textContent = 'Изображение недоступно';
-        placeholder.title = String(reason || 'Не удалось загрузить изображение').slice(0, 500);
+        placeholder.setAttribute('aria-label', tr('Изображение недоступно'));
+        placeholder.textContent = tr('Изображение недоступно');
+        placeholder.title = String(reason || tr('Не удалось загрузить изображение')).slice(0, 500);
         img.replaceWith(placeholder); resize();
       };
       body.addEventListener('click', event => {
@@ -86,7 +86,7 @@
         body.querySelectorAll('img').forEach(img => {
           const src = img.dataset.imageSource;
           if (result.images[src]) {
-            img.addEventListener('error', () => unavailable(img, 'Файл изображения не удалось отобразить'), { once: true });
+            img.addEventListener('error', () => unavailable(img, tr('Файл изображения не удалось отобразить')), { once: true });
             img.addEventListener('load', () => { img.hidden = false; resize(); }, { once: true });
             img.src = result.images[src]; img.title = img.alt;
           } else unavailable(img, result.errors[src]);

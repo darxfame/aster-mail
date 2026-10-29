@@ -65,7 +65,7 @@ test('relative OWA signature images use the isolated image transport without OWA
 test('attachment cards escape file names, show extensions and expose Save As without a second download path', () => {
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../src/mail-ui.js'), 'utf8');
-  const context = vm.createContext({ esc: value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]), bytes: () => '2 КБ' });
+  const context = vm.createContext({ tr: value => value, esc: value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]), bytes: () => '2 КБ' });
   vm.runInContext(source.slice(0, source.indexOf('function renderSignaturePreview')), context);
   const html = context.mailAttachments({ attachments: [{ id: 'id', name: '<script>.PDF', size: 2000 }] });
   assert.match(html, /extension-pdf/); assert.match(html, />PDF</); assert.match(html, /Сохранить как/);

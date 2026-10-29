@@ -9,7 +9,7 @@ test('HTML editing and outgoing serialization collapse source indentation while 
   const toolbar = { ...noop, querySelectorAll: () => [] };
   const linkForm = { querySelector: () => noop };
   const root = { asterRichContent: { sanitize: value => ({ body: { innerHTML: value }, querySelectorAll: () => [] }) } };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../src/mail-editor.js'), 'utf8'), { window: root });
+  vm.runInNewContext(fs.readFileSync(require.resolve('../src/mail-editor.js'), 'utf8'), { window: root, tr: value => value });
   for (const html of [undefined, '<p>First</p>\n    <p><b>Second</b> line</p>']) {
     const editor = { ...noop, style: {}, classList: { toggle() {} }, innerText: 'First\nSecond line' };
     const target = { querySelector: selector => selector === '.compose-editor' ? editor : selector === '.format-toolbar' ? toolbar : linkForm };
@@ -54,7 +54,7 @@ test('attachment batches share a size limit, preserve earlier files and support 
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   const error = {}, picked = { replaceChildren(...rows) { this.rows = rows; } };
-  const context = vm.createContext({ composeData: { attachments: [] }, modalBusy: false, markModalDirty() {}, bytes: n => String(n), $: selector => selector === '#picked-files' ? picked : error, document: { createElement() { return { setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }, append(child) { this.child = child; } }; } } });
+  const context = vm.createContext({ tr: value => value, composeData: { attachments: [] }, modalBusy: false, markModalDirty() {}, bytes: n => String(n), $: selector => selector === '#picked-files' ? picked : error, document: { createElement() { return { setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }, append(child) { this.child = child; } }; } } });
   vm.runInContext(source.slice(source.indexOf('function addComposeFiles('), source.indexOf("document.addEventListener('change'", source.indexOf('function addComposeFiles('))), context);
   const first = { name: '<b>file.txt', size: 10 }, second = { name: 'next.txt', size: 20 };
   context.addComposeFiles([first]); context.addComposeFiles([second]);
@@ -72,7 +72,7 @@ test('compose accepts file drops, rejects drops during sending and leaves text d
   const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   const classes = new Set(), added = [];
   const dialog = { classList: { add: value => classes.add(value), remove: value => classes.delete(value) }, contains: value => value === 'inside' };
-  const context = vm.createContext({ modalBusy: false, $: () => dialog, addComposeFiles: files => added.push(...files) });
+  const context = vm.createContext({ tr: value => value, modalBusy: false, $: () => dialog, addComposeFiles: files => added.push(...files) });
   const start = source.indexOf("  const dialog = $('#modal');", source.indexOf('async function compose('));
   vm.runInContext(source.slice(start, source.indexOf('  composeData.editor =', start)), context);
   let prevented = 0;

@@ -3,16 +3,16 @@ function mailAttachments(message) {
   const card = file => {
     const extension = /\.([a-z0-9]{1,8})$/i.exec(file.name || '')?.[1].toUpperCase() || 'FILE';
     const type = /^(PDF)$/.test(extension) ? 'pdf' : /^(DOCX?|ODT|RTF)$/.test(extension) ? 'document' : /^(XLSX?|CSV|ODS)$/.test(extension) ? 'sheet' : /^(JPE?G|PNG|GIF|WEBP|HEIC)$/.test(extension) ? 'image' : /^(ZIP|RAR|7Z|TAR|GZ)$/.test(extension) ? 'archive' : 'file';
-    return `<article class="mail-attachment"><span class="file-extension extension-${type}">${esc(extension)}</span><div><button type="button" class="attachment-open" data-action="open-attachment" data-id="${esc(file.id)}" aria-label="Открыть вложение: ${esc(file.name)}" title="Открыть в системном приложении">${esc(file.name)}</button><small>${bytes(file.size || 0)}</small><button type="button" data-action="attachment" data-id="${esc(file.id)}" data-name="${esc(file.name)}" aria-label="Сохранить как: ${esc(file.name)}">Сохранить как…</button></div></article>`;
+    return `<article class="mail-attachment"><span class="file-extension extension-${type}">${esc(extension)}</span><div><button type="button" class="attachment-open" data-action="open-attachment" data-id="${esc(file.id)}" aria-label="${tr("Открыть вложение:")} ${esc(file.name)}" title="${tr("Открыть в системном приложении")}">${esc(file.name)}</button><small>${bytes(file.size || 0)}</small><button type="button" data-action="attachment" data-id="${esc(file.id)}" data-name="${esc(file.name)}" aria-label="${tr("Сохранить как:")} ${esc(file.name)}">${tr("Сохранить как…")}</button></div></article>`;
   };
   const files = message.attachments;
-  return `<section class="mail-attachments-top attachments-count-${Math.min(files.length, 4)}" aria-label="Вложения письма"><div class="mail-attachment-grid attachment-preview">${files.slice(0, 3).map(card).join('')}</div>${files.length > 1 ? `<details class="attachment-more"><summary><span class="attachment-expand">Все вложения (${files.length})</span><span class="attachment-collapse">Свернуть вложения</span></summary><div class="mail-attachment-grid attachment-rest">${files.slice(1).map(card).join('')}</div></details>` : ''}</section>`;
+  return `<section class="mail-attachments-top attachments-count-${Math.min(files.length, 4)}" aria-label="${tr("Вложения письма")}"><div class="mail-attachment-grid attachment-preview">${files.slice(0, 3).map(card).join('')}</div>${files.length > 1 ? `<details class="attachment-more"><summary><span class="attachment-expand">${tr("Все вложения (")}${files.length})</span><span class="attachment-collapse">${tr("Свернуть вложения")}</span></summary><div class="mail-attachment-grid attachment-rest">${files.slice(1).map(card).join('')}</div></details>` : ''}</section>`;
 }
 function renderSignaturePreview(target, signature) {
   if (!target) return;
   if (!signature.html) { target.textContent = signature.text; return; }
-  window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', title: 'Подпись OWA', loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
-  if (Object.keys(signature.errors || {}).length) { const note = document.createElement('p'); note.className = 'form-error'; note.textContent = 'Не все картинки подписи доступны. Обновите подпись перед отправкой.'; target.append(note); }
+  window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', title: tr('Подпись OWA'), loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
+  if (Object.keys(signature.errors || {}).length) { const note = document.createElement('p'); note.className = 'form-error'; note.textContent = tr('Не все картинки подписи доступны. Обновите подпись перед отправкой.'); target.append(note); }
 }
 async function toggleMailProperty(id, field) {
   const message = state.messages.find(item => item.id === id); if (!message) return;
@@ -27,9 +27,9 @@ async function toggleMailProperty(id, field) {
 }
 let moveRuleContext;
 function ruleAfterMove(message, folder) {
-  const name = systemFolders.find(f => f[0] === folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === folder)?.name || 'Выбранная папка';
+  const name = systemFolders.find(f => f[0] === folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === folder)?.name || tr('Выбранная папка');
   moveRuleContext = { sender: message.from.email, folder };
-  modal('Письмо перемещено', `Папка: ${name}. Настроить автоматический перенос новых писем?`, `<form id="mail-rule-form">${field('name', 'Название правила', `Письма от ${message.from.name || message.from.email}`.slice(0, 100), 'text', true)}${field('sender', 'Отправитель', message.from.email, 'email', true)}${field('subject', 'Тема содержит · необязательно')}<p class="form-note">Все новые входящие письма от этого адреса будут перемещаться в выбранную папку на сервере Exchange. Если указать фрагмент темы, должны совпасть оба условия. Старые письма не обрабатываются. Правило добавляется после существующих; их настройки сохраняются.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">Без правила</button><button class="primary" type="submit">Создать правило на сервере</button></div></form>`);
+  modal(tr('Письмо перемещено'), `${tr("Папка:")} ${name}${tr(". Настроить автоматический перенос новых писем?")}`, `<form id="mail-rule-form">${field('name', tr('Название правила'), `${tr("Письма от")} ${message.from.name || message.from.email}`.slice(0, 100), 'text', true)}${field('sender', tr('Отправитель'), message.from.email, 'email', true)}${field('subject', tr('Тема содержит · необязательно'))}<p class="form-note">${tr("Все новые входящие письма от этого адреса будут перемещаться в выбранную папку на сервере Exchange. Если указать фрагмент темы, должны совпасть оба условия. Старые письма не обрабатываются. Правило добавляется после существующих; их настройки сохраняются.")}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr("Без правила")}</button><button class="primary" type="submit">${tr("Создать правило на сервере")}</button></div></form>`);
 }
 let mailMoveContext;
 document.addEventListener('click', event => {
@@ -45,7 +45,7 @@ document.addEventListener('click', event => {
     }
   };
   visit(window.asterFolders.tree(state.demo ? window.asterDemo.folders : state.folders, systemFolders));
-  modal('Переместить письмо', message.subject, `<form id="mail-move-form"><label class="field"><span>Папка назначения</span><select name="folder" required>${choices.join('')}</select></label>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">Отмена</button><button type="submit" class="primary">Переместить</button></div></form>`);
+  modal(tr('Переместить письмо'), message.subject, `<form id="mail-move-form"><label class="field"><span>${tr("Папка назначения")}</span><select name="folder" required>${choices.join('')}</select></label>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr("Отмена")}</button><button type="submit" class="primary">${tr("Переместить")}</button></div></form>`);
   $('#mail-move-form select').focus();
 });
 document.addEventListener('submit', event => {
@@ -53,7 +53,7 @@ document.addEventListener('submit', event => {
   event.preventDefault();
   const context = mailMoveContext;
   void submitForm(event.target, async data => {
-    if (!context || context.generation !== state.generation) throw new Error('Папка изменилась. Откройте перенос заново.');
+    if (!context || context.generation !== state.generation) throw new Error(tr('Папка изменилась. Откройте перенос заново.'));
     await moveDroppedMail(context.id, data.folder);
     $('#modal').close();
   });
@@ -66,7 +66,7 @@ async function moveDroppedMail(id, destination) {
   if (state.demo) window.asterDemo.messages.find(item => item.id === id).folder = destination;
   else await api('move', { ref: ref(message), folder: destination });
   await loadView();
-  if (!$('#modal').open) ruleAfterMove(snapshot, destination); else toast('Письмо перемещено');
+  if (!$('#modal').open) ruleAfterMove(snapshot, destination); else toast(tr('Письмо перемещено'));
 }
 // Pointer capture also works inside macOS webviews that do not expose HTML drag sessions.
 let mailDrag = null, suppressMailClick = false;
@@ -103,7 +103,7 @@ document.addEventListener('submit', event => {
   event.preventDefault(); const context = moveRuleContext;
   submitForm(event.target, async data => {
     if (!state.demo) await api('createMailRule', { ...data, folder: context.folder });
-    $('#modal').close(); toast(state.demo ? 'Демо: серверное правило не создавалось' : 'Правило создано в Exchange');
+    $('#modal').close(); toast(state.demo ? tr('Демо: серверное правило не создавалось') : tr('Правило создано в Exchange'));
   });
 });
 
@@ -120,7 +120,7 @@ async function receiveInbox(snapshot) {
   if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || mailWrites) return;
   const generation = state.generation, account = state.account, epoch = mailWriteEpoch;
   let inbox = state.folders.find(folder => folder.wellKnown === 'inbox' || folder.id === snapshot.inbox?.id);
-  if (!inbox && snapshot.inbox) { inbox = { ...snapshot.inbox, name: 'Входящие', wellKnown: 'inbox' }; state.folders.push(inbox); renderSidebar(); }
+  if (!inbox && snapshot.inbox) { inbox = { ...snapshot.inbox, name: tr('Входящие'), wellKnown: 'inbox' }; state.folders.push(inbox); renderSidebar(); }
   if (inbox && snapshot.inbox && (inbox.unread !== snapshot.inbox.unread || inbox.total !== snapshot.inbox.total)) {
     Object.assign(inbox, snapshot.inbox); renderSidebar();
   }
@@ -141,8 +141,8 @@ async function receiveInbox(snapshot) {
     else if (remaining) list.scrollTop += remaining.getBoundingClientRect().top - top;
     const more = document.querySelector('.mail-list .load-more');
     if (more) more.hidden = !state.more;
-    else if (state.more) list.insertAdjacentHTML('afterend', '<button class="secondary load-more" data-action="more">Загрузить ещё</button>');
-    $('#status').textContent = `Обновлено ${time(new Date())} · Прямое подключение к Exchange`;
+    else if (state.more) list.insertAdjacentHTML('afterend', tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>'));
+    $('#status').textContent = `${tr("Обновлено")} ${time(new Date())} ${tr("· Прямое подключение к Exchange")}`;
   } catch { /* Keep readable mail on a transient refresh error; the next poll retries the read. */ }
 }
 
@@ -162,12 +162,12 @@ async function refreshMailFolders(generation) {
 }
 
 function mailRecipientDetails(message) {
-  const groups = [['to', 'Кому'], ['cc', 'Копия'], ['bcc', 'Скрытая копия']];
-  if (!groups.some(([key]) => message[key]?.length)) return '<small>Получатели не указаны</small>';
-  return `<div class="mail-recipient-groups" aria-label="Получатели письма">${groups.map(([key, label]) => {
+  const groups = [['to', tr('Кому')], ['cc', tr('Копия')], ['bcc', tr('Скрытая копия')]];
+  if (!groups.some(([key]) => message[key]?.length)) return tr('<small>Получатели не указаны</small>');
+  return `<div class="mail-recipient-groups" aria-label="${tr("Получатели письма")}">${groups.map(([key, label]) => {
     const people = message[key] || [];
-    if (!people.length) return key === 'to' ? '<div class="recipient-empty">Кому: не указано</div>' : '';
-    return `<details class="mail-recipients" open><summary><span>${label} · ${people.length}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="Открыть контакт: ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || 'Участник')}</strong><small>${esc(person.email || 'Адрес не указан')}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
+    if (!people.length) return key === 'to' ? tr('<div class="recipient-empty">Кому: не указано</div>') : '';
+    return `<details class="mail-recipients" open><summary><span>${label} · ${people.length}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="${tr("Открыть контакт:")} ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || tr('Участник'))}</strong><small>${esc(person.email || tr('Адрес не указан'))}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
   }).join('')}</div>`;
 }
 let mailPeopleChoices = [];
@@ -185,13 +185,13 @@ function currentContactCard() {
 function contactCardBody(person, note = '') {
   const canWrite = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(person.email || '');
   const pinned = colleagues().some(value => value.email.toLowerCase() === person.email?.toLowerCase());
-  return `<div class="contact-detail">${avatar(person.name || person.email, 0, person.email)}<h2>${esc(person.name || person.email || 'Контакт')}</h2><p>${esc(person.email || 'Email не указан в письме')}</p><p data-contact-field="company" ${person.company ? '' : 'hidden'}>${esc(person.company || '')}</p><p data-contact-field="phone" ${person.phone ? '' : 'hidden'}>${esc(person.phone || '')}</p><p class="form-note" role="status" data-contact-field="status">${esc(note)}</p><div class="contact-card-actions"><button type="button" class="secondary" data-action="pin-card-contact" ${!canWrite || pinned ? 'disabled' : ''}>${icon('plus')}${pinned ? 'В коллегах' : 'Добавить в коллеги'}</button><button type="button" class="primary" data-action="write-card-contact" ${canWrite ? '' : 'disabled'}>${icon('mail')}Написать письмо</button></div></div>`;
+  return `<div class="contact-detail">${avatar(person.name || person.email, 0, person.email)}<h2>${esc(person.name || person.email || tr('Контакт'))}</h2><p>${esc(person.email || tr('Email не указан в письме'))}</p><p data-contact-field="company" ${person.company ? '' : 'hidden'}>${esc(person.company || '')}</p><p data-contact-field="phone" ${person.phone ? '' : 'hidden'}>${esc(person.phone || '')}</p><p class="form-note" role="status" data-contact-field="status">${esc(note)}</p><div class="contact-card-actions"><button type="button" class="secondary" data-action="pin-card-contact" ${!canWrite || pinned ? 'disabled' : ''}>${icon('plus')}${pinned ? tr('В коллегах') : tr('Добавить в коллеги')}</button><button type="button" class="primary" data-action="write-card-contact" ${canWrite ? '' : 'disabled'}>${icon('mail')}${tr("Написать письмо")}</button></div></div>`;
 }
 async function openContactCard(person, lookup = false) {
   if (modalBusy) return;
   const local = [...(state.demo ? window.asterDemo.contacts : state.contacts), ...colleagues()].find(value => person.email && value.email?.toLowerCase() === person.email.toLowerCase());
   const base = { ...person, ...(local || {}) };
-  modal('Контакт', '', contactCardBody(base, lookup ? 'Загружаем сведения из справочника…' : ''));
+  modal(tr('Контакт'), '', contactCardBody(base, lookup ? tr('Загружаем сведения из справочника…') : ''));
   const context = contactCardContext = { person: base, account: state.account, generation: state.generation, modal: modalSequence };
   if (!lookup) return;
   const query = person.email || person.name || '';
@@ -204,21 +204,21 @@ async function openContactCard(person, lookup = false) {
       const element = detail.querySelector(`[data-contact-field="${field}"]`);
       element.textContent = text; element.hidden = !text;
     }
-    detail.querySelector('h2').textContent = value.name || value.email || 'Контакт';
+    detail.querySelector('h2').textContent = value.name || value.email || tr('Контакт');
   };
-  if (query.trim().length < 2 || query.length > 254) { update(base, 'Недостаточно данных для поиска в справочнике.'); return; }
+  if (query.trim().length < 2 || query.length > 254) { update(base, tr('Недостаточно данных для поиска в справочнике.')); return; }
   try {
     const result = state.demo ? { items: window.asterRecipients.matches(window.asterDemo.directory, query) } : await api('contacts', { query });
     if (currentContactCard() !== context) return;
     const exact = result.items.find(candidate => person.email && candidate.email?.toLowerCase() === person.email.toLowerCase());
-    if (exact) { update({ ...base, ...exact, company: exact.company || base.company || '', phone: exact.phone || base.phone || '' }, 'Сведения из справочника Exchange'); return; }
+    if (exact) { update({ ...base, ...exact, company: exact.company || base.company || '', phone: exact.phone || base.phone || '' }, tr('Сведения из справочника Exchange')); return; }
     if (!person.email && result.items.length) {
       mailPeopleChoices = result.items;
-      modal('Выберите контакт', 'В письме не указан SMTP-адрес. Уточните получателя по справочнику.', `<div class="mail-recipient-list">${mailPeopleChoices.map((candidate, i) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="choice" data-index="${i}">${avatar(candidate.name, i, candidate.email)}<span><strong>${esc(candidate.name)}</strong><small>${esc(candidate.email)}</small></span></button>`).join('')}</div>`);
+      modal(tr('Выберите контакт'), tr('В письме не указан SMTP-адрес. Уточните получателя по справочнику.'), `<div class="mail-recipient-list">${mailPeopleChoices.map((candidate, i) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="choice" data-index="${i}">${avatar(candidate.name, i, candidate.email)}<span><strong>${esc(candidate.name)}</strong><small>${esc(candidate.email)}</small></span></button>`).join('')}</div>`);
       return;
     }
-    update(base, 'Дополнительные сведения в справочнике не найдены.');
-  } catch (error) { update(base, `Справочник недоступен: ${error.message}`); }
+    update(base, tr('Дополнительные сведения в справочнике не найдены.'));
+  } catch (error) { update(base, `${tr("Справочник недоступен:")} ${error.message}`); }
 }
 
 // Each result group has its own paging and error state; mail-only actions stay mail-only.
@@ -243,9 +243,9 @@ function renderSearchObjects() {
   return ['calendar', 'contacts', 'mail'].map(kind => {
     const group = state.searchObjects[kind];
     if (!group || kind === 'mail' && !group.error) return '';
-    const label = { calendar: 'Календарь', contacts: 'Личные контакты', mail: 'Письма' }[kind];
-    const rows = kind === 'mail' ? '' : group.items.map((item, index) => `<button type="button" class="search-object" data-action="search-object" data-kind="${kind}" data-index="${index}">${icon(kind === 'calendar' ? 'calendar' : 'people')}<span><strong>${esc(item.title || item.name || item.email || 'Без названия')}</strong><small>${esc(kind === 'calendar' ? `${item.start ? dateFormat(item.start, { day: 'numeric', month: 'long', year: 'numeric' }) + ' · ' + time(item.start) : 'Дата не указана'}${item.recurring ? ' · Повторяется' : ''} · ${item.location || ''}` : [item.email, item.company].filter(Boolean).join(' · '))}</small></span></button>`).join('');
-    return `<details class="search-object-group" data-search-kind="${kind}" ${group.expanded || !state.messages.length || group.error ? 'open' : ''}><summary>${label}${kind === 'mail' ? '' : ` · ${group.items.length}${group.more ? '+' : ''}`}</summary>${rows}${group.error ? `<p class="search-source-error" role="status">Поиск не завершён: ${esc(group.error)}</p><button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">Повторить</button>` : !group.items.length ? '<p class="form-note">Совпадений нет</p>' : ''}${group.more && !group.error ? `<button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">Ещё: ${label.toLowerCase()}</button>` : ''}</details>`;
+    const label = { calendar: tr('Календарь'), contacts: tr('Личные контакты'), mail: tr('Письма') }[kind];
+    const rows = kind === 'mail' ? '' : group.items.map((item, index) => `<button type="button" class="search-object" data-action="search-object" data-kind="${kind}" data-index="${index}">${icon(kind === 'calendar' ? 'calendar' : 'people')}<span><strong>${esc(item.title || item.name || item.email || tr('Без названия'))}</strong><small>${esc(kind === 'calendar' ? `${item.start ? dateFormat(item.start, { day: 'numeric', month: 'long', year: 'numeric' }) + ' · ' + time(item.start) : tr('Дата не указана')}${item.recurring ? tr(' · Повторяется') : ''} · ${item.location || ''}` : [item.email, item.company].filter(Boolean).join(' · '))}</small></span></button>`).join('');
+    return `<details class="search-object-group" data-search-kind="${kind}" ${group.expanded || !state.messages.length || group.error ? 'open' : ''}><summary>${label}${kind === 'mail' ? '' : ` · ${group.items.length}${group.more ? '+' : ''}`}</summary>${rows}${group.error ? `<p class="search-source-error" role="status">${tr("Поиск не завершён:")} ${esc(group.error)}</p><button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">${tr("Повторить")}</button>` : !group.items.length ? tr('<p class="form-note">Совпадений нет</p>') : ''}${group.more && !group.error ? `<button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">${tr("Ещё:")} ${label.toLowerCase()}</button>` : ''}</details>`;
   }).join('');
 }
 async function moreSearchObjects(button) {

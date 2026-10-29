@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
 function guards(overrides = {}) {
-  const context = vm.createContext({ unsavedChanges: false, resettingLocalData: false, client: null, connection: null, window: {}, accountEpoch: 0, localStore: { clear: async () => {} }, attachmentFiles: { clear: async () => {}, clearSync() {} }, attachmentCleanupError: '', dialog: {}, ...overrides });
+  const context = vm.createContext({ tr: value => value, unsavedChanges: false, resettingLocalData: false, client: null, connection: null, window: {}, accountEpoch: 0, localStore: { clear: async () => {} }, attachmentFiles: { clear: async () => {}, clearSync() {} }, attachmentCleanupError: '', dialog: {}, ...overrides });
   vm.runInContext(source.slice(source.indexOf('function confirmDiscardChanges()'), source.indexOf('\nfunction reveal(')), context);
   return context;
 }
@@ -53,7 +53,7 @@ test('pre-login recovery never clears without confirmation and blocks concurrent
 });
 test('window initial size and minimum fit the display work area in logical pixels', () => {
   let options;
-  const context = vm.createContext({ screen: { getPrimaryDisplay: () => ({ workArea: { width: 960, height: 640 } }) }, BrowserWindow: function (value) { options = value; this.loadFile = () => {}; this.on = () => {}; this.webContents = { setWindowOpenHandler() {}, on() {}, session: { setPermissionRequestHandler() {} } }; }, path, __dirname: path.join(__dirname, '../desktop'), page: 'index.html' });
+  const context = vm.createContext({ tr: value => value, screen: { getPrimaryDisplay: () => ({ workArea: { width: 960, height: 640 } }) }, BrowserWindow: function (value) { options = value; this.loadFile = () => {}; this.on = () => {}; this.webContents = { setWindowOpenHandler() {}, on() {}, session: { setPermissionRequestHandler() {} } }; }, path, __dirname: path.join(__dirname, '../desktop'), page: 'index.html' });
   const start = source.indexOf('  createWindow = () => {'), end = source.indexOf("  ipcMain.on('aster-unsaved-changes'", start);
   vm.runInContext(source.slice(start, end), context); context.createWindow();
   assert.equal(options.width, 960); assert.equal(options.height, 640); assert.equal(options.minWidth, 960); assert.equal(options.minHeight, 640);

@@ -8,7 +8,7 @@ const functions = source.slice(source.indexOf('function applyMessageRead('), sou
 function reader(api) {
   const state = { generation: 1, folder: 'inbox', query: '', filter: 'unread', offset: 2, folders: [{ id: 'inbox-id', wellKnown: 'inbox', unread: 2 }], messages: ['a', 'b'].map(id => ({ id, read: false, changeKey: `key-${id}`, parentId: 'inbox-id' })) };
   const errors = [];
-  const context = vm.createContext({ state, api, messageOpenSequence: 0, readingMessages: new Map(), ref: m => ({ id: m.id, changeKey: m.changeKey }), document: { body: { classList: { add() {} } } }, $: () => ({}), icon: () => '', renderMessages() {}, renderReader() {}, renderSidebar() {}, showError: error => errors.push(error.message) });
+  const context = vm.createContext({ tr: value => value, state, api, messageOpenSequence: 0, readingMessages: new Map(), ref: m => ({ id: m.id, changeKey: m.changeKey }), document: { body: { classList: { add() {} } } }, $: () => ({}), icon: () => '', renderMessages() {}, renderReader() {}, renderSidebar() {}, showError: error => errors.push(error.message) });
   vm.runInContext(functions, context);
   return { context, state, errors, open: id => context.openMessage(id) };
 }
@@ -58,7 +58,7 @@ test('signature numeric CR and LF entities become line breaks without decoding H
   assert.equal(result.html, '<div>Анна</div>\n<p>Почта</p>');
 });
 test('late mail rendering after navigating to contacts ignores removed DOM nodes', () => {
-  const context = vm.createContext({ state: { view: 'contacts', selected: { id: 'a' } }, $: () => null });
+  const context = vm.createContext({ tr: value => value, state: { view: 'contacts', selected: { id: 'a' } }, $: () => null });
   for (const [start, end] of [['function renderMail()', 'function renderMessages()'], ['function renderMessages()', 'function applyMessageRead('], ['function renderReader()', 'function calendarEvents(']]) {
     const from = source.indexOf(start), to = source.indexOf(end, from);
     assert.ok(from >= 0 && to > from);

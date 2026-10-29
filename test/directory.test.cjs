@@ -40,7 +40,7 @@ test('directory failures keep the actual cause, and invalid queries never reach 
 });
 test('demo can suggest a GAL-only person without adding them to personal contacts', () => {
   const fs = require('node:fs'), vm = require('node:vm');
-  const context = vm.createContext({ window: {}, structuredClone });
+  const context = vm.createContext({ tr: value => value, window: {}, structuredClone });
   vm.runInContext(fs.readFileSync(require.resolve('../src/demo.js'), 'utf8'), context);
   const demo = context.window.asterDemo;
   assert.equal(demo.contacts.some(person => person.email === 'irina.novikova@example.com'), false);

@@ -1,12 +1,13 @@
+const tr = require('../src/i18n.js').text;
 // Inspect bounded raster headers before any decoder can allocate pixel buffers.
 const maxPixels = 16_000_000, maxDecodedBytes = 128 * 1024 * 1024;
 function dimensions(width, height, pixelLimit = maxPixels) {
-  if (!width || !height || width > 8192 || height > 8192 || width * height > pixelLimit) throw new Error('Изображение превышает лимит размеров или пикселей');
+  if (!width || !height || width > 8192 || height > 8192 || width * height > pixelLimit) throw new Error(tr('Изображение превышает лимит размеров или пикселей'));
   return { width, height, decodedBytes: width * height * 4 };
 }
 function metadata(bytes, type) {
-  const invalid = () => { throw new Error('Повреждённый или неподдерживаемый файл изображения'); };
-  const staticOnly = () => { throw new Error('Анимированные изображения недоступны для безопасного предпросмотра'); };
+  const invalid = () => { throw new Error(tr('Повреждённый или неподдерживаемый файл изображения')); };
+  const staticOnly = () => { throw new Error(tr('Анимированные изображения недоступны для безопасного предпросмотра')); };
   if (type === 'image/png') {
     if (bytes.length < 33 || !bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) || bytes.readUInt32BE(8) !== 13 || bytes.toString('ascii', 12, 16) !== 'IHDR') return invalid();
     const size = dimensions(bytes.readUInt32BE(16), bytes.readUInt32BE(20));
@@ -96,9 +97,9 @@ function metadata(bytes, type) {
 }
 function inspect(attachment, pixelLimit = maxPixels) {
   const type = attachment.ContentType, content = attachment.Content;
-  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type) || typeof content !== 'string' || content.length > 7_200_000 || !/^[A-Za-z0-9+/\r\n]*={0,2}$/.test(content)) throw new Error('Этот формат изображения не поддерживается');
+  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type) || typeof content !== 'string' || content.length > 7_200_000 || !/^[A-Za-z0-9+/\r\n]*={0,2}$/.test(content)) throw new Error(tr('Этот формат изображения не поддерживается'));
   const bytes = Buffer.from(content, 'base64');
-  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error('Изображение превышает 5 МБ');
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error(tr('Изображение превышает 5 МБ'));
   const info = metadata(bytes, type);
   dimensions(info.width, info.height, pixelLimit);
   return { ...info, dataURL: `data:${type};base64,${bytes.toString('base64')}`, compressedBytes: bytes.length };
