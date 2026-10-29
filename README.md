@@ -9,7 +9,7 @@
 приложении — с прямым подключением к вашему серверу, без промежуточного
 облака Aster и телеметрии.
 
-[![Релиз](https://img.shields.io/github/v/release/darxfame/aster-mail?style=flat&label=%D0%A0%D0%B5%D0%BB%D0%B8%D0%B7&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/releases/latest)
+[![Релиз](https://img.shields.io/github/v/release/darxfame/aster-mail?style=flat&label=%D0%A0%D0%B5%D0%BB%D0%B8%D0%B7&labelColor=30263f&color=8b64cb&cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
 [![Скачивания](https://img.shields.io/github/downloads/darxfame/aster-mail/total?style=flat&label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/releases)
 [![Звёзды](https://img.shields.io/github/stars/darxfame/aster-mail?style=flat&label=%D0%97%D0%B2%D1%91%D0%B7%D0%B4%D1%8B&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/stargazers)
 [![Проверки](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)

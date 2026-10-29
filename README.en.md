@@ -8,7 +8,7 @@ An open-source **Microsoft Exchange OWA/EWS desktop client** for
 **macOS Apple Silicon and Windows x64**. Mail, calendar, and colleagues in one
 app, connected directly to your server, with no Aster cloud or telemetry.
 
-[![Release](https://img.shields.io/github/v/release/darxfame/aster-mail)](https://github.com/darxfame/aster-mail/releases/latest)
+[![Release](https://img.shields.io/github/v/release/darxfame/aster-mail?cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
 [![Checks](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 

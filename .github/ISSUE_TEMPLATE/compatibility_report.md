@@ -42,4 +42,4 @@ invitations without permission. Mark untested workflows as "not tested".
 пароли, токены или cookies. Do not attach server URLs, corporate email addresses,
 messages, raw server responses, passwords, tokens, or cookies.
 
-Уязвимости / Vulnerabilities: see [SECURITY.md](../../SECURITY.md).
+Уязвимости / Vulnerabilities: see [SECURITY.md](https://github.com/darxfame/aster-mail/blob/main/SECURITY.md).
