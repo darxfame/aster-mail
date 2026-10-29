@@ -3,7 +3,7 @@ const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const initials = name => (name || '?').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
-const avatar = (name, tone = 0) => `<div class="avatar tone-${tone % 5}">${esc(initials(name))}</div>`;
+const avatar = (name, tone = 0, email = '') => `<div class="avatar tone-${tone % 5}" ${email ? `data-person-email="${esc(email)}"` : ''}>${esc(initials(name))}</div>`;
 const T = window.asterTime;
 let timeZone = localStorage.getItem('aster-time-zone') || 'system';
 try { T.zone(timeZone); } catch { timeZone = 'system'; }
@@ -21,6 +21,8 @@ const systemFolders = [
 ];
 const state = { demo: false, account: null, view: 'mail', folder: 'inbox', folders: [], messages: [], selected: null, filter: 'all', query: '', more: false, offset: 0, week: new Date(), events: [], contacts: [], generation: 0, signature: localStorage.getItem('aster-signature') || '', theme: localStorage.getItem('aster-theme') || 'light' };
 let toastTimer, composeData, modalBusy = false;
+let messageOpenSequence = 0;
+const readingMessages = new Map();
 let calendarPreference = localStorage.getItem('aster-calendar-view') || 'auto';
 let renderedCalendarMode;
 let navigationPlacement = localStorage.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
@@ -32,7 +34,10 @@ let sidebarCollapsed = localStorage.getItem('aster-sidebar-collapsed') === 'true
 document.body.classList.toggle('desktop', Boolean(window.aster));
 async function getServerSignature() {
   const value = state.demo ? { html: '<p>С уважением,<br><b>Команда Aster</b></p>', text: 'С уважением,\nКоманда Aster', autoAddSignature: true, autoAddSignatureOnReply: true } : await api('signature');
-  const html = DOMPurify.sanitize(value.html || '', { FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'video', 'audio', 'svg', 'math'] });
+  if (state.demo) { value.html += '<img src="cid:demo-logo" alt="Aster" width="48" height="48">'; value.images = (await demoContentImages(value.html)).images; }
+  const signatureDoc = new DOMParser().parseFromString(value.html || '', 'text/html');
+  signatureDoc.querySelectorAll('img').forEach(img => { const src = img.getAttribute('src'); if (value.images?.[src]) img.setAttribute('src', value.images[src]); else { img.removeAttribute('src'); img.alt = 'Изображение подписи недоступно'; } });
+  const html = DOMPurify.sanitize(signatureDoc.body.innerHTML, { FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'video', 'audio', 'svg', 'math'] });
   let text = value.text || '';
   if (!text && html) {
     const document = new DOMParser().parseFromString(DOMPurify.sanitize(html, { FORBID_TAGS: ['img'] }), 'text/html');
@@ -40,19 +45,20 @@ async function getServerSignature() {
     document.querySelectorAll('p,div,tr,li').forEach(el => el.append('\n'));
     text = document.body.textContent.trim();
   }
-  serverSignature = { ...value, html, text };
+  serverSignature = { ...value, html, text, images: Object.fromEntries(Object.values(value.images || {}).map(src => [src, src])) };
   return serverSignature;
 }
 async function refreshSignatureField() {
   const form = $('#settings-form'); if (!form) return;
   const input = form.elements.signature, checkbox = form.elements.syncSignature, status = $('#signature-status');
   input.readOnly = checkbox.checked;
-  if (!checkbox.checked) { input.value = state.signature; status.textContent = 'Используется локальная подпись.'; return; }
+  if (!checkbox.checked) { input.value = state.signature; status.textContent = 'Используется локальная подпись.'; $('#signature-preview')?.replaceChildren(); return; }
   status.textContent = 'Загружаем подпись из OWA…';
   try {
     const signature = await getServerSignature();
     if (!$('#settings-form') || !checkbox.checked) return;
     input.value = signature.text;
+    renderSignaturePreview($('#signature-preview'), signature);
     status.textContent = signature.text || signature.html ? 'Подпись загружена из OWA. Форматирование сохранится при отправке; настройки OWA для новых писем и ответов учитываются.' : 'На сервере сохранена пустая подпись.';
   } catch (error) {
     checkbox.checked = false; input.readOnly = false; input.value = state.signature;
@@ -94,8 +100,7 @@ function renderSidebar() {
   const dock = $('.bottom-dock');
   $('.statusbar').prepend(dock);
   const isMail = state.view === 'mail';
-  const unreadCount = state.demo ? window.asterDemo.messages.filter(m => m.folder === 'inbox' && !m.read).length : null;
-  const folderButtons = renderFolderTree(unreadCount);
+  const folderButtons = renderFolderTree();
   $('#sidebar').innerHTML = `<div class="wordmark"><span class="brand-star" aria-hidden="true">✳</span><span class="brand-text">aster<span> mail</span></span></div><button class="primary sidebar-compose" data-action="${state.view === 'calendar' ? 'new-event' : 'compose'}" aria-label="${state.view === 'calendar' ? 'Создать встречу' : 'Написать письмо'}" title="${state.view === 'calendar' ? 'Создать встречу' : 'Написать письмо'}">${icon('plus')}<span>${state.view === 'calendar' ? 'Новая встреча' : 'Написать письмо'}</span></button>
     <div class="sidebar-scroll">${state.view === 'calendar' ? miniMonthHTML() : `<div class="nav-caption">Почта</div><nav class="folder-list folder-tree" aria-label="Папки почты">${folderButtons}</nav>`}
     </div><div id="sidebar-dock"></div><button class="account-card" data-action="settings" title="Настройки аккаунта" aria-label="Настройки аккаунта"><div class="account-avatar">${esc(initials(state.account?.username || 'Aster'))}</div><div class="account-info"><strong>${esc(state.account?.username || (state.demo ? 'Демоаккаунт' : 'Ваш аккаунт'))}</strong><small>${state.account ? esc(new URL(state.account.server).hostname) : state.demo ? 'Вымышленные данные' : 'Подключить Exchange'}</small></div></button>`;
@@ -132,16 +137,22 @@ async function loadView(append = false) {
   $('#status').textContent = 'Обновление…';
   try {
     if (state.view === 'mail') {
+      const offset = append ? state.offset : 0;
       let result;
       if (state.demo) {
-        const matches = window.asterDemo.messages.filter(m => state.query ? `${m.subject} ${m.preview} ${m.from.name} ${m.from.email}`.toLowerCase().includes(state.query.toLowerCase()) : m.folder === state.folder);
+        const matches = window.asterDemo.messages.filter(m => state.query ? `${m.subject} ${m.preview} ${m.from.name} ${m.from.email}`.toLowerCase().includes(state.query.toLowerCase()) : m.folder === state.folder).filter(m => state.filter === 'all' || (state.filter === 'unread' ? !m.read : m.flagged));
         result = { items: structuredClone(matches), more: false };
-      } else result = await api(state.query ? 'search' : 'messages', { folder: state.folder, query: state.query, offset: append ? state.offset : 0 });
+      } else result = await api(state.query ? 'search' : 'messages', { folder: state.folder, query: state.query && state.filter === 'unread' ? `(${state.query}) AND read:no` : state.query, filter: state.filter, offset });
       if (generation !== state.generation) return;
-      state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = state.messages.length;
+      // Refresh counts before showing selectable rows, so an older snapshot cannot undo a read.
+      if (!state.demo && !state.query && !append) {
+        try { const folders = await api('folders'); if (generation === state.generation) state.folders = folders; }
+        catch { /* Keep existing counts if folder refresh is unavailable. */ }
+        if (generation !== state.generation) return;
+      }
+      state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = (append ? state.offset : 0) + result.items.length;
       if (!append) state.selected = null;
       renderMail();
-      if (state.messages.length && !append && matchMedia('(min-width: 901px)').matches) await openMessage(state.messages[0].id, generation);
     } else if (state.view === 'calendar') {
       const requestedMode = calendarMode();
       const { start, end } = window.asterCalendar.range(state.week, requestedMode, timeZone);
@@ -163,50 +174,76 @@ async function loadView(append = false) {
 }
 function filteredMessages() { return state.messages.filter(m => state.filter === 'all' || (state.filter === 'unread' ? !m.read : m.flagged)); }
 function renderMail() {
+  if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected));
   const title = state.query ? `Результаты поиска` : systemFolders.find(f => f[0] === state.folder)?.[1] || state.folders.find(f => f.id === state.folder)?.name || 'Письма';
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}» · весь ящик`) : 'Всё важное — на своём месте'}</small></div><span class="muted">${state.messages.length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', 'Все письма'], ['unread', 'Непрочитанные'], ['flagged', 'Избранное']].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div class="messages" id="messages"></div>${state.more ? '<button class="secondary load-more" data-action="more">Загрузить ещё</button>' : ''}</div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}» · весь ящик`) : 'Всё важное — на своём месте'}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', 'Все письма'], ['unread', 'Непрочитанные'], ['flagged', 'Избранное']].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div class="messages" id="messages"></div>${state.more ? '<button class="secondary load-more" data-action="more">Загрузить ещё</button>' : ''}</div><article class="reader" id="reader"></article>`;
   renderMessages();
   if (state.selected) renderReader(); else $('#reader').innerHTML = `<div class="empty">${icon('mail')}<h2>Место для ваших мыслей</h2><p>Выберите письмо, чтобы прочитать его, или напишите новое.</p></div>`;
 }
 function renderMessages() {
+  if (state.view !== 'mail' || !$('#messages')) return;
   let previousDay = '';
   const items = filteredMessages();
+  if ($('#mail-count')) $('#mail-count').textContent = `${items.length}${state.more ? '+' : ''}`;
   $('#messages').innerHTML = items.map((m, i) => {
     const key = dayKey(m.date), label = key === dayKey(new Date()) ? 'Сегодня' : dateFormat(m.date, { day: 'numeric', month: 'long' });
     const heading = key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : ''; previousDay = key;
-    return `${heading}<button class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || 'Неизвестный отправитель')}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? '<span class="tag">Приглашение</span>' : ''}</div>` : ''}</div></button>`;
-  }).join('') || '<div class="empty"><p>Здесь пока нет писем</p></div>';
+    return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><button draggable="false" class="message-open" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? 'Прочитано' : 'Непрочитано'}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || 'Неизвестный отправитель')}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? '<span class="unread-badge">Новое</span>' : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? '<span class="tag">Приглашение</span>' : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? 'Убрать из избранного' : 'В избранное'}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
+  }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? 'Непрочитанных писем нет' : state.filter === 'flagged' ? 'Избранных писем нет' : 'Здесь пока нет писем'}</p></div>`;
+}
+function applyMessageRead(message, read, folderKey) {
+  const summary = state.messages.find(item => item.id === message.id);
+  const before = summary?.read ?? message.read;
+  message.read = read;
+  if (before !== read && summary && state.filter === 'unread') state.offset = Math.max(0, state.offset + (read ? -1 : 1));
+  if (summary) Object.assign(summary, { read, changeKey: message.changeKey });
+  if (state.selected?.id === message.id) Object.assign(state.selected, { read, changeKey: message.changeKey });
+  if (state.demo) { const demo = window.asterDemo.messages.find(item => item.id === message.id); if (demo) demo.read = read; }
+  if (before !== read && !state.demo) {
+    const folder = state.folders.find(folder => message.parentId ? folder.id === message.parentId : folder.id === folderKey || folder.wellKnown === folderKey);
+    if (folder) folder.unread = Math.max(0, (folder.unread || 0) + (read ? -1 : 1));
+  }
+}
+async function markMessageRead(message, folderKey) {
+  if (readingMessages.has(message.id)) return readingMessages.get(message.id);
+  if (folderKey === 'drafts') return;
+  if (message.read) { applyMessageRead(message, true, folderKey); return; }
+  const pending = (async () => {
+    if (!state.demo) {
+      const updated = await api('change', { ref: ref(message), field: 'IsRead', value: true });
+      message.changeKey = updated.changeKey || message.changeKey;
+    }
+    applyMessageRead(message, true, folderKey);
+  })();
+  readingMessages.set(message.id, pending);
+  try { await pending; } finally { readingMessages.delete(message.id); }
 }
 async function openMessage(id, generation = state.generation) {
   const summary = state.messages.find(m => m.id === id);
   if (!summary) return;
+  const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
   state.selected = summary; document.body.classList.add('reader-open'); renderMessages();
   $('#reader').innerHTML = `<div class="loading">${icon('refresh')}Открываем письмо…</div>`;
   try {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
-    if (generation !== state.generation || state.selected?.id !== id) return;
-    state.selected = { ...summary, ...detail }; renderReader();
-    if (state.selected.meeting?.id && !state.selected.meeting.cancelled) {
-      const selected = state.selected;
+    if (generation !== state.generation || sequence !== messageOpenSequence) return;
+    const selected = { ...summary, ...detail };
+    state.selected = selected;
+    const marking = markMessageRead(selected, folderKey);
+    renderReader();
+    try { await marking; }
+    catch (error) { showError(new Error(`Письмо открыто, но не удалось отметить его прочитанным: ${error.message}`)); }
+    if (generation !== state.generation || sequence !== messageOpenSequence) return;
+    renderMessages(); renderSidebar(); renderReader();
+    if (selected.meeting?.id && !selected.meeting.cancelled) {
       try {
         const meeting = state.demo ? window.asterDemo.events.find(e => e.id === selected.meeting.id) : await api('event', ref(selected.meeting));
         if (meeting) Object.assign(selected.meeting, { ...meeting, statusLoaded: true });
       } catch (error) { selected.meeting.statusError = error.message; }
       if (state.selected === selected && generation === state.generation) renderReader();
     }
-    if (!summary.read && state.folder !== 'drafts') {
-      if (!state.demo) {
-        const updated = await api('change', { ref: ref(state.selected), field: 'IsRead', value: true });
-        summary.changeKey = updated.changeKey;
-        if (state.selected?.id === id) state.selected.changeKey = updated.changeKey;
-      }
-      summary.read = true;
-      if (state.selected?.id === id) state.selected.read = true;
-      if (state.demo) window.asterDemo.messages.find(m => m.id === id).read = true;
-      if (state.selected?.id === id && generation === state.generation) { renderMessages(); renderSidebar(); }
-    }
-  } catch (error) { if (generation === state.generation) showError(error); }
+  } catch (error) { if (generation === state.generation && sequence === messageOpenSequence) showError(error); }
 }
 function rsvpButtons(id, changeKey, cancelled = false, response, isOrganizer = false, statusError = '') {
   if (cancelled) return '<p class="form-note" role="status">Встреча отменена организатором. Ответ не требуется.</p>';
@@ -235,8 +272,8 @@ async function demoContentImages(html) {
 }
 function renderReader() {
   const m = state.selected;
-  if (!m) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content"><div class="eyebrow">${icon(m.meeting ? 'calendar' : 'mail')}${m.meeting ? 'Приглашение на встречу' : 'Личная переписка'}</div><h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email)}<div><strong>${esc(m.from.name || m.from.email)}</strong><small>${esc(m.from.email)} · кому: ${esc(m.to?.map(a => a.name || a.email).join(', ') || 'вам')}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}<div class="privacy-note">${icon('shield')}Изображения отображаются автоматически · активное содержимое отключено</div><div id="message-body"></div>${m.attachments?.length ? `<div class="attachments">${m.attachments.map(a => `<button class="attachment" data-action="attachment" data-id="${esc(a.id)}" data-name="${esc(a.name)}">${icon('file')}<span><strong>${esc(a.name)}</strong><small>${bytes(a.size || 0)} · Скачать</small></span></button>`).join('')}</div>` : ''}<div class="reply-actions"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div></div></div>`;
+  if (!m || state.view !== 'mail' || !$('#reader')) return;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}К письмам</button><button class="icon-button" data-action="archive" title="В архив" aria-label="В архив">${icon('archive')}</button><button class="icon-button" data-action="delete" title="В корзину" aria-label="В корзину">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="Избранное" aria-label="Избранное">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="Важность" aria-label="${m.importance === 'High' ? 'Обычная важность' : 'Пометить важным'}">${icon('important')}</button><button class="icon-button" data-action="unread" title="Отметить непрочитанным" aria-label="Отметить непрочитанным">${icon('mail')}</button><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} из ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}Приглашение на встречу</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong>${esc(m.from.name || m.from.email)}</strong><small>${esc(m.from.email)} · кому: ${esc(m.to?.map(a => a.name || a.email).join(', ') || 'вам')}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || 'Встреча')}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}Изображения отображаются автоматически · активное содержимое отключено</div><div id="message-body"></div><div class="reply-actions"><button class="secondary" data-action="reply">${icon('reply')}Ответить</button><button class="secondary" data-action="reply-all">Ответить всем</button><button class="secondary" data-action="forward">Переслать ${icon('send')}</button></div></div></div>`;
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
       dark: state.theme === 'dark', title: 'Содержимое письма',
@@ -300,12 +337,12 @@ function availabilityLabel(person, at = Date.now()) {
   return { ...status, text: status.kind === 'free' ? `${status.horizon ? 'Свободен · проверено до' : 'Свободен до'} ${until}` : `${name} до ${until} · ещё ${duration}` };
 }
 function renderColleagues() {
-  if (!$('#colleagues-list')) return;
+  if (state.view !== 'contacts' || !$('#colleagues-list') || !$('#colleagues-count') || !$('#colleagues-updated')) return;
   const list = colleagues();
   if (colleagueScope !== colleaguesKey()) { colleagueData = []; colleagueUpdated = null; colleagueError = ''; }
   const rows = list.map(c => { const p = colleagueData.find(p => p.email.toLowerCase() === c.email.toLowerCase()); return { ...c, status: availabilityLabel(p) }; });
   $('#colleagues-count').textContent = `${rows.filter(c => c.status.kind === 'free').length} из ${list.length} свободны`;
-  $('#colleagues-list').innerHTML = rows.map(c => `<div class="colleague-row">${avatar(c.name)}<div class="colleague-name"><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></div><span class="availability ${c.status.kind}" title="${esc(c.status.text)}"><i></i>${esc(c.status.text)}</span><button class="icon-button" data-action="plan-colleague" data-email="${esc(c.email)}" aria-label="Запланировать встречу: ${esc(c.name)}" title="Запланировать встречу">${icon('calendar')}</button><button class="icon-button" data-action="remove-colleague" data-email="${esc(c.email)}" aria-label="Убрать: ${esc(c.name)}" title="Убрать из коллег">${icon('close')}</button></div>`).join('') || '<p class="form-note">Добавьте людей из общего каталога Exchange кнопкой «+».</p>';
+  $('#colleagues-list').innerHTML = rows.map(c => `<div class="colleague-row">${avatar(c.name, 0, c.email)}<div class="colleague-name"><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></div><span class="availability ${c.status.kind}" title="${esc(c.status.text)}"><i></i>${esc(c.status.text)}</span><button class="icon-button" data-action="plan-colleague" data-email="${esc(c.email)}" aria-label="Запланировать встречу: ${esc(c.name)}" title="Запланировать встречу">${icon('calendar')}</button><button class="icon-button" data-action="remove-colleague" data-email="${esc(c.email)}" aria-label="Убрать: ${esc(c.name)}" title="Убрать из коллег">${icon('close')}</button></div>`).join('') || '<p class="form-note">Добавьте людей из общего каталога Exchange кнопкой «+».</p>';
   $('#colleagues-updated').textContent = colleagueError ? `Не удалось обновить: ${colleagueError}` : `${state.demo ? 'Вымышленные статусы · ' : ''}${colleagueUpdated ? `Обновлено ${time(colleagueUpdated)} · проверка раз в минуту` : list.length ? 'Проверяем занятость…' : 'Избранные коллеги хранятся на этом компьютере.'}`;
 }
 async function refreshColleagues() {
@@ -330,7 +367,7 @@ async function searchDirectory(form) {
     const result = state.demo ? { items: window.asterDemo.contacts.filter(c => `${c.name} ${c.email}`.toLowerCase().includes(query.toLowerCase())) } : await api('contacts', { query });
     if (request !== directoryRequest || !$('#directory-results')) return;
     directoryResults = result.items.filter(c => c.email);
-    $('#directory-results').innerHTML = directoryResults.map((c, i) => `<div class="directory-row">${avatar(c.name)}<div><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></div><button class="secondary" data-action="add-colleague" data-index="${i}" ${colleagues().some(p => p.email.toLowerCase() === c.email.toLowerCase()) ? 'disabled' : ''}>${icon('plus')}Добавить</button></div>`).join('') || '<p class="form-note">По этому запросу людей с почтовым адресом не найдено.</p>';
+    $('#directory-results').innerHTML = directoryResults.map((c, i) => `<div class="directory-row">${avatar(c.name, 0, c.email)}<div><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></div><button class="secondary" data-action="add-colleague" data-index="${i}" ${colleagues().some(p => p.email.toLowerCase() === c.email.toLowerCase()) ? 'disabled' : ''}>${icon('plus')}Добавить</button></div>`).join('') || '<p class="form-note">По этому запросу людей с почтовым адресом не найдено.</p>';
   });
 }
 function plannerFingerprint(form) { return ['start', 'end', 'attendees'].map(name => form.elements[name].value).join('|'); }
@@ -365,7 +402,8 @@ async function runPlanner(button) {
 }
 
 function renderContacts() {
-  $('#workspace').innerHTML = `<div class="contacts-view"><div class="page-header"><div><h1>${state.query ? 'Люди в Exchange' : 'Ваши контакты'}</h1><p>${state.query ? `Результаты для «${esc(state.query)}»` : 'Люди, с которыми вы создаёте важное.'}</p></div><div class="contact-actions"><button class="secondary" data-action="directory">${icon('people')}Общий каталог</button><button class="primary" data-action="new-contact">${icon('plus')}Новый контакт</button></div></div><section class="colleagues-panel"><header><h2>${icon('people')}Коллеги</h2><span id="colleagues-count"></span><button class="icon-button" data-action="refresh-colleagues" aria-label="Обновить занятость" title="Обновить занятость">${icon('refresh')}</button><button class="icon-button" data-action="directory" aria-label="Добавить коллег" title="Добавить коллег">${icon('plus')}</button><button class="icon-button" data-action="toggle-colleagues" aria-label="Свернуть список коллег" aria-expanded="true">${icon('chevron')}</button></header><div id="colleagues-list"></div><p id="colleagues-updated" class="form-note"></p></section><div class="contacts-grid">${state.contacts.map((c, i) => `<button class="contact-card" data-action="contact" data-id="${esc(c.id)}">${avatar(c.name, i)}<strong>${esc(c.name)}</strong><p>${esc(c.company || 'Контакт Exchange')}</p><small>${esc(c.email || 'Email не указан')}</small></button>`).join('')}</div>${!state.contacts.length ? '<p class="form-note">Добавьте личный контакт или найдите коллегу в общем каталоге Exchange.</p>' : ''}${state.more ? '<button class="secondary load-more" data-action="more">Загрузить ещё</button>' : ''}</div>`;
+  if (state.view !== 'contacts') return;
+  $('#workspace').innerHTML = `<div class="contacts-view"><div class="page-header"><div><h1>${state.query ? 'Люди в Exchange' : 'Ваши контакты'}</h1><p>${state.query ? `Результаты для «${esc(state.query)}»` : 'Люди, с которыми вы создаёте важное.'}</p></div><div class="contact-actions"><button class="secondary" data-action="directory">${icon('people')}Общий каталог</button><button class="primary" data-action="new-contact">${icon('plus')}Новый контакт</button></div></div><section class="colleagues-panel"><header><h2>${icon('people')}Коллеги</h2><span id="colleagues-count"></span><button class="icon-button" data-action="refresh-colleagues" aria-label="Обновить занятость" title="Обновить занятость">${icon('refresh')}</button><button class="icon-button" data-action="directory" aria-label="Добавить коллег" title="Добавить коллег">${icon('plus')}</button><button class="icon-button" data-action="toggle-colleagues" aria-label="Свернуть список коллег" aria-expanded="true">${icon('chevron')}</button></header><div id="colleagues-list"></div><p id="colleagues-updated" class="form-note"></p></section><div class="contacts-grid">${state.contacts.map((c, i) => `<button class="contact-card" data-action="contact" data-id="${esc(c.id)}">${avatar(c.name, i, c.email)}<strong>${esc(c.name)}</strong><p>${esc(c.company || 'Контакт Exchange')}</p><small>${esc(c.email || 'Email не указан')}</small></button>`).join('')}</div>${!state.contacts.length ? '<p class="form-note">Добавьте личный контакт или найдите коллегу в общем каталоге Exchange.</p>' : ''}${state.more ? '<button class="secondary load-more" data-action="more">Загрузить ещё</button>' : ''}</div>`;
   renderColleagues();
 }
 function connectModal() {
@@ -385,12 +423,13 @@ async function compose(mode = 'new', contact = null) {
   if (!ready()) return connectModal();
   const source = syncSignature ? await getServerSignature() : null;
   const useServer = source && (mode === 'new' ? source.autoAddSignature : source.autoAddSignatureOnReply);
-  const signatureText = source ? (useServer ? source.text : '') : state.signature;
+  const signatureText = source ? '' : state.signature;
   const m = state.selected;
-  composeData = { kind: mode, reference: mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? { html: source.html, text: source.text } : null };
+  composeData = { kind: mode, reference: mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? source : null };
   const recipients = mode === 'reply-all' ? [...new Set([m.from.email, ...(m.to || []).map(a => a.email), ...(m.cc || []).map(a => a.email)].filter(e => e && e.toLowerCase() !== state.account?.username?.toLowerCase()))].join(', ') : mode === 'reply' ? m.from.email : contact?.email || '';
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
-  modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : `Отправка через корпоративный Exchange по ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients, 'text', true)}${field('cc', 'Копия')}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
+  modal(mode === 'forward' ? 'Переслать письмо' : mode.startsWith('reply') ? 'Ответить' : 'Новое письмо', state.demo ? 'Деморежим: письмо не будет отправлено на сервер.' : `Отправка через корпоративный Exchange по ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', 'Кому · адреса через запятую', recipients, 'text', true)}${field('cc', 'Копия')}${field('subject', 'Тема', mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}${textField('body', 'Сообщение', signatureText ? `\n\n${signatureText}` : '', 'compose-text')}${useServer ? '<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>' : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="Прикрепить файлы"></label><div id="picked-files" class="picked-files"></div><p class="form-note">Вложения до 20 МБ суммарно. Для ответа и пересылки Exchange добавит исходное письмо; пересылка сохраняет исходные вложения.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">Сохранить черновик</button><button class="primary" type="submit">${icon('send')}Отправить</button></div></form>`);
+  if (useServer) renderSignaturePreview($('#compose-signature-preview'), source);
 }
 function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
 function eventModal() {
@@ -413,6 +452,7 @@ async function settingsModal() {
     ${checkbox('syncSignature', 'Использовать подпись из OWA', syncSignature)}
     ${textField('signature', 'Подпись для новых писем и ответов', syncSignature ? serverSignature?.text || '' : state.signature)}
     <button class="secondary" type="button" data-action="refresh-signature">Обновить подпись из OWA</button>
+    <div id="signature-preview"></div>
     <p id="signature-status" class="form-note" role="status">Подпись загружается с сервера при создании письма. Настройки сервера не изменяются.</p>
     <label class="field"><span>Оформление</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>Светлое</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>Тёмное</option></select></label>
     <h3 class="settings-heading">Дата и время</h3>
@@ -445,16 +485,32 @@ async function sendCompose(save) {
   const form = $('#compose-form'); if (!form) return;
   if (!save && !form.reportValidity()) return;
   await submitForm(form, async data => {
-    if (composeData.signature?.html && (!composeData.signature.text || data.body.endsWith(composeData.signature.text))) {
-      const prefix = composeData.signature.text ? data.body.slice(0, -composeData.signature.text.length) : data.body;
-      data.bodyHtml = `<div style="white-space:pre-wrap">${esc(prefix)}</div>${composeData.signature.html}`;
+    const inline = [];
+    if (composeData.signature) {
+      const signature = composeData.signature;
+      if (Object.keys(signature.errors || {}).length) throw new Error('Не удалось загрузить картинки подписи. Обновите подпись в настройках или отключите синхронизацию перед отправкой.');
+      if (signature.html) {
+        const doc = new DOMParser().parseFromString(signature.html, 'text/html');
+        doc.querySelectorAll('img').forEach((img, index) => {
+          const match = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(img.getAttribute('src') || '');
+          if (!match) throw new Error('Изображение подписи не загружено');
+          const contentId = `aster-signature-${index}-${Date.now()}@aster.local`;
+          inline.push({ name: `signature-${index}.${match[1].split('/')[1]}`, type: match[1], content: match[2], inline: true, contentId });
+          img.setAttribute('src', `cid:${contentId}`);
+        });
+        data.bodyHtml = `<div style="white-space:pre-wrap">${esc(data.body)}</div>${doc.body.innerHTML}`;
+      }
+      data.body += `\n\n${signature.text}`;
     }
     const files = [...$('#files').files];
     if (files.reduce((n, f) => n + f.size, 0) > 20 * 1024 * 1024) throw new Error('Суммарный размер вложений превышает 20 МБ');
-    const attachments = await Promise.all(files.map(async file => ({ name: file.name, type: file.type || 'application/octet-stream', content: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }) })));
+    const attachments = inline.concat(await Promise.all(files.map(async file => ({ name: file.name, type: file.type || 'application/octet-stream', content: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }) }))));
     if (state.demo) {
-      window.asterDemo.messages.unshift({ id: `demo-${Date.now()}`, subject: data.subject || '(Без темы)', from: { name: 'Вы', email: 'you@example.com' }, to: data.to.split(',').map(email => ({ name: '', email: email.trim() })), cc: [], date: new Date().toISOString(), preview: data.body.slice(0, 130), text: data.body, read: true, flagged: false, attachments: attachments.map((a, i) => ({ id: `demo-file-${i}`, name: a.name, size: files[i].size })), hasAttachments: !!attachments.length, folder: save ? 'drafts' : 'sentitems' });
-    } else await api(save ? 'draft' : 'send', { ...data, ...composeData, attachments });
+      window.asterDemo.messages.unshift({ id: `demo-${Date.now()}`, subject: data.subject || '(Без темы)', from: { name: 'Вы', email: 'you@example.com' }, to: data.to.split(',').map(email => ({ name: '', email: email.trim() })), cc: [], date: new Date().toISOString(), preview: data.body.slice(0, 130), text: data.body, read: true, flagged: false, attachments: attachments.map((a, i) => ({ id: `demo-file-${i}`, name: a.name, size: files[i]?.size || Math.floor(a.content.length * 3 / 4) })), hasAttachments: !!attachments.length, folder: save ? 'drafts' : 'sentitems' });
+    } else {
+      const { signature, ...outgoing } = composeData;
+      await api(save ? 'draft' : 'send', { ...data, ...outgoing, attachments });
+    }
     $('#modal').close(); toast(state.demo ? `Демо: письмо ${save ? 'сохранено в черновиках' : 'добавлено в отправленные'}` : save ? 'Черновик сохранён в Exchange' : 'Письмо отправлено');
     if (state.folder === 'sentitems' || state.folder === 'drafts') await loadView();
   });
@@ -500,7 +556,9 @@ async function handleAction(button) {
   if (action === 'folder') { state.view = 'mail'; state.folder = button.dataset.folder; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView(); }
   if (action === 'refresh') return loadView();
   if (action === 'more') return loadView(true);
-  if (action === 'filter') { state.filter = button.dataset.filter; return renderMail(); }
+  if (action === 'filter') { state.filter = button.dataset.filter; return loadView(); }
+  if (action === 'mail-star' || action === 'mail-important') { button.disabled = true; try { await toggleMailProperty(button.dataset.id, action === 'mail-star' ? 'Flag' : 'Importance'); } finally { button.disabled = false; } return; }
+  if (action === 'important') return toggleMailProperty(state.selected.id, 'Importance');
   if (action === 'message') return openMessage(button.dataset.id);
   if (action === 'compose') return compose();
   if (['reply', 'reply-all', 'forward'].includes(action)) return compose(action);
@@ -540,7 +598,7 @@ async function handleAction(button) {
   }
   if (action === 'contact') {
     const c = state.contacts.find(c => c.id === button.dataset.id); if (!c) return;
-    modal('Контакт', '', `<div class="contact-detail">${avatar(c.name)}<h2>${esc(c.name)}</h2><p>${esc(c.company)}</p><p>${esc(c.email)}</p><p>${esc(c.phone)}</p><button class="secondary" data-action="pin-contact" data-id="${esc(c.id)}">${icon('plus')}Добавить в коллеги</button><button class="primary" data-action="write-contact" data-id="${esc(c.id)}">${icon('mail')}Написать письмо</button></div>`); return;
+    modal('Контакт', '', `<div class="contact-detail">${avatar(c.name, 0, c.email)}<h2>${esc(c.name)}</h2><p>${esc(c.company)}</p><p>${esc(c.email)}</p><p>${esc(c.phone)}</p><button class="secondary" data-action="pin-contact" data-id="${esc(c.id)}">${icon('plus')}Добавить в коллеги</button><button class="primary" data-action="write-contact" data-id="${esc(c.id)}">${icon('mail')}Написать письмо</button></div>`); return;
   }
   if (action === 'write-contact') return compose('new', state.contacts.find(c => c.id === button.dataset.id));
   if (action === 'rsvp') {
@@ -579,12 +637,15 @@ async function handleAction(button) {
     const m = state.selected; button.disabled = true;
     try {
       if (action === 'flag' || action === 'unread') {
+        if (readingMessages.has(m.id)) await readingMessages.get(m.id);
         const field = action === 'flag' ? 'Flag' : 'IsRead', value = action === 'flag' ? !m.flagged : false;
         if (!state.demo) { const updated = await api('change', { ref: ref(m), field, value }); m.changeKey = updated.changeKey; }
         const prop = action === 'flag' ? 'flagged' : 'read'; m[prop] = value;
-        const listItem = state.messages.find(x => x.id === m.id); if (listItem) listItem[prop] = value;
+        const listItem = state.messages.find(x => x.id === m.id);
+        if (action === 'unread') { m.read = listItem?.read ?? true; applyMessageRead(m, false, state.query ? null : state.folder); }
+        else if (listItem) Object.assign(listItem, { [prop]: value, changeKey: m.changeKey });
         if (state.demo) window.asterDemo.messages.find(x => x.id === m.id)[prop] = value;
-        renderMail();
+        renderMail(); renderSidebar();
       } else {
         const folder = action === 'archive' ? 'archive' : 'deleteditems';
         if (!state.demo) await api('move', { ref: ref(m), folder }); else window.asterDemo.messages.find(x => x.id === m.id).folder = folder;
@@ -630,7 +691,7 @@ document.addEventListener('input', event => {
     refreshProtocolNote();
   }
   const form = event.target.closest('#event-form');
-  if (form && ['start', 'end', 'attendees'].includes(event.target.name)) $('#planner-results').innerHTML = '<p class="form-note">Данные изменились. Проверьте занятость повторно.</p>';
+  if (form && $('#planner-results') && ['start', 'end', 'attendees'].includes(event.target.name)) $('#planner-results').innerHTML = '<p class="form-note">Данные изменились. Проверьте занятость повторно.</p>';
 });
 document.addEventListener('change', event => {
   if (event.target.name === 'protocol') refreshProtocolNote();

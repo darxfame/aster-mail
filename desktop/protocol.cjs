@@ -16,11 +16,12 @@ function request(action, fields, version = 'Exchange2013') {
   });
 }
 const paging = offset => typed('IndexedPageView', { BasePoint: 'Beginning', Offset: offset, MaxEntriesReturned: 50 });
-function findItems(id, offset = 0) {
+function findItems(id, offset = 0, filter = 'all') {
+  if (!['all', 'unread', 'flagged'].includes(filter)) throw new Error('Invalid mail filter');
   return request('FindItem', {
     ItemShape: typed('ItemResponseShape', { BaseShape: 'IdOnly' }),
     ParentFolderIds: [folder(id)], Traversal: 'Shallow', Paging: paging(offset),
-    ViewFilter: 'All', IsWarmUpSearch: false, FocusedViewFilter: -1, Grouping: null,
+    ViewFilter: { all: 'All', unread: 'Unread', flagged: 'Flagged' }[filter], IsWarmUpSearch: false, FocusedViewFilter: -1, Grouping: null,
     ShapeName: id === 'contacts' ? 'Contact' : 'MailListItem',
     ...(id === 'contacts' ? {} : { SortOrder: [typed('SortResults', { Order: 'Descending', Path: property('DateTimeReceived') })] }),
   }, 'Exchange2016');
@@ -35,10 +36,11 @@ function getItems(refs) {
   }, 'V2017_08_18');
 }
 function update(ref, field, value) {
-  if (!['IsRead', 'Flag'].includes(field)) throw new Error('Unsupported message update');
+  if (!['IsRead', 'Flag', 'Importance'].includes(field)) throw new Error('Unsupported message update');
+  if (field === 'Importance' ? !['High', 'Normal'].includes(value) : typeof value !== 'boolean') throw new Error('Invalid message value');
   return request('UpdateItem', {
     ItemChanges: [typed('ItemChange', { ItemId: item(ref), Updates: [typed('SetItemField', {
-      Path: property(field), Item: typed(field === 'Flag' ? 'Item' : 'Message', { [field]: field === 'Flag' ? typed('FlagType', { FlagStatus: value ? 'Flagged' : 'NotFlagged' }) : value }),
+      Path: property(field), Item: typed(field === 'IsRead' ? 'Message' : 'Item', { [field]: field === 'Flag' ? typed('FlagType', { FlagStatus: value ? 'Flagged' : 'NotFlagged' }) : value }),
     })] })],
     ConflictResolution: 'AutoResolve', MessageDisposition: 'SaveOnly', SuppressReadReceipts: true,
     SendCalendarInvitationsOrCancellations: 'SendToNone',
@@ -64,10 +66,10 @@ function address(value) {
 function message(o) {
   const body = o.UniqueBody || o.NormalizedBody || o.Body || {};
   return {
-    id: o.ItemId.Id, changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
+    id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
     from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address),
     date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: o.Preview || '', read: Boolean(o.IsRead),
-    flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
+    importance: o.Importance || 'Normal', flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
     html: body.BodyType === 'Text' ? null : body.Value || '', text: body.BodyType === 'Text' ? body.Value : '',
     attachments: (o.Attachments || []).filter(a => a.AttachmentId).map(a => ({ id: a.AttachmentId.Id, name: a.Name, size: a.Size, type: a.ContentType || '', contentId: a.ContentId || '', inline: Boolean(a.IsInline) })),
     meeting: o.AssociatedCalendarItemId?.Id ? { id: o.AssociatedCalendarItemId.Id, changeKey: o.AssociatedCalendarItemId.ChangeKey, start: T.exchange(o.Start), end: T.exchange(o.End), location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName, cancelled: o.IsCancelled === true || o.ItemClass === 'IPM.Schedule.Meeting.Canceled' } : null,
@@ -94,7 +96,9 @@ function signatureFromConfiguration(data) {
   }
   if (!Object.hasOwn(options, 'signaturehtml') && !Object.hasOwn(options, 'signaturetext')) throw new Error('В настройках OWA не найдена подпись. Проверьте подпись в веб-интерфейсе Exchange.');
   const flag = key => Object.hasOwn(options, key) ? String(options[key]).toLowerCase() === 'true' : true;
-  return { html: String(options.signaturehtml || ''), text: String(options.signaturetext || ''), autoAddSignature: flag('autoaddsignature'), autoAddSignatureOnReply: flag('autoaddsignatureonreply') };
+  // Exchange may leave XML numeric CR/LF entities inside dictionary string values.
+  const lines = value => String(value || '').replace(/&#(?:x0*d|0*13);/gi, '\r').replace(/&#(?:x0*a|0*10);/gi, '\n').replace(/\r\n?/g, '\n');
+  return { html: lines(options.signaturehtml), text: lines(options.signaturetext), autoAddSignature: flag('autoaddsignature'), autoAddSignatureOnReply: flag('autoaddsignatureonreply') };
 }
 function emails(value) {
   if (typeof value !== 'string' || value.length > 10000) throw new Error('Invalid recipients');

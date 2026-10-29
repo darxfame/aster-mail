@@ -30,3 +30,26 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .update-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
 .update-notes pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 220px; overflow-y: auto; }
 #updates-panel progress { width: 100%; accent-color: #8258bd; }
+.message-row.unread { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border-left-color: var(--accent); }
+.message-row.unread .sender, .message-row.unread .subject { font-weight: 750; color: var(--text); }
+.message-row.unread .date { color: var(--accent); font-weight: 700; }
+.message-row .unread-dot { width: 7px; height: 7px; left: 8px; box-shadow: 0 0 0 3px var(--accent-bg); }
+.unread-badge { display: inline-block; font-size: 9px; line-height: 1.5; padding: 1px 5px; margin-right: 6px; border-radius: 4px; color: var(--accent); background: var(--accent-bg); vertical-align: 1px; }
+.message-row { padding: 0; align-items: stretch; }
+.message-open { display: flex; gap: 12px; text-align: left; padding: 17px 8px 17px 20px; flex: 1; min-width: 0; }
+.message-quick-actions { display: flex; flex-direction: column; padding: 10px 5px 5px 0; gap: 3px; }
+.message-quick-actions .icon-button { width: 26px; height: 26px; }
+.message-quick-actions svg { width: 15px; height: 15px; }
+.important { color: #d77b62; }.mail-dragging { opacity: .5; }.folder.folder-drop-target { outline: 2px solid #dfc2ff; outline-offset: -3px; background: #9d71cf80; }
+.meeting-main { min-height: 280px; }.meeting-people { position: relative; min-height: 0; }.meeting-people-content { position: absolute; inset: 0 0 0 23px; max-height: calc(90vh - 240px); display: flex; flex-direction: column; min-height: 0; }
+.meeting-people-content > h3,.meeting-people-content > .meeting-person { flex: none; }.meeting-attendee-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+#search-form { position: relative; }.people-search-suggestions { position: absolute; z-index: 25; left: 0; top: calc(100% + 8px); width: min(520px, 80vw); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); max-height: 360px; overflow-y: auto; }
+.people-suggestion { display: flex; gap: 10px; align-items: center; padding: 10px; }.people-suggestion.active,.people-suggestion:hover { background: var(--accent-bg); }.people-suggestion > button:first-of-type { min-width: 0; flex: 1; text-align: left; }.people-suggestion strong,.people-suggestion small { display: block; overflow-wrap: anywhere; }.people-suggestion strong { font-size: 12px; }.people-suggestion small { font-size: 10px; color: var(--muted); margin-top: 4px; }.people-suggestion .secondary { flex: none; padding: 7px; font-size: 10px; }
+@media(max-width:760px) { .meeting-people-content { position: static; max-height: 340px; }.meeting-attendee-scroll { max-height: 250px; flex: auto; } }
+.mail-attachments-top { display: flex; flex-wrap: wrap; gap: 9px; margin: 0 0 18px; max-height: 180px; overflow-y: auto; padding: 3px; }
+.mail-attachment { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); padding: 9px 11px; width: min(260px, 100%); }
+.mail-attachment > div { min-width: 0; }.mail-attachment strong { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.mail-attachment small { font-size: 9px; color: var(--muted); margin-right: 9px; }.mail-attachment button { font-size: 10px; color: var(--accent); padding: 4px 0; text-decoration: underline; }
+.file-extension { flex: none; padding: 7px 5px; font-size: 9px; font-weight: 750; border-radius: 5px; color: var(--accent); background: var(--accent-bg); min-width: 36px; text-align: center; }
+.extension-pdf { color: #d78080; background: #c85a5a20; }.extension-document { color: #669ddd; background: #608acd20; }.extension-sheet { color: #72ae8c; background: #58967320; }.extension-image { color: #ad88ce; background: #9468b520; }.extension-archive { color: #c19b61; background: #b78b4620; }
+.message-open { user-select: none; -webkit-user-drag: none; }.mail-dragging { cursor: grabbing; }

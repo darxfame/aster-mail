@@ -119,8 +119,8 @@ class OWAClient {
     }
     return [...folders.values()].map(o => ({ id: o.FolderId.Id, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
   }
-  async messages({ folder = 'inbox', offset = 0 }) {
-    const json = await this.call('FindItem', P.findItems(folder, offset));
+  async messages({ folder = 'inbox', offset = 0, filter = 'all' }) {
+    const json = await this.call('FindItem', P.findItems(folder, offset, filter));
     const root = P.walk(json, o => o.RootFolder)[0]?.RootFolder;
     if (!root) throw new Error('OWA FindItem: в ответе нет списка писем');
     return { items: (root.Items || []).filter(o => o.ItemId?.Id).map(P.message), more: root.IncludesLastItemInRange === false, total: root.TotalItemsInView };
@@ -136,6 +136,7 @@ class OWAClient {
     const updated = P.walk(json, o => o.ItemId?.Id)[0]?.ItemId;
     return updated ? { id: updated.Id, changeKey: updated.ChangeKey } : data.ref;
   }
+  async createMailRule(data) { return require('./mail-rules.cjs').create(this, data); }
   async move(data) {
     await this.call('MoveItem', P.request('MoveItem', { ItemIds: [P.item(data.ref)], ToFolderId: P.target(data.folder) }), { retry: false });
     return true;
@@ -146,6 +147,11 @@ class OWAClient {
     let size = 0;
     for (const a of attachments) {
       if (typeof a.name !== 'string' || !a.name || a.name.length > 500 || typeof a.content !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(a.content)) throw new Error('Некорректное вложение');
+      if (a.inline !== undefined && typeof a.inline !== 'boolean') throw new Error('Некорректное inline-вложение');
+      if (a.inline) {
+        if (typeof a.contentId !== 'string' || !/^[a-zA-Z0-9@._-]{1,160}$/.test(a.contentId)) throw new Error('Некорректный Content-ID подписи');
+        calendarEvents.imageData({ ContentType: a.type, Content: a.content });
+      }
       size += Buffer.from(a.content, 'base64').length;
     }
     if (size > 20 * 1024 * 1024) throw new Error('Суммарный размер вложений превышает 20 МБ');
@@ -155,7 +161,7 @@ class OWAClient {
     const draftID = P.walk(response, o => o.ItemId?.['@_Id'])[0]?.ItemId['@_Id'];
     if (!draftID) throw new Error('Черновик создан, но сервер не вернул его ID. Проверьте папку «Черновики».');
     try {
-      await this.ews('CreateAttachment', P.soap(`<m:CreateAttachment><m:ParentItemId Id="${P.escapeXML(draftID)}"/><m:Attachments>${attachments.map(a => `<t:FileAttachment><t:Name>${P.escapeXML(a.name)}</t:Name><t:ContentType>${P.escapeXML(a.type || 'application/octet-stream')}</t:ContentType><t:IsInline>false</t:IsInline><t:Content>${a.content}</t:Content></t:FileAttachment>`).join('')}</m:Attachments></m:CreateAttachment>`));
+      await this.ews('CreateAttachment', P.soap(`<m:CreateAttachment><m:ParentItemId Id="${P.escapeXML(draftID)}"/><m:Attachments>${attachments.map(a => `<t:FileAttachment><t:Name>${P.escapeXML(a.name)}</t:Name><t:ContentType>${P.escapeXML(a.type || 'application/octet-stream')}</t:ContentType>${a.inline ? `<t:ContentId>${P.escapeXML(a.contentId)}</t:ContentId>` : ''}<t:IsInline>${a.inline === true}</t:IsInline><t:Content>${a.content}</t:Content></t:FileAttachment>`).join('')}</m:Attachments></m:CreateAttachment>`));
       if (!save) await this.ews('SendItem', P.soap(`<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="${P.escapeXML(draftID)}"/></m:ItemIds><m:SavedItemFolderId><t:DistinguishedFolderId Id="sentitems"/></m:SavedItemFolderId></m:SendItem>`));
     } catch (error) { throw new Error(`${error.message}\nЧерновик уже создан. Проверьте «Черновики» и «Отправленные» перед повторной отправкой.`); }
     return true;
@@ -300,9 +306,45 @@ class OWAClient {
     await this.ews('CreateItem', P.soap(`<m:CreateItem><m:SavedItemFolderId><t:DistinguishedFolderId Id="contacts"/></m:SavedItemFolderId><m:Items><t:Contact><t:DisplayName>${P.escapeXML(data.name)}</t:DisplayName><t:GivenName>${P.escapeXML(data.name)}</t:GivenName><t:CompanyName>${P.escapeXML(data.company)}</t:CompanyName><t:EmailAddresses><t:Entry Key="EmailAddress1">${P.escapeXML(email)}</t:Entry></t:EmailAddresses>${data.phone ? `<t:PhoneNumbers><t:Entry Key="BusinessPhone">${P.escapeXML(data.phone)}</t:Entry></t:PhoneNumbers>` : ''}</t:Contact></m:Items></m:CreateItem>`));
     return true;
   }
+  async personPhoto({ email }) {
+    if (P.emails(email).length !== 1) throw new Error('Укажите один адрес');
+    this.photoCache ||= new Map();
+    const key = email.toLowerCase(), saved = this.photoCache.get(key);
+    if (saved && saved.expires > Date.now()) return saved.image;
+    let image = null;
+    try {
+      const result = await this.ews('GetUserPhoto', P.soap(`<m:GetUserPhoto><m:Email>${P.escapeXML(email)}</m:Email><m:SizeRequested>HR64x64</m:SizeRequested></m:GetUserPhoto>`));
+      const photo = P.walk(result, value => value.PictureData)[0];
+      if (photo) {
+        const bytes = Buffer.from(photo.PictureData, 'base64');
+        const type = photo.ContentType || (bytes[0] === 137 ? 'image/png' : bytes[0] === 255 ? 'image/jpeg' : bytes.toString('ascii', 0, 3) === 'GIF' ? 'image/gif' : 'image/webp');
+        image = calendarEvents.imageData({ ContentType: type, Content: photo.PictureData });
+      }
+    } catch { /* A missing/private photo keeps initials; do not fail the meeting. */ }
+    if (this.photoCache.size >= 128) this.photoCache.delete(this.photoCache.keys().next().value);
+    this.photoCache.set(key, { image, expires: Date.now() + 30 * 60000 });
+    return image;
+  }
   async signature() {
     const configuration = await this.ews('GetUserConfiguration', P.soap('<m:GetUserConfiguration><m:UserConfigurationName Name="OWA.UserOptions"><t:DistinguishedFolderId Id="root"/></m:UserConfigurationName><m:UserConfigurationProperties>Dictionary</m:UserConfigurationProperties></m:GetUserConfiguration>'));
-    return P.signatureFromConfiguration(configuration);
+    const signature = P.signatureFromConfiguration(configuration);
+    signature.html = signature.html.replace(/(<img\b[^>]*\bsrc\s*=\s*)(["'])([^"']*)\2/gi, (all, prefix, quote, src) => {
+      if (!src.startsWith('/') || src.startsWith('//')) return all;
+      return `${prefix}${quote}${this.origin}${src}${quote}`;
+    });
+    const loaded = await require('./content-images.cjs').load({ html: signature.html, attachments: [] }, null, async src => {
+      const url = new URL(src);
+      if (url.origin === this.origin && url.pathname.startsWith('/owa/')) {
+        const response = await this.transport(url.href, { binary: true });
+        if (response.status >= 400) throw new Error('Изображение подписи недоступно');
+        const buffer = response.buffer;
+        const type = buffer?.[0] === 137 ? 'image/png' : buffer?.[0] === 255 ? 'image/jpeg' : buffer?.toString('ascii', 0, 3) === 'GIF' ? 'image/gif' : 'image/webp';
+        return { ContentType: type, Content: buffer.toString('base64') };
+      }
+      if (!this.imageTransport) throw new Error('Внешние изображения недоступны');
+      return this.imageTransport(src);
+    });
+    return { ...signature, ...loaded };
   }
   async attachment(id) {
     const url = new URL(`${this.origin}/owa/service.svc/s/GetFileAttachment`);

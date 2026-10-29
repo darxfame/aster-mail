@@ -19,6 +19,7 @@
     <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9L2 9Zm0 0L11 13"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H5v20h14V7Zm0 0v5h5M8 12h8m-8 4h6"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></symbol>
+    <symbol id="i-important" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v8m0 3h.01"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
     <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 9v12h16V9M3 3h18v6H3Zm6 10h6"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 20V4h7l2 3h9v13Z"/></symbol>
@@ -57,7 +58,7 @@
           <button class="view-tab active" data-action="view" data-view="mail" aria-label="Почта" aria-pressed="true"><svg><use href="#i-mail"/></svg><span>Почта</span></button>
           <button class="view-tab" data-action="view" data-view="calendar" aria-label="Календарь" aria-pressed="false"><svg><use href="#i-calendar"/></svg><span>Календарь</span></button>
           <button class="view-tab" data-action="view" data-view="contacts" aria-label="Контакты" aria-pressed="false"><svg><use href="#i-people"/></svg><span>Контакты</span></button>
-        <button class="view-tab dock-settings" data-action="settings" aria-label="Настройки" title="Настройки"><svg><use href="#i-settings"/></svg><span>Настройки</span></button></nav></div><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <button class="version" data-action="updates" title="Проверить обновления">0.1.9</button></span></footer>
+        <button class="view-tab dock-settings" data-action="settings" aria-label="Настройки" title="Настройки"><svg><use href="#i-settings"/></svg><span>Настройки</span></button></nav></div><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <button class="version" data-action="updates" title="Проверить обновления">0.1.10</button></span></footer>
     </main>
   </div>
   <dialog id="modal"><div id="modal-content"></div></dialog>
@@ -76,6 +77,8 @@
   <script src="rich-content.js"></script>
   <script src="recipients.js"></script>
   <script src="meeting-ui.js"></script>
+  <script src="mail-ui.js"></script>
+  <script src="people-ui.js"></script>
   <script src="updates-ui.js"></script>
   <script src="app.js"></script>
 </body>

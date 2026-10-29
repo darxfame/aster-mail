@@ -45,7 +45,7 @@
   }
   function show(input, people, message = '') {
     const context = setup(input); context.options = people; context.active = -1; input.removeAttribute('aria-activedescendant');
-    context.box.innerHTML = people.map((person, i) => `<div class="recipient-option" role="option" id="${context.box.id}-${i}" data-index="${i}" aria-selected="false">${avatar(person.name || person.email)}<div><strong>${esc(person.name || person.email)}</strong><small>${esc(person.email)}</small></div></div>`).join('') + (message ? `<div class="recipient-note" role="status">${esc(message)}</div>` : '');
+    context.box.innerHTML = people.map((person, i) => `<div class="recipient-option" role="option" id="${context.box.id}-${i}" data-index="${i}" aria-selected="false">${avatar(person.name || person.email, 0, person.email)}<div><strong>${esc(person.name || person.email)}</strong><small>${esc(person.email)}</small></div></div>`).join('') + (message ? `<div class="recipient-note" role="status">${esc(message)}</div>` : '');
     context.box.hidden = !people.length && !message; input.setAttribute('aria-expanded', String(!context.box.hidden));
   }
   function search(input) {

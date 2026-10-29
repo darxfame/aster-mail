@@ -36,6 +36,13 @@ HTTPS GitHub/CDN destinations, and never auto-quit or replace the unsigned app.
 `src/server.js` defaults to HTTPS; HTTP requires explicit opt-in. Preserve
 same-origin authentication and TLS validation for HTTPS.
 
+`src/mail-ui.js` owns drag-to-folder, rule prompts, signature previews and
+attachment cards; `src/people-ui.js` owns directory suggestions and lazy avatars.
+`desktop/mail-rules.cjs` appends rules without deleting the Outlook rule blob.
+Keep photo caches per account, verify inline raster images, and never replay
+moves, rule creation or sends after an uncertain response. Mail rendering must
+ignore stale responses after navigation; folder unread filters run on the server.
+
 ## Build, Test, and Development Commands
 
 - `npm ci`: install the locked dependency tree.
