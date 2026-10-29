@@ -60,3 +60,15 @@ test('transport exposes diagnostic headers but excludes cookies and unrelated he
   assert.deepEqual(result.headers, { 'ms-asprotocolversions': ['14.1,16.0'] });
   controller.abort();
 });
+
+test('network failures are marked for the compact indicator without exposing transport details', async () => {
+  const { calls, transport } = setup();
+  const pending = transport('https://mail.example.com/owa/');
+  calls[0].req.emit('error', new Error('net::ERR_CONNECTION_RESET fictional-private-details'));
+  await assert.rejects(pending, error => {
+    assert.equal(error.connectionError, true);
+    assert.equal(error.code, 'ERR_CONNECTION_RESET');
+    assert.doesNotMatch(error.message, /fictional-private-details/);
+    return true;
+  });
+});

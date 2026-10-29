@@ -49,7 +49,7 @@
         <button class="icon-button" data-action="refresh" aria-label="Обновить" title="Обновить"><svg><use href="#i-refresh"/></svg></button>
         <button class="icon-button" data-action="theme" aria-label="Сменить тему" title="Сменить тему"><svg><use href="#i-moon"/></svg></button>
 
-        <span id="connection" class="connection"><i></i> Не подключено</span>
+        <button type="button" id="connection" class="connection" data-action="connect" aria-label="Подключить Exchange"><i></i><span>Не подключено</span></button>
       </header>
       <div id="demo-banner" class="demo-banner" hidden>Демонстрационный режим · письма и встречи вымышлены <button data-action="connect">Подключить OWA <span>↗</span></button></div>
       <div id="error" class="error-banner" role="alert" hidden></div>
@@ -58,7 +58,7 @@
           <button class="view-tab active" data-action="view" data-view="mail" aria-label="Почта" aria-pressed="true"><svg><use href="#i-mail"/></svg><span>Почта</span></button>
           <button class="view-tab" data-action="view" data-view="calendar" aria-label="Календарь" aria-pressed="false"><svg><use href="#i-calendar"/></svg><span>Календарь</span></button>
           <button class="view-tab" data-action="view" data-view="contacts" aria-label="Контакты" aria-pressed="false"><svg><use href="#i-people"/></svg><span>Контакты</span></button>
-        <button class="view-tab dock-settings" data-action="settings" aria-label="Настройки" title="Настройки"><svg><use href="#i-settings"/></svg><span>Настройки</span></button></nav></div><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <button class="version" data-action="updates" title="Проверить обновления">0.1.21</button></span></footer>
+        <button class="view-tab dock-settings" data-action="settings" aria-label="Настройки" title="Настройки"><svg><use href="#i-settings"/></svg><span>Настройки</span></button></nav></div><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <button class="version" data-action="updates" title="Проверить обновления">0.1.22</button></span></footer>
     </main>
   </div>
   <dialog id="modal" aria-label="Диалог Aster Mail"><div id="modal-content"></div></dialog>

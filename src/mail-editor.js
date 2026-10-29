@@ -13,6 +13,10 @@
     }
     if (html !== undefined) editor.innerHTML = clean(html);
     else editor.textContent = text;
+    // HTML source indentation must collapse as it does in the script-free reader.
+    const whiteSpace = html !== undefined ? 'normal' : 'pre-wrap';
+    editor.style.whiteSpace = whiteSpace;
+    editor.classList.toggle('html-mail-editor', html !== undefined);
     let range = null;
     function remember() {
       const selection = window.getSelection();
@@ -64,7 +68,7 @@
       else { const div = document.createElement('div'); div.textContent = event.clipboardData.getData('text/plain'); command('insertHTML', div.innerHTML.replace(/\r\n?|\n/g, '<br>')); }
     });
     editor.addEventListener('drop', event => event.preventDefault());
-    return { read() { return { body: editor.innerText, bodyHtml: `<div style="white-space: pre-wrap">${clean(editor.innerHTML)}</div>` }; } };
+    return { read() { return { body: editor.innerText, bodyHtml: `<div style="white-space: ${whiteSpace}">${clean(editor.innerHTML)}</div>` }; } };
   }
   root.asterMailEditor = { mount };
 })(window);

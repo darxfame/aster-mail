@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
 function guards(overrides = {}) {
-  const context = vm.createContext({ unsavedChanges: false, resettingLocalData: false, client: null, connection: null, window: {}, accountEpoch: 0, localStore: { clear: async () => {} }, dialog: {}, ...overrides });
+  const context = vm.createContext({ unsavedChanges: false, resettingLocalData: false, client: null, connection: null, window: {}, accountEpoch: 0, localStore: { clear: async () => {} }, attachmentFiles: { clear: async () => {}, clearSync() {} }, attachmentCleanupError: '', dialog: {}, ...overrides });
   vm.runInContext(source.slice(source.indexOf('function confirmDiscardChanges()'), source.indexOf('\nfunction reveal(')), context);
   return context;
 }

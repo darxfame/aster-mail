@@ -88,6 +88,7 @@ function playSound(kind) {
   audio.play().catch(() => toast('Звук заблокирован системой. Проверьте настройки звука и уведомлений.'));
 }
 document.body.classList.toggle('dark', state.theme === 'dark');
+let connectionState = { status: 'disconnected' };
 let mailWrites = 0, mailWriteEpoch = 0;
 async function api(operation, data = {}) {
   if (!window.aster) throw new Error('Подключение OWA доступно в настольном приложении. В браузере можно открыть деморежим.');
@@ -97,7 +98,7 @@ async function api(operation, data = {}) {
     const sessionId = state.account?.sessionId;
     const result = await window.aster.invoke(operation, { ...data, sessionId });
     if (!['connect', 'restore', 'disconnect'].includes(operation) && sessionId !== state.account?.sessionId) throw new Error('Сессия аккаунта завершена');
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw Object.assign(new Error(result.error), { connectionError: result.connectionError === true });
     return result.value;
   } finally { if (writing) mailWrites--; }
 
@@ -129,8 +130,38 @@ function renderMailAlerts(alerts) {
   };
 }
 function toast(text) { $('#toast').textContent = text; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 5000); }
-function showError(error) { $('#error').textContent = error.message || error; $('#error').hidden = false; $('#status').textContent = 'Не удалось завершить операцию'; }
+function showError(error) {
+  if (error.connectionError && state.account) {
+    if (connectionState.status !== 'auth-required') connectionState.status = 'reconnecting';
+    renderConnection(); return;
+  }
+  $('#error').textContent = error.message || error; $('#error').hidden = false; $('#status').textContent = 'Не удалось завершить операцию';
+}
 function clearError() { $('#error').hidden = true; }
+function renderConnection() {
+  const node = $('#connection'); if (!node) return;
+  const status = state.demo ? 'demo' : state.account ? connectionState.status : 'disconnected';
+  const labels = { connected: 'Exchange · HTTPS', reconnecting: 'Восстанавливаем связь', 'auth-required': 'Нужно войти', disconnected: 'Не подключено', demo: 'Деморежим' };
+  const titles = { connected: 'Соединение с OWA работает', reconnecting: 'Связь с OWA прервана. Проверяем автоматически каждые 15 секунд.', 'auth-required': 'Сервер отклонил авторизацию. Нажмите, чтобы подключить аккаунт заново.', disconnected: 'Подключить Exchange', demo: 'Вымышленные данные' };
+  node.dataset.state = status; node.dataset.action = 'connection';
+  node.innerHTML = `<i></i><span>${labels[status] || labels.disconnected}</span>`;
+  node.title = titles[status] || titles.disconnected; node.setAttribute('aria-label', node.title);
+}
+function resumeConnectionReads() {
+  if (connectionState.status !== 'connected' || $('#modal')?.open) return;
+  if (state.recoverView === state.generation) {
+    state.recoverView = null; state.recoverMessage = null; void loadView();
+  } else if (state.recoverMessage?.generation === state.generation && state.selected?.id === state.recoverMessage.id) {
+    const { id, generation } = state.recoverMessage; state.recoverMessage = null;
+    // Recover the read only; never repeat a possibly accepted mark-read mutation.
+    void openMessage(id, generation, { markRead: false });
+  }
+}
+function receiveConnection(snapshot) {
+  if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || !['connected', 'reconnecting', 'auth-required'].includes(snapshot.status)) return;
+  connectionState = snapshot; renderConnection();
+  if (snapshot.status === 'connected') resumeConnectionReads();
+}
 function modal(title, description, body) {
   if (modalBusy) return;
   modalSequence++;
@@ -178,7 +209,7 @@ function renderSidebar() {
   create.setAttribute('aria-label', { mail: 'Написать', calendar: 'Создать встречу', contacts: 'Новый контакт' }[state.view]);
   document.body.classList.toggle('mail-view', isMail);
   $('#search').placeholder = { mail: 'Поиск по почтовому ящику', calendar: 'Поиск по календарю', contacts: 'Поиск людей в Exchange' }[state.view];
-  $('#connection').innerHTML = `<i></i>${state.demo ? 'Деморежим' : state.account ? `Exchange · ${state.account.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}` : 'Не подключено'}`;
+  renderConnection();
   $('#demo-banner').hidden = !state.demo;
   restoreFocus();
 }
@@ -223,6 +254,11 @@ async function loadView(append = false) {
   } catch (error) {
     if (generation !== state.generation) return;
     showError(error);
+    if (error.connectionError) {
+      state.recoverView = generation;
+      if (!append && !keepMail) $('#workspace').innerHTML = '<div class="loading">Ожидаем соединения с OWA…</div>';
+      return;
+    }
     if (!append && !keepMail) $('#workspace').innerHTML = `<div class="empty">${icon('globe')}<h2>Не удалось загрузить данные</h2><p>Проверьте подключение и повторите запрос. Письма на сервере не затронуты.</p><button class="secondary" data-action="refresh">${icon('refresh')}Повторить</button></div>`;
   } finally { if (state.mailLoading === generation) state.mailLoading = 0; }
 }
@@ -277,7 +313,7 @@ async function markMessageRead(message, folderKey) {
   readingMessages.set(message.id, pending);
   try { await pending; } finally { readingMessages.delete(message.id); }
 }
-async function openMessage(id, generation = state.generation) {
+async function openMessage(id, generation = state.generation, { markRead = true } = {}) {
   const summary = state.messages.find(m => m.id === id);
   if (!summary) return;
   const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
@@ -286,12 +322,13 @@ async function openMessage(id, generation = state.generation) {
   try {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
+    state.recoverMessage = null;
     const selected = { ...summary, ...detail };
     state.selected = selected;
-    const marking = isDraftMessage(selected) ? Promise.resolve() : markMessageRead(selected, folderKey);
+    const marking = !markRead || isDraftMessage(selected) ? Promise.resolve() : markMessageRead(selected, folderKey);
     renderReader();
     try { await marking; }
-    catch (error) { showError(new Error(`Письмо открыто, но не удалось отметить его прочитанным: ${error.message}`)); }
+    catch (error) { showError(Object.assign(new Error(`Письмо открыто, но не удалось отметить его прочитанным: ${error.message}`), { connectionError: error.connectionError === true })); }
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     renderMessages(); renderSidebar(); renderReader();
     if (selected.meeting?.id && !selected.meeting.cancelled) {
@@ -304,6 +341,7 @@ async function openMessage(id, generation = state.generation) {
   } catch (error) {
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     showError(error);
+    if (error.connectionError) { state.recoverMessage = { id, generation }; $('#reader').innerHTML = `<div class="loading">Ожидаем соединения с OWA…</div>`; return; }
     $('#reader').innerHTML = `<div class="empty-state"><h2>Не удалось открыть письмо</h2><p>${esc(error.message)}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">Повторить загрузку</button></div>`;
   }
 }
@@ -632,7 +670,7 @@ async function settingsModal() {
     <p class="form-note">${state.account ? `Аккаунт: ${esc(state.account.username)} · ${esc(state.account.server)}` : state.demo ? 'Сейчас открыт демонстрационный аккаунт.' : 'Аккаунт Exchange пока не подключён.'}</p>
     <button class="secondary ${state.account ? 'danger' : ''}" type="button" data-action="${state.account ? 'disconnect' : 'connect'}">${state.account ? 'Выйти и удалить пароль' : 'Подключить Exchange'}</button>
     <h3 class="settings-heading">Данные на компьютере</h3>
-    <p class="form-note">Подпись, коллеги и настройки сохраняются зашифрованными и удаляются при выходе. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). На диск письма и вложения не сохраняются; при выходе кэш очищается.</p>
+    <p class="form-note">Подпись, коллеги и настройки сохраняются зашифрованными и удаляются при выходе. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). При открытии вложения создаётся временная копия для системного приложения; при выходе из аккаунта или завершении Aster она удаляется. При выходе кэш очищается.</p>
     <h3 class="settings-heading">Приложение</h3>
     <button class="secondary" type="button" data-action="updates">Обновления Aster Mail</button>
     </section>
@@ -727,6 +765,11 @@ async function sendCompose(save) {
   });
 }
 async function handleAction(button) {
+  if (button.dataset.action === 'connection') {
+    if (modalBusy) return;
+    if ($('#modal').open && !confirmDiscardChanges()) return;
+    return !state.account || connectionState.status === 'auth-required' ? connectModal() : settingsModal();
+  }
   const { action } = button.dataset;
   if (action.startsWith('mini-') || action === 'folder-branch') return handleSidebarAction(button);
   if (action.startsWith('meeting-')) return handleMeetingAction(button);
@@ -849,6 +892,14 @@ async function handleAction(button) {
       if ($('#modal').open && $('#modal .form-error')) $('#modal .form-error').textContent = error.message;
       else throw error;
     } finally { buttons.forEach((b, i) => { b.disabled = disabled[i]; }); } return;
+  }
+  if (action === 'open-attachment' && state.selected) {
+    button.disabled = true;
+    try {
+      if (state.demo) toast('Демо: открытие вымышленных вложений недоступно');
+      else await api('openAttachment', { id: button.dataset.id, ref: ref(state.selected) });
+    } finally { if (button.isConnected) button.disabled = false; }
+    return;
   }
   if (action === 'attachment') {
     if (state.demo) { const blob = new Blob(['Это демонстрационное вложение Aster Mail. Реальные файлы загружаются из Exchange.'], { type: 'text/plain;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Aster-demo.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
@@ -1004,6 +1055,8 @@ document.addEventListener('submit', event => {
   });
 });
 function applyAccount(value) {
+  connectionState = { status: value ? 'connected' : 'disconnected' };
+  state.recoverView = null; state.recoverMessage = null;
   window.asterMailFind?.reset();
   state.generation++; messageOpenSequence++; readingMessages.clear();
   localValues = value?.localData || {}; localSave = Promise.resolve();
@@ -1038,6 +1091,7 @@ async function boot() {
     window.aster.onSound(playSound);
     window.aster.onMailAlerts(renderMailAlerts);
     window.aster.onInbox(snapshot => { void receiveInbox(snapshot); });
+    window.aster.onConnection?.(receiveConnection);
     renderMailAlerts(await api('mailAlerts'));
     window.aster.onNavigate(async data => {
       try {
@@ -1085,7 +1139,7 @@ function confirmDiscardChanges() {
 for (const name of ['input', 'change']) document.addEventListener(name, event => {
   if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form')) setModalDirty(true);
 });
-$('#modal').addEventListener('close', () => setModalDirty(false));
+$('#modal').addEventListener('close', () => { setModalDirty(false); resumeConnectionReads(); });
 document.addEventListener('click', event => {
   if (event.target.closest('[data-action="planner-slot"]') && $('#event-form')) setModalDirty(true);
   if (!event.target.closest('[data-action="meeting-return"]') || !modalDirty) return;

@@ -12,7 +12,7 @@ function createTransport(net, credentials, accountSession, signal) {
         settled = true; clearTimeout(timer); signal.removeEventListener('abort', cancel);
         error ? reject(error) : resolve(result);
       };
-      const timer = setTimeout(() => { finish(new Error('Сервер не ответил за 30 секунд. Проверьте VPN и подключение.')); req.abort(); }, 30000);
+      const timer = setTimeout(() => { finish(Object.assign(new Error('Сервер не ответил за 30 секунд. Проверьте VPN и подключение.'), { connectionError: true })); req.abort(); }, 30000);
       const cancel = () => { finish(new Error('Сессия аккаунта завершена. Результат начатой операции неизвестен; проверьте OWA перед повтором.')); req.abort(); };
       signal.addEventListener('abort', cancel, { once: true });
       req.on('login', (info, callback) => {
@@ -32,7 +32,7 @@ function createTransport(net, credentials, accountSession, signal) {
       });
       req.on('error', error => {
         const code = /\bERR_(?:CERT_[A-Z_]+|SSL_[A-Z_]+|NAME_NOT_RESOLVED|CONNECTION_[A-Z_]+|TIMED_OUT)\b/.exec(String(error?.code || '') + ' ' + String(error?.message || ''))?.[0];
-        finish(Object.assign(new Error('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.'), code ? { code } : {}));
+        finish(Object.assign(new Error('Не удалось подключиться к OWA. Проверьте адрес, VPN и сертификат сервера.'), { connectionError: true, ...(code ? { code } : {}) }));
       });
       req.on('response', res => {
         const chunks = []; let size = 0;
@@ -41,7 +41,7 @@ function createTransport(net, credentials, accountSession, signal) {
           if (size > 30 * 1024 * 1024) { finish(new Error('Ответ превышает лимит 30 МБ')); req.abort(); }
           else chunks.push(chunk);
         });
-        res.on('error', () => finish(new Error('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.')));
+        res.on('error', () => finish(Object.assign(new Error('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.'), { connectionError: true })));
         res.on('end', () => { const buffer = Buffer.concat(chunks); finish(null, { status: res.statusCode, text: options.binary ? '' : buffer.toString('utf8'), buffer, headers: Object.fromEntries(['www-authenticate', 'content-type', 'ms-asprotocolversions', 'ms-asprotocolcommands', 'x-responsecode'].filter(key => res.headers?.[key] !== undefined).map(key => [key, res.headers[key]])) }); });
       });
       for (const [key, value] of Object.entries(options.headers || {})) req.setHeader(key, value);

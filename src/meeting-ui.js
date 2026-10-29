@@ -19,11 +19,15 @@ async function openMeeting(summary) {
     if (state.view === 'calendar') renderCalendar();
     renderMeetingCard();
     let total = 0;
+    let decoded = 0;
     for (const attachment of activeMeeting.attachments.filter(a => ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(a.type)).slice(0, 6)) {
       if (attachment.size > 5 * 1024 * 1024 || total + attachment.size > 12 * 1024 * 1024) continue;
       total += attachment.size;
       try {
-        const src = state.demo ? attachment.previewUrl : await api('eventImage', { ref: ref(detail), id: attachment.id });
+        const preview = state.demo ? { dataURL: attachment.previewUrl, decodedBytes: 0 } : await api('eventImage', { ref: ref(detail), id: attachment.id });
+        decoded += preview.decodedBytes;
+        if (decoded > 128 * 1024 * 1024) throw new Error('Превышен лимит распакованных изображений встречи');
+        const src = preview.dataURL;
         if (request !== meetingRequest || !dialog.open || dialog.dataset.meetingCard !== 'true') return;
         activeMeeting.images[attachment.id] = src;
         const img = [...document.querySelectorAll('.meeting-image img')].find(img => img.dataset.id === attachment.id);

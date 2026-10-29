@@ -4,6 +4,10 @@ const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { Updates } = require('./updates.cjs');
+const { AttachmentFiles, safeName } = require('./attachment-files.cjs');
+let attachmentFiles;
+const { writeAttachment } = require('./attachment-trust.cjs');
+let attachmentCleanupError = '';
 let updates;
 const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
@@ -52,7 +56,6 @@ async function pollMail() {
   finally { mailPolling = false; }
 }
 const page = path.join(__dirname, '../src/index.html');
-const credentialFile = () => path.join(app.getPath('userData'), 'account.enc');
 const settingsFile = () => path.join(app.getPath('userData'), 'notifications.json');
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if (createWindow) reveal(); });
@@ -71,8 +74,10 @@ async function resetLocalData() {
     const answer = await dialog.showMessageBox(window, { type: 'warning', message: 'Сбросить локальные данные?', detail: 'Сохранённый пароль, подпись, коллеги и настройки будут удалены с этого компьютера. Письма и календарь в Exchange сохранятся.', buttons: ['Отмена', 'Сбросить'], defaultId: 0, cancelId: 0 });
     if (answer.response !== 1) return false;
     ++accountEpoch;
-    await localStore.clear();
-    return true;
+    const results = await Promise.allSettled([localStore.clear(), attachmentFiles.clear()]);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure) throw failure.reason;
+    attachmentCleanupError = ''; return true;
   } finally { resettingLocalData = false; }
 }
 
@@ -184,7 +189,7 @@ function retireAccount() {
   tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
   notificationSettings = preferences(); widgetEvents = []; widgetDetail = null; refreshWidget();
   for (const n of activeNotifications) n.close(); activeNotifications.clear();
-  return previous ? Promise.all([previous.session.clearStorageData(), previous.images.clearStorageData()]) : Promise.resolve();
+  return Promise.all([attachmentFiles?.clear(), ...(previous ? [previous.session.clearStorageData(), previous.images.clearStorageData()] : [])]);
 }
 async function connect(data, remember, restoring = false) {
   if (resettingLocalData) throw new Error('Дождитесь завершения сброса локальных данных');
@@ -204,6 +209,11 @@ async function connect(data, remember, restoring = false) {
     () => { assertCurrent(); return current.session.clearStorageData({ storages: ['cookies'] }); },
     url => fetchContentImage(url, credentials.server, current.images, current.controller.signal));
   current.client = candidate;
+  candidate.onConnectionState = status => {
+    if (client !== candidate || !candidate.syncId || current.health === status) return;
+    current.health = status;
+    if (window && !window.isDestroyed()) window.webContents.send('aster-connection', { sessionId: candidate.syncId, status });
+  };
   try {
     await retired; assertCurrent();
     await candidate.authenticate(); assertCurrent();
@@ -233,6 +243,8 @@ function validate(operation, data) {
 }
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.astermail.desktop');
+  attachmentFiles = new AttachmentFiles(path.join(app.getPath('userData'), 'opened-attachments'), file => shell.openPath(file));
+  try { await attachmentFiles.clear(); } catch (error) { attachmentCleanupError = error.message; }
   updates = new Updates({ directory: path.join(app.getPath('userData'), 'updates'), installed: app.getVersion(),
     // Node fetch has no access to Electron OWA cookies and supports manual redirects.
     fetch: (url, options) => globalThis.fetch(url, options), open: file => shell.openPath(file),
@@ -275,7 +287,7 @@ app.whenReady().then(async () => {
       if (operation === 'saveUpdatePreferences') return { ok: true, value: await updates.preferences(data.autoCheck) };
       if (operation === 'mailAlerts') return { ok: true, value: mailAlerts };
       if (operation === 'dismissMailAlert') { mailAlerts = mailAlerts.filter(item => item.id !== data.id); publishMailAlerts(); return { ok: true, value: true }; }
-      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: lastMailError || lastPollError, supported: Notification.isSupported() } };
+      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: attachmentCleanupError || lastMailError || lastPollError, supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings, next = preferences(data);
@@ -304,18 +316,17 @@ app.whenReady().then(async () => {
       if (operation === 'connect') return { ok: true, value: await connect(data, Boolean(data.remember)) };
       if (operation === 'restore') {
         const epoch = accountEpoch;
-        let encrypted;
-        try { encrypted = await fs.readFile(credentialFile()); } catch (error) { if (error.code === 'ENOENT') return { ok: true, value: null }; throw error; }
-        if (epoch !== accountEpoch) throw new Error('Сессия аккаунта завершена');
-        localStore.requireEncryption();
-        const saved = JSON.parse(safeStorage.decryptString(encrypted));
+        const saved = await localStore.loadCredentials(() => { if (epoch !== accountEpoch) throw new Error('Сессия аккаунта завершена'); });
+        if (!saved) return { ok: true, value: null };
         return { ok: true, value: await connect(saved, false, true) };
       }
       if (operation === 'disconnect') {
         if (client && data.sessionId !== client.syncId) throw new Error('Сессия аккаунта завершена');
         ++accountEpoch;
         const retired = retireAccount();
-        await Promise.all([retired, localStore.clear(), window.webContents.session.clearStorageData({ storages: ['localstorage', 'indexdb', 'cachestorage'] })]);
+        const results = await Promise.allSettled([retired, localStore.clear(), window.webContents.session.clearStorageData({ storages: ['localstorage', 'indexdb', 'cachestorage'] })]);
+        const failure = results.find(result => result.status === 'rejected');
+        if (failure) throw failure.reason;
         return { ok: true, value: true };
       }
       if (operation === 'openLink') {
@@ -340,13 +351,21 @@ app.whenReady().then(async () => {
         if (!url || event.cancelled) throw new Error('Ссылка на созвон недоступна');
         await shell.openExternal(url); return { ok: true, value: true };
       }
+      if (operation === 'openAttachment') {
+        if (typeof data.id !== 'string' || data.id.length > 16000 || typeof data.ref?.id !== 'string' || data.ref.id.length > 16000) throw new Error('Invalid attachment');
+        const assertActive = () => { if (client !== activeClient) throw new Error('Сессия аккаунта завершена'); };
+        const message = await activeClient.message({ ...data.ref, refresh: true }); assertActive();
+        const file = message.attachments.find(file => file.id === data.id);
+        if (!file) throw new Error('Вложение не найдено в письме. Обновите письмо.');
+        return { ok: true, value: await attachmentFiles.open({ name: file.name, load: () => activeClient.attachment(file.id), assertActive }) };
+      }
       if (operation === 'attachment') {
         if (typeof data.id !== 'string' || typeof data.name !== 'string') throw new Error('Invalid attachment');
-        const result = await dialog.showSaveDialog(window, { defaultPath: path.basename(data.name).replace(/[\\/:]/g, '_') });
+        const result = await dialog.showSaveDialog(window, { defaultPath: safeName(data.name) });
         if (!result.canceled) {
           const bytes = await activeClient.attachment(data.id);
           if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
-          await fs.writeFile(result.filePath, bytes);
+          await writeAttachment(result.filePath, bytes, { assertActive: () => { if (client !== activeClient) throw new Error('Сессия аккаунта завершена'); } });
         }
         return { ok: true, value: !result.canceled };
       }
@@ -356,7 +375,7 @@ app.whenReady().then(async () => {
       if (client !== activeClient) throw new Error('Сессия аккаунта завершена');
       if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
       return { ok: true, value };
-    } catch (error) { return { ok: false, error: error.message }; }
+    } catch (error) { return { ok: false, error: error.message, connectionError: error.connectionError === true }; }
   });
   createWindow();
   ipcMain.handle('aster-widget', async (event, operation, data) => {
@@ -384,6 +403,7 @@ app.whenReady().then(async () => {
   else tray.setContextMenu(trayMenu);
   tray.on('click', toggleWidget);
   refreshWidget();
+  const attachmentTimer = setInterval(() => { attachmentFiles.cleanupExpired().then(() => { attachmentCleanupError = ''; }, error => { attachmentCleanupError = error.message; }); }, 60000); attachmentTimer.unref();
   const widgetTimer = setInterval(refreshWidget, 15000); widgetTimer.unref();
   const mailTimer = setInterval(() => { void pollMail(); }, 15000); mailTimer.unref();
   powerMonitor.on('resume', () => { void pollNotifications(); });
@@ -397,6 +417,11 @@ app.whenReady().then(async () => {
 });
 app.on('before-quit', event => {
   if (!confirmDiscardChanges()) { event.preventDefault(); return; }
+  try { attachmentFiles?.clearSync(); } catch {
+    const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: 'Временные вложения не удалены', detail: 'Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.', buttons: ['Остаться', 'Выйти'], defaultId: 0, cancelId: 0 });
+    if (answer !== 1) { event.preventDefault(); return; }
+  }
   quitting = true; connection?.controller.abort();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('will-quit', () => { try { attachmentFiles?.clearSync(); } catch { /* The user has acknowledged locked copies before quitting; retry at startup. */ } });

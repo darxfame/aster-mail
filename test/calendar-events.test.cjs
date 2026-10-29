@@ -73,9 +73,19 @@ test('a series edit resolves the recurring master rather than updating only the 
   assert.match(mock.calls[2].options.body, /ItemId Id="master" ChangeKey="master-key"/);
 });
 test('image previews reject SVG, mismatched MIME and oversized images', () => {
-  const png = Buffer.from([137,80,78,71,13,10,26,10]).toString('base64');
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=';
   assert.match(C.imageData({ ContentType: 'image/png', Content: png }), /^data:image\/png;base64,/);
   assert.throws(() => C.imageData({ ContentType: 'image/svg+xml', Content: Buffer.from('<svg/>').toString('base64') }));
   assert.throws(() => C.imageData({ ContentType: 'image/png', Content: Buffer.from('<html>').toString('base64') }));
   assert.throws(() => C.imageData({ ContentType: 'image/png', Content: Buffer.alloc(5 * 1024 * 1024 + 1).toString('base64') }));
+});
+
+test('event attachment previews return a decoded byte budget alongside validated raster data', async () => {
+  const { OWAClient } = require('../desktop/owa.cjs');
+  const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=';
+  const client = new OWAClient({ server: 'https://mail.example.com' });
+  client.eventDetails = async () => ({ attachments: [{ id: 'image', size: 100, type: 'image/png' }] });
+  client.ews = async () => ({ FileAttachment: { ContentType: 'image/png', Content: pixel } });
+  const result = await client.eventImage({ ref: { id: 'event' }, id: 'image' });
+  assert.equal(result.decodedBytes, 4); assert.equal(result.dataURL, `data:image/png;base64,${pixel}`);
 });

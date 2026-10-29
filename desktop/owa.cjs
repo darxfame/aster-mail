@@ -61,10 +61,19 @@ class OWAClient {
     if (!this.canary) { this.authRejected = true; throw new Error('Сервер не выдал OWA CANARY. Возможны неверный пароль, MFA или неподдерживаемая форма входа.'); }
   }
   async call(action, payload, options) {
-    try { return await this.requestJSON(action, payload, options); }
+    try {
+      const result = await this.requestJSON(action, payload, options);
+      this.onConnectionState?.(this.authRejected ? 'auth-required' : 'connected');
+      return result;
+    } catch (error) {
+      if (this.authRejected) { error.connectionError = true; this.onConnectionState?.('auth-required'); }
+      else if (error.connectionError) this.onConnectionState?.('reconnecting');
+      throw error;
+    }
     finally { if (['UpdateItem', 'MoveItem', 'DeleteItem'].includes(action)) this.mailCache.clear({ preserveImages: true }); }
   }
   async requestJSON(action, payload, { retry = true, headerBody = false } = {}) {
+    if (['CreateItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'SendItem'].includes(action)) retry = false;
     if (!this.canary) await this.authenticate();
     const body = JSON.stringify(payload);
     const response = await this.transport(`${this.origin}/owa/service.svc?action=${action}&EP=1&ID=-100&AC=1`, {
@@ -78,12 +87,20 @@ class OWAClient {
     });
     if ([401, 440, 449].includes(response.status)) {
       this.canary = null;
+      this.onConnectionState?.('reconnecting');
       if (retry) { await this.authenticate(); return this.call(action, payload, { retry: false, headerBody }); }
-      throw new Error('Сессия истекла. Подключитесь заново; операция не повторялась.');
+      throw Object.assign(new Error('Сессия истекла. Соединение восстанавливается; операция не повторялась.'), { connectionError: true });
     }
+    if ([408, 429, 502, 503, 504].includes(response.status)) throw Object.assign(new Error('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.'), { connectionError: true });
     if (response.status >= 400) throw new Error(`OWA ${action}: HTTP ${response.status}`);
     let json;
-    try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch { throw new Error(`OWA ${action}: вместо JSON получена страница входа или неподдерживаемый ответ.`); }
+    try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch {
+      if (/^\s*(?:<!doctype|<html|<form)/i.test(response.text)) {
+        this.canary = null; this.onConnectionState?.('reconnecting');
+        if (retry) { await this.authenticate(); return this.call(action, payload, { retry: false, headerBody }); }
+      }
+      throw Object.assign(new Error(`OWA ${action}: вместо JSON получена страница входа или неподдерживаемый ответ.`), { connectionError: /^\s*(?:<!doctype|<html|<form)/i.test(response.text) });
+    }
     if (action === 'GetUserAvailabilityInternal' && availability.rows(json, payload.request.Body.MailboxDataArray.length)) return json;
     if (action === 'GetOwaUserConfiguration' && !json.Body && (json.UserSessionSettings || json.SessionSettings)) return P.checkJSON({ Body: json });
     return P.checkJSON(json);
@@ -101,6 +118,7 @@ class OWAClient {
         'X-OWA-CANARY': this.canary,
       }, body: xml,
     });
+    if ([401, 440, 449].includes(response.status)) this.canary = null;
     if (response.status >= 400) throw new Error(`EWS ${action}: HTTP ${response.status}. Проверьте доступность /EWS/Exchange.asmx. Операция не повторялась.`);
     return P.parseSOAP(response.text, action);
   }
@@ -300,7 +318,8 @@ class OWAClient {
     const response = await this.ews('GetAttachment', P.soap(`<m:GetAttachment><m:AttachmentIds><t:AttachmentId Id="${P.escapeXML(data.id)}"/></m:AttachmentIds></m:GetAttachment>`));
     const image = P.walk(response, o => o.Content !== undefined && o.ContentType !== undefined)[0];
     if (!image) throw new Error('Exchange не вернул изображение');
-    return calendarEvents.imageData(image);
+    const checked = require('./raster-images.cjs').inspect(image);
+    return { dataURL: checked.dataURL, decodedBytes: checked.decodedBytes };
   }
   async contentImages(data) {
     if (!['message', 'event'].includes(data.kind)) throw new Error('Некорректный тип содержимого');
@@ -370,7 +389,7 @@ class OWAClient {
       if (photo) {
         const bytes = Buffer.from(photo.PictureData, 'base64');
         const type = photo.ContentType || (bytes[0] === 137 ? 'image/png' : bytes[0] === 255 ? 'image/jpeg' : bytes.toString('ascii', 0, 3) === 'GIF' ? 'image/gif' : 'image/webp');
-        image = calendarEvents.imageData({ ContentType: type, Content: photo.PictureData });
+        image = require('./raster-images.cjs').inspect({ ContentType: type, Content: photo.PictureData }, 256 * 256).dataURL;
       }
     } catch { /* A missing/private photo keeps initials; do not fail the meeting. */ }
     if (this.photoCache.size >= 128) this.photoCache.delete(this.photoCache.keys().next().value);
@@ -391,10 +410,13 @@ class OWAClient {
     return { ...signature, ...loaded };
   }
   async attachment(id) {
+    if (typeof id !== 'string' || !id || id.length > 16000) throw new Error('Некорректное вложение');
+    if (!this.canary) await this.authenticate();
     const url = new URL(`${this.origin}/owa/service.svc/s/GetFileAttachment`);
     url.searchParams.set('id', id); url.searchParams.set('X-OWA-CANARY', this.canary);
     const response = await this.transport(url.href, { binary: true });
-    if (response.status >= 400) throw new Error(`Вложение: HTTP ${response.status}`);
+    if ([401, 440, 449].includes(response.status)) this.canary = null;
+    if (response.status !== 200 || !Buffer.isBuffer(response.buffer)) throw new Error(`Вложение: HTTP ${response.status}. Обновите подключение и попробуйте снова.`);
     return response.buffer;
   }
 }

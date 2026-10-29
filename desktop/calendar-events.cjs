@@ -75,13 +75,6 @@ function messageSOAP(current, data) {
   if (data.kind === 'forward' && !emails.length) throw new Error('Укажите получателей');
   return P.soap(`<m:CreateItem MessageDisposition="SendAndSaveCopy"><m:Items><t:${type}>${emails.length ? `<t:ToRecipients>${emails.map(email => `<t:Mailbox><t:EmailAddress>${P.escapeXML(email)}</t:EmailAddress></t:Mailbox>`).join('')}</t:ToRecipients>` : ''}<t:ReferenceItemId Id="${P.escapeXML(current.id)}" ChangeKey="${P.escapeXML(current.changeKey)}"/><t:NewBodyContent BodyType="Text">${P.escapeXML(data.body)}</t:NewBodyContent></t:${type}></m:Items></m:CreateItem>`);
 }
-function imageData(attachment) {
-  const type = attachment.ContentType, content = attachment.Content;
-  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type) || typeof content !== 'string' || !/^[A-Za-z0-9+/\r\n]*={0,2}$/.test(content)) throw new Error('Этот формат изображения не поддерживается');
-  const bytes = Buffer.from(content, 'base64');
-  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error('Изображение превышает 5 МБ');
-  const valid = type === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : type === 'image/jpeg' ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 : type === 'image/gif' ? /^GIF8[79]a/.test(bytes.toString('ascii', 0, 6)) : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
-  if (!valid) throw new Error('Файл не является поддерживаемым изображением');
-  return `data:${type};base64,${bytes.toString('base64')}`;
-}
+function imageData(attachment) { return require('./raster-images.cjs').inspect(attachment).dataURL; }
+
 module.exports = { normalize, itemXML, getSOAP, updateSOAP, messageSOAP, imageData };

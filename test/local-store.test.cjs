@@ -83,3 +83,44 @@ test('cancellation during an atomic save removes its temporary ciphertext and lo
   await fs.writeFile(path.join(directory, 'unrelated.txt'), 'keep');
   await store.clear(); assert.deepEqual(await fs.readdir(directory), ['unrelated.txt']);
 });
+
+test('failed logout removal leaves a durable revocation that prevents restore after restart', async t => {
+  const { store, directory, provider } = await setup(t);
+  await store.saveCredentials({ username: 'alice', password: 'fictional' }, guard);
+  const original = fs.rm;
+  fs.rm = async (file, options) => {
+    if (file === path.join(directory, 'account.enc')) throw Object.assign(new Error('locked'), { code: 'EACCES' });
+    return original(file, options);
+  };
+  try { await assert.rejects(store.clear(), /автовход заблокирован/); }
+  finally { fs.rm = original; }
+  const restarted = new LocalStore(directory, provider);
+  assert.equal(await restarted.loadCredentials(), null);
+  assert.ok(await fs.stat(path.join(directory, 'account.enc')));
+  await restarted.saveCredentials({ username: 'bob', password: 'different' }, guard);
+  assert.equal((await restarted.loadCredentials()).username, 'bob');
+  await restarted.clear(); assert.equal(await restarted.loadCredentials(), null);
+});
+
+test('a marker write failure cannot silently report successful deletion when secrets also remain', async t => {
+  const { store, directory, provider } = await setup(t);
+  await store.saveCredentials({ username: 'alice', password: 'fictional' }, guard);
+  const write = fs.writeFile, remove = fs.rm;
+  fs.writeFile = async (file, ...args) => { if (file === path.join(directory, 'logout.pending')) throw new Error('read-only volume'); return write(file, ...args); };
+  fs.rm = async (file, ...args) => { if (file === path.join(directory, 'account.enc')) throw new Error('read-only volume'); return remove(file, ...args); };
+  try { await assert.rejects(store.clear(), /не удалось.*заблокировать автовход/i); }
+  finally { fs.writeFile = write; fs.rm = remove; }
+  // Total storage failure cannot persist revocation: it must require explicit remediation.
+  assert.equal((await new LocalStore(directory, provider).loadCredentials()).username, 'alice');
+});
+
+test('directory enumeration failure still persists revocation before any restore', async t => {
+  const { store, directory, provider } = await setup(t);
+  await store.saveCredentials({ username: 'alice', password: 'fictional' }, guard);
+  const original = fs.readdir;
+  fs.readdir = async (file, ...args) => { if (file === directory) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return original(file, ...args); };
+  try { await assert.rejects(store.clear(), /Автовход заблокирован/); }
+  finally { fs.readdir = original; }
+  assert.equal(await new LocalStore(directory, provider).loadCredentials(), null);
+  assert.ok(await fs.stat(path.join(directory, 'account.enc')));
+});

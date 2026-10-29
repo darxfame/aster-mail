@@ -14,7 +14,9 @@ window.asterDemo = (() => {
   messages[2].cc = [person('Вы', 'YOU@example.com'), person('Анна Смирнова', 'anna@example.com')];
   messages[2].text += '\n\n—— Предыдущая переписка ——\nОт: Вы <you@example.com>\nКому: Елена Козлова <elena@example.com>\nТема: Материалы к следующей встрече\n\nЕлена, пришлите, пожалуйста, материалы к обсуждению. Спасибо!';
   messages[2].attachments = ['План проекта.pdf', 'Макет интерфейса.png', 'Смета.xlsx', 'Заметки.docx', 'Материалы.zip', 'Описание.txt'].map((name, i) => ({ id: `demo-material-${i}`, name, size: 1024 * (i + 1) }));
+  messages[0].html = messages[0].html.replace(/></g, '>\n    <');
   messages[0].html += '<table bgcolor="#ffffff"><tr><td><img src="cid:demo-logo" alt="Логотип Aster" width="80" height="80"><p><a href="https://example.com/project">Открыть материалы проекта</a> — ссылка остаётся в тексте письма.</p></td></tr></table>';
+  messages[0].html += '<p><span style="font-size:64px"><img src="https://blocked.example.com/banner.png" alt=""></span></p>';
   const events = [
     { id: 'demo-event-1', title: 'Обсуждение проекта', start: at(1, 11), end: at(1, 11, 45), location: 'Переговорная «Кедр»', preview: 'Идеи, приоритеты и следующие шаги', organizer: person('Михаил Волков', 'mikhail@example.com') },
     { id: 'demo-event-2', title: 'Командная встреча', start: at(0, 10), end: at(0, 10, 30), location: 'Онлайн', preview: 'Сверим планы на сегодня', organizer: person('Анна Смирнова', 'anna@example.com') },

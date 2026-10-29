@@ -31,7 +31,7 @@ test('unsaved form changes reach native lifecycle protection and stay protected 
     document: { addEventListener(name, callback) { events[name] = callback; } },
     $: () => ({ addEventListener(_name, callback) { onClose = callback; } }),
     confirm: () => false,
-    modalBusy: false,
+    modalBusy: false, resumeConnectionReads() {},
   });
   vm.runInContext(source.slice(source.indexOf('let modalDirty ='), source.indexOf('new ResizeObserver(')), context);
   events.input({ target: { closest: () => ({}) } });

@@ -1,7 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const I = require('../desktop/content-images.cjs');
-const image = { ContentType: 'image/png', Content: Buffer.from([137,80,78,71,13,10,26,10]).toString('base64') };
+const image = { ContentType: 'image/png', Content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=' };
+test('encoded CID references resolve locally and missing CIDs never become remote requests', async () => {
+  const current = { html: '<img src="cid:logo%40example.com"><img src="cid:missing">', attachments: [{ id: 'local', contentId: '<logo@example.com>', size: 8 }] };
+  const result = await I.load(current, async id => { assert.equal(id, 'local'); return image; }, () => assert.fail('CID must not reach the network'), 'https://mail.example.com');
+  assert.match(result.images['cid:logo%40example.com'], /^data:image\/png/);
+  assert.match(result.errors['cid:missing'], /не найдено во вложениях/);
+});
 test('inline and external images render as validated raster data with explicit load failures', async () => {
   const current = { html: '<img src="cid:logo"><img src="https://images.example.com/banner?a=1&amp;b=2"><img src="javascript:bad"><img src="https://images.example.com/missing">', attachments: [{ id: 'attachment', contentId: '<logo>', size: 8 }] };
   const calls = [];

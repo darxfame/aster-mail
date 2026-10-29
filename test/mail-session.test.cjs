@@ -85,7 +85,7 @@ test('validated images share the session memory limit, survive mailbox writes an
   cache.clear(); assert.equal(cache.entries.size,0); assert.equal(cache.bytes,0);
 });
 test('opening the same inline image again and marking mail read do not redownload it', async () => {
-  const pixel=Buffer.from([137,80,78,71,13,10,26,10]).toString('base64'); let downloads=0;
+  const pixel='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII='; let downloads=0;
   const {c}=client((_url, options)=>{
     if(options.headers.SOAPAction) {downloads++; return {status:200,text:`<Envelope><ResponseCode>NoError</ResponseCode><FileAttachment><ContentType>image/png</ContentType><Content>${pixel}</Content></FileAttachment></Envelope>`};}
     if(options.headers.Action==='UpdateItem') return json({Items:[{ItemId:{Id:'mail',ChangeKey:'new-key'}}]});

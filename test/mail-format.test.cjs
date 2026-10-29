@@ -3,6 +3,24 @@ const assert = require('node:assert/strict');
 const { styleAllowed } = require('../src/rich-content.js');
 const P = require('../desktop/protocol.cjs');
 
+test('HTML editing and outgoing serialization collapse source indentation while plain text preserves spaces', () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const noop = { addEventListener() {} };
+  const toolbar = { ...noop, querySelectorAll: () => [] };
+  const linkForm = { querySelector: () => noop };
+  const root = { asterRichContent: { sanitize: value => ({ body: { innerHTML: value }, querySelectorAll: () => [] }) } };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../src/mail-editor.js'), 'utf8'), { window: root });
+  for (const html of [undefined, '<p>First</p>\n    <p><b>Second</b> line</p>']) {
+    const editor = { ...noop, style: {}, classList: { toggle() {} }, innerText: 'First\nSecond line' };
+    const target = { querySelector: selector => selector === '.compose-editor' ? editor : selector === '.format-toolbar' ? toolbar : linkForm };
+    const mounted = root.asterMailEditor.mount(target, '  plain text\n    indented', { html });
+    assert.equal(editor.style.whiteSpace, html ? 'normal' : 'pre-wrap');
+    assert.ok(mounted.read().bodyHtml.startsWith(`<div style="white-space: ${html ? 'normal' : 'pre-wrap'}">`));
+    if (html) assert.equal(editor.innerHTML, html);
+    else assert.equal(editor.textContent, '  plain text\n    indented');
+  }
+});
+
 test('mail formatting permits text styling but excludes network, positioning and CSS expressions', () => {
   for (const [name,value] of [['color','#c03060'],['font-family','Georgia, serif'],['font-size','24px'],['font-weight','bold'],['text-align','center'],['text-decoration','underline line-through'],['background-color','rgb(255, 240, 166)']]) assert.equal(styleAllowed(name,value),true,`${name}: ${value}`);
   for (const [name,value] of [['background','url(https://example.com/tracker)'],['background-color','url(https://example.com)'],['color','var(--text)'],['color','expression(alert(1))'],['position','fixed'],['font-size','999px'],['font-family','url(https://example.com/font)'],['margin-left','-99px']]) assert.equal(styleAllowed(name,value),false,`${name}: ${value}`);

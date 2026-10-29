@@ -70,4 +70,6 @@ test('attachment cards escape file names, show extensions and expose Save As wit
   const html = context.mailAttachments({ attachments: [{ id: 'id', name: '<script>.PDF', size: 2000 }] });
   assert.match(html, /extension-pdf/); assert.match(html, />PDF</); assert.match(html, /Сохранить как/);
   assert.match(html, /data-action="attachment"/); assert.doesNotMatch(html, /<script>/); assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /data-action="open-attachment"/);
+  assert.match(html, /aria-label="Открыть вложение: &lt;script&gt;.PDF"/);
 });

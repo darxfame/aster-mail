@@ -39,6 +39,11 @@ formatting within the shared style allowlist; never mount unsanitized mail in th
 `src/rich-content.js` renders sanitized HTML with scripts disabled; parent code
 handles inline links. `desktop/content-images.cjs` validates raster images, and
 external image requests use a separate session without account credentials.
+`desktop/attachment-files.cjs` opens explicitly requested attachments in the system
+application using private temporary copies. This user-authorized exception does
+not permit background persistence: clear copies at account retirement, quit and
+startup; never open active file types or launch after account retirement. Files
+locked by an external app are retried at the next cleanup. Save As remains explicit.
 The isolated widget uses `src/widget.*`. Sound assets and their
 generator are CC0; preserve their separate license.
 
@@ -56,6 +61,11 @@ moves, rule creation or sends after an uncertain response. Mail rendering must
 ignore stale responses after navigation; folder unread filters run on the server.
 
 ## Build, Test, and Development Commands
+
+Connection recovery retries reads through the existing 15-second OWA poll and
+reports account-scoped health in the compact header indicator. Do not replay
+mutations, repeat rejected credentials, replace open composers or show large
+network-error banners for transient connection loss.
 
 Connection diagnostics was removed at the user's request after the server version
 was identified. Do not reintroduce diagnostic controls or probes unless requested.

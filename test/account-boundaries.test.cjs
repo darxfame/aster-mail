@@ -58,6 +58,7 @@ test('a superseded login cannot publish a client or credentials after another ac
   }
   const context = vm.createContext({
     OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
+    attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },
     createTransport: (_net, account, session, signal) => Object.assign(() => {}, { account, session, signal }), net: {}, fetchContentImage() {},
