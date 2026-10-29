@@ -18,3 +18,52 @@ test('new mail, drafts and replies send HTML formatting while retaining referenc
   assert.match(reply,/<t:ReferenceItemId Id="original" ChangeKey="fresh-key"/);
   assert.match(reply,/<t:CcRecipients><\/t:CcRecipients>/);
 });
+
+test('edited history replaces the response body instead of appending a second original quote', () => {
+  for (const [kind, element] of [['reply', 'ReplyToItem'], ['reply-all', 'ReplyAllToItem'], ['forward', 'ForwardItem']]) {
+    for (const save of [false, true]) {
+      const xml = P.sendSOAP({ kind, reference: { id: 'original', changeKey: 'fresh-key' }, to: 'anna@example.com', subject: 'Reply', body: 'Answer\nEdited quote', bodyHtml: '<p>Answer</p><blockquote><b>Edited quote</b></blockquote>', replaceBody: true }, save);
+      assert.match(xml, new RegExp(`<t:${element}>`));
+      assert.match(xml, /<t:Subject>Reply<\/t:Subject><t:Body BodyType="HTML">/);
+      assert.match(xml, /&lt;blockquote&gt;&lt;b&gt;Edited quote/);
+      assert.match(xml, /<t:ReferenceItemId Id="original" ChangeKey="fresh-key"/);
+      assert.doesNotMatch(xml, /NewBodyContent/);
+    }
+  }
+});
+
+test('attachment batches share a size limit, preserve earlier files and support removal', () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+  const error = {}, picked = { replaceChildren(...rows) { this.rows = rows; } };
+  const context = vm.createContext({ composeData: { attachments: [] }, modalBusy: false, markModalDirty() {}, bytes: n => String(n), $: selector => selector === '#picked-files' ? picked : error, document: { createElement() { return { setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }, append(child) { this.child = child; } }; } } });
+  vm.runInContext(source.slice(source.indexOf('function addComposeFiles('), source.indexOf("document.addEventListener('change'", source.indexOf('function addComposeFiles('))), context);
+  const first = { name: '<b>file.txt', size: 10 }, second = { name: 'next.txt', size: 20 };
+  context.addComposeFiles([first]); context.addComposeFiles([second]);
+  assert.deepEqual(Array.from(context.composeData.attachments), [first, second]);
+  assert.equal(picked.rows[0].textContent, '<b>file.txt · 10 ');
+  context.addComposeFiles([{ name: 'large', size: 20 * 1024 * 1024 }]);
+  assert.match(error.textContent, /превышает 20 МБ/);
+  assert.equal(context.composeData.attachments.length, 2);
+  picked.rows[0].child.click();
+  assert.deepEqual(Array.from(context.composeData.attachments), [second]);
+});
+
+test('compose accepts file drops, rejects drops during sending and leaves text drags alone', () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+  const classes = new Set(), added = [];
+  const dialog = { classList: { add: value => classes.add(value), remove: value => classes.delete(value) }, contains: value => value === 'inside' };
+  const context = vm.createContext({ modalBusy: false, $: () => dialog, addComposeFiles: files => added.push(...files) });
+  const start = source.indexOf("  const dialog = $('#modal');", source.indexOf('async function compose('));
+  vm.runInContext(source.slice(start, source.indexOf('  composeData.editor =', start)), context);
+  let prevented = 0;
+  const file = { name: 'fictional.txt', size: 3 };
+  const event = { dataTransfer: { types: ['Files'], files: [file] }, preventDefault() { prevented++; } };
+  dialog.ondragover(event); assert.equal(event.dataTransfer.dropEffect, 'copy'); assert.ok(classes.has('compose-file-drop'));
+  dialog.ondrop(event); assert.deepEqual(added, [file]); assert.equal(classes.size, 0);
+  context.modalBusy = true; dialog.ondragover(event); dialog.ondrop(event);
+  assert.equal(event.dataTransfer.dropEffect, 'none'); assert.equal(added.length, 1);
+  const before = prevented;
+  dialog.ondragover({ ...event, dataTransfer: { types: ['text/html'] } }); assert.equal(prevented, before);
+});

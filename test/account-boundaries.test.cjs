@@ -11,6 +11,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
     localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },
     messageOpenSequence: 1, readingMessages: new Map([['mail', Promise.resolve()]]),
+    mailSelection: new Set(['private-mail-id']), mailSelectionScope: 'old-account',
     serverSignature: { html: 'private' }, composeData: { body: 'private draft' }, activeMeeting: { body: 'private' }, meetingEdit: {}, meetingRequest: 1,
     moveRuleContext: {}, mailDrag: {}, mailPeopleChoices: ['private'], colleagueData: ['private'], directoryResults: ['private'], directoryRequest: 1, colleagueRequest: 1,
     document: { body: { classList: { toggle() {} } } }, $: key => nodes[key], renderMailAlerts() {}, renderSidebar() {},
@@ -21,6 +22,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
   for (const key of ['messages', 'contacts', 'events', 'folders']) assert.equal(context.state[key].length, 0);
   for (const key of ['serverSignature', 'composeData', 'activeMeeting', 'meetingEdit', 'moveRuleContext', 'mailDrag']) assert.equal(context[key], null);
   assert.equal(context.readingMessages.size, 0); assert.equal(Object.keys(context.localValues).length, 0);
+  assert.equal(context.mailSelection.size, 0); assert.equal(context.mailSelectionScope, '');
   assert.equal(nodes['#search'].value, ''); assert.equal(nodes['#people-search-suggestions'].cleared, true);
   assert.equal(context.notificationPreferences.preview, false);
   context.localPreferences.getItem = key => context.localValues[key] ?? null;
@@ -53,7 +55,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     authenticate() { return new Promise(resolve => { this.finish = resolve; }); }
   }
   const context = vm.createContext({
-    OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, AbortController,
+    OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },
     createTransport: (_net, account, session, signal) => Object.assign(() => {}, { account, session, signal }), net: {}, fetchContentImage() {},

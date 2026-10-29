@@ -45,9 +45,9 @@ test('real mail reads share cache; changed versions and mutation failures invali
   assert.equal(calls.length,3); assert.equal(c.mailCache.entries.size,0);
   await c.message({id:'message',changeKey:'ck'}); assert.equal(calls.length,4);
 });
-test('reply-all uses sender and CC only, excludes primary address, UPN and case-insensitive duplicates', () => {
+test('reply-all includes sender, original To and CC, excluding own addresses and duplicates', () => {
   const from = {email:'Anna@example.com'}, m = {from,to:[{email:'someone@example.com'}],cc:[{email:'me@example.com'},{email:'ME@LOGIN.EXAMPLE.COM'},{email:'anna@EXAMPLE.com'},{email:'pavel@example.com'},{email:'PAVEL@EXAMPLE.COM'}]};
-  assert.deepEqual(R.reply(m,['me@example.com','me@login.example.com'],true),{to:'Anna@example.com',cc:'pavel@example.com'});
+  assert.deepEqual(R.reply(m,['me@example.com','me@login.example.com'],true),{to:'Anna@example.com, someone@example.com',cc:'pavel@example.com'});
   assert.deepEqual(R.reply(m,['me@example.com'],false),{to:'Anna@example.com',cc:''});
   assert.deepEqual(R.reply({from:{email:' ME@example.com '},cc:[{email:'anna@example.com'}]},['me@example.com'],true),{to:'anna@example.com',cc:''});
   const xml = P.sendSOAP({kind:'reply-all',reference:{id:'original',changeKey:'ck'},to:'anna@example.com',cc:'',body:'New text'});

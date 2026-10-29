@@ -117,3 +117,21 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .mail-recipients { margin-top: 8px; max-width: 100%; }.mail-recipients summary { display: flex; gap: 8px; align-items: baseline; cursor: pointer; font-size: 10px; color: var(--muted); }.mail-recipients summary::before { content: '▸'; color: var(--accent); }.mail-recipients[open] summary::before { content: '▾'; }.mail-recipients summary > span:first-child { flex: none; color: var(--accent); }.recipient-summary-names { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .mail-recipient-list { max-height: 220px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 8px; padding: 5px; margin-top: 9px; }.recipient-group-label { padding: 7px 9px; color: var(--muted); font-size: 10px; }
 .mail-person { display: flex; align-items: center; gap: 9px; padding: 7px; min-height: 44px; border-radius: 5px; width: 100%; text-align: left; }.mail-person:hover { background: var(--accent-bg); }.mail-person > span { flex: 1; min-width: 0; }.mail-person strong, .mail-person small { display: block; overflow-wrap: anywhere; line-height: 1.5; }.mail-person small { margin-top: 3px; }.mail-person > svg { width: 15px; color: var(--accent); }.sender-detail .mail-person .avatar { width: 29px; height: 29px; font-size: 10px; }
+
+.compose-dialog { resize: both; min-width: min(580px, calc(100vw - 32px)); overflow: auto; }
+.compose-dialog.compose-expanded { width: calc(100vw - 32px) !important; height: calc(100vh - 32px) !important; max-height: calc(100vh - 32px); }
+.compose-dialog .modal-header { align-items: center; gap: 12px; }
+.compose-dialog .modal-header > div { flex: 1; }
+.compose-dialog .modal-header > .secondary { flex: none; }
+.compose-dialog .compose-editor { resize: vertical; }
+.compose-history #edit-history { margin-top: 12px; }
+#compose-history-body:has(.mail-editor) { max-height: none; overflow: visible; }
+.compose-message-area:has(.editor-expanded) { grid-template-columns: minmax(0, 1fr); }
+.compose-message-area:has(.editor-expanded) > :not(.editor-expanded):not(:has(.editor-expanded)) { display: none; }
+.editor-expanded .compose-editor { min-height: 55vh; max-height: none; }
+.compose-file-drop { outline: 3px dashed var(--accent); outline-offset: -6px; }
+.compose-dialog .attachment-picker { flex-wrap: wrap; }
+.compose-dialog .attachment-picker input { width: auto; max-width: 100%; flex: 1; }
+.picked-files > div { display: flex; align-items: center; gap: 8px; margin-top: 5px; overflow-wrap: anywhere; }
+.picked-files button { margin-left: auto; flex: none; }
+@media(max-width: 620px) { .compose-dialog .modal-header { flex-wrap: wrap; }.compose-dialog .modal-header > div { flex-basis: 100%; } }

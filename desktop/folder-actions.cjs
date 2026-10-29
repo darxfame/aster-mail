@@ -9,6 +9,7 @@ async function run(client, data) {
   const folder = folders.find(folder => folder.id === data.folder || folder.wellKnown === data.folder);
   if (!folder && !(data.action === 'create' && data.folder === 'msgfolderroot')) throw new Error('Папка не найдена. Обновите список папок.');
   if (['rename', 'trash'].includes(data.action) && (known.has(data.folder) || folder.wellKnown)) throw new Error('Системную папку нельзя переименовать или переместить в корзину');
+  if (['rename', 'trash'].includes(data.action) && folder.systemIdentityKnown !== true) throw new Error('Не удалось определить системные папки. Обновите список перед изменением папки.');
   try {
     if (data.action === 'read') {
       await client.ews('MarkAllItemsAsRead', P.soap(`<m:MarkAllItemsAsRead><m:ReadFlag>true</m:ReadFlag><m:SuppressReadReceipts>true</m:SuppressReadReceipts><m:FolderIds>${reference(data.folder)}</m:FolderIds></m:MarkAllItemsAsRead>`));

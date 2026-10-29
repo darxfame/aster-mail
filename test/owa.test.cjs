@@ -121,6 +121,54 @@ test('server search uses a session and honors offsets', async () => {
   result = await client.search({ query: 'budget', offset: 50 }); assert.equal(result.more, true);
   assert.equal(calls.length, 3); assert.equal(JSON.parse(calls[2].options.body).Body.ResultRowOffset, 50);
 });
+test('overlapping searches finish their own sessions before a later query replaces them', async () => {
+  let releaseStart, firstStarted;
+  const started = new Promise(resolve => { firstStarted = resolve; });
+  const actions = [];
+  const {client} = mock(async (_url, options) => {
+    const action = options.headers.Action, body = JSON.parse(options.body).Body;
+    actions.push({action,session:body.SearchSessionId,query:body.Query});
+    if (action === 'StartSearchSession' && !releaseStart) {
+      firstStarted();
+      await new Promise(resolve => { releaseStart = resolve; });
+    }
+    return ok(action === 'ExecuteSearch' ? {SearchResults:{Items:[]}} : {});
+  });
+  const first = client.search({query:'first'});
+  await started;
+  const second = client.search({query:'second'});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(actions.length,1);
+  releaseStart();
+  await Promise.all([first,second]);
+  assert.deepEqual(actions.map(call => call.action),['StartSearchSession','ExecuteSearch','EndSearchSession','StartSearchSession','ExecuteSearch']);
+  assert.equal(actions[1].session,actions[0].session);
+  assert.equal(actions[2].session,actions[0].session);
+  assert.equal(actions[4].session,actions[3].session);
+  assert.notEqual(actions[1].session,actions[4].session);
+  assert.deepEqual([actions[1].query,actions[4].query],['first','second']);
+});
+test('failed search requests do not poison later searches', async () => {
+  let fail = true;
+  const {client} = mock((_url, options) => {
+    if (options.headers.Action === 'ExecuteSearch' && fail) { fail = false; throw new Error('Connection lost'); }
+    return ok(options.headers.Action === 'ExecuteSearch' ? {SearchResults:{Items:[]}} : {});
+  });
+  await assert.rejects(client.search({query:'first'}),/Connection lost/);
+  assert.deepEqual(await client.search({query:'second'}),{items:[],more:false});
+});
+test('lost CreateItem replies warn before retrying both plain and attached outgoing mail', async () => {
+  for (const save of [false,true]) for (const attachments of [[],[{name:'note.txt',content:'eA=='}]]) {
+    const {client,calls} = mock(() => { throw new Error('Сервер не ответил за 30 секунд'); });
+    await assert.rejects(client[save ? 'draft' : 'send']({to:'recipient@example.com',body:'Hello',attachments}), error => {
+      assert.match(error.message,/Результат операции может быть неизвестен/);
+      assert.match(error.message,/Проверьте «Черновики»/);
+      if (!save) assert.match(error.message,/«Отправленные»/);
+      return true;
+    });
+    assert.equal(calls.length,1);
+  }
+});
 test('meeting requests expose their calendar reference for RSVP', () => {
   const m = P.message({ ItemId: { Id: 'mail' }, AssociatedCalendarItemId: { Id: 'meeting', ChangeKey: 'key' }, Start: '2026-10-29T10:00:00Z' });
   assert.equal(m.meeting.id, 'meeting'); assert.equal(m.meeting.changeKey, 'key');

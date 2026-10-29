@@ -124,6 +124,7 @@ class OWAClient {
   }
 
   async folderOperation(data) { return require('./folder-actions.cjs').run(this, data); }
+  async mailBatch(data) { return require('./mail-batch.cjs').run(this, data); }
   async folders(data = {}) { return this.mailCache.get('folders', () => this.fetchFolders(), { ttl: 60000, refresh: data.refresh === true }); }
   async fetchFolders() {
     const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
@@ -133,6 +134,7 @@ class OWAClient {
       return folder ? { ...folder, wellKnown: alias } : null;
     }));
     const folders = new Map();
+    const systemIdentityKnown = known.every((result, index) => result.status === 'fulfilled' ? Boolean(result.value) : aliases[index] === 'archive' && /\bErrorFolderNotFound\b/.test(result.reason?.message || ''));
     for (const result of known) if (result.status === 'fulfilled' && result.value) folders.set(result.value.FolderId.Id, result.value);
     let offset = 0;
     while (offset < 1000) {
@@ -147,7 +149,7 @@ class OWAClient {
       const next = Number(root.IndexedPagingOffset);
       offset = Number.isFinite(next) && next > offset ? next : offset + 50;
     }
-    return [...folders.values()].map(o => ({ id: o.FolderId.Id, changeKey: o.FolderId.ChangeKey, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
+    return [...folders.values()].map(o => ({ id: o.FolderId.Id, changeKey: o.FolderId.ChangeKey, parentId: o.ParentFolderId?.Id || '', wellKnown: o.wellKnown || '', systemIdentityKnown, name: o.DisplayName, unread: o.UnreadCount || 0, total: o.TotalCount || 0 }));
   }
   async inboxStatus() {
     const result = await this.call('GetFolder', P.request('GetFolder', { FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }), FolderIds: [P.folder('inbox')] }));
@@ -196,13 +198,16 @@ class OWAClient {
       size += Buffer.from(a.content, 'base64').length;
     }
     if (size > 20 * 1024 * 1024) throw new Error('Суммарный размер вложений превышает 20 МБ');
-    if (!save && !P.emails(data.to).length) throw new Error('Укажите получателя');
+    if (!save && ![data.to, data.cc, data.bcc].some(value => P.emails(value || '').length)) throw new Error('Укажите получателя');
     if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
       const current = await this.message({ ...data.reference, refresh: true });
       if (!current.changeKey) throw new Error('Exchange не вернул ChangeKey исходного письма. Обновите письмо перед отправкой.');
       data = { ...data, reference: { id: current.id, changeKey: current.changeKey } };
     }
-    const response = await this.ews('CreateItem', P.sendSOAP(data, save || attachments.length > 0));
+    const xml = P.sendSOAP(data, save || attachments.length > 0);
+    let response;
+    try { response = await this.ews('CreateItem', xml); }
+    catch (error) { throw new Error(`${error.message}\nРезультат операции может быть неизвестен. Проверьте «Черновики»${save ? '' : ' и «Отправленные»'} в OWA перед повтором. Операция не повторялась.`); }
     if (!attachments.length) return true;
     const draft = P.walk(response, o => o.ItemId?.['@_Id'])[0]?.ItemId;
     const draftID = draft?.['@_Id'];
@@ -218,7 +223,14 @@ class OWAClient {
   }
   async send(data) { return this.outgoing(data, false); }
   async draft(data) { return this.outgoing(data, true); }
-  async search({ query, offset = 0 }) {
+  async editDraft(data) { return require('./mail-drafts.cjs').run(this, data); }
+  async search(data) {
+    // Search sessions must not be ended while another request still uses them.
+    const task = (this.searchQueue || Promise.resolve()).then(() => this.performSearch(data));
+    this.searchQueue = task.catch(() => {});
+    return task;
+  }
+  async performSearch({ query, offset = 0 }) {
     if (typeof query !== 'string' || !query.trim() || query.length > 2000) throw new Error('Введите поисковый запрос');
     const scope = [P.typed('PrimaryMailboxSearchScopeType', { FolderScope: P.typed('SearchFolderScopeType', { BaseFolderId: P.folder('msgfolderroot') }) })];
     if (!offset || !this.searchSession || this.searchQuery !== query) {

@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
+let unsavedChanges = false;
+window.addEventListener('beforeunload', event => {
+  if (unsavedChanges) { event.preventDefault(); event.returnValue = ''; }
+});
 contextBridge.exposeInMainWorld('aster', {
+  setUnsavedChanges: value => {
+    unsavedChanges = value === true;
+    ipcRenderer.send('aster-unsaved-changes', unsavedChanges);
+  },
   invoke: (operation, data = {}) => ipcRenderer.invoke('aster', operation, data),
   onNavigate: callback => ipcRenderer.on('aster-navigate', (_event, data) => callback(data)),
   onUpdate: callback => ipcRenderer.on('aster-update', (_event, data) => callback(data)),

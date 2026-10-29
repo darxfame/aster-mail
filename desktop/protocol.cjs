@@ -80,7 +80,7 @@ function message(o) {
   const body = o.NormalizedBody || o.Body || o.UniqueBody || {};
   return {
     id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || '(Без темы)',
-    from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address),
+    from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address), bcc: (o.BccRecipients || []).map(address), isDraft: o.IsDraft === true,
     date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: mailPreview(body.Value || o.Preview, Boolean(body.Value && body.BodyType !== 'Text')), read: Boolean(o.IsRead),
     importance: o.Importance || 'Normal', flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
     html: body.BodyType === 'Text' ? null : body.Value || '', text: body.BodyType === 'Text' ? body.Value : '',
@@ -94,7 +94,7 @@ function soap(body) {
 }
 function parseSOAP(text, action = '') {
   if (/<!DOCTYPE/i.test(text) || XMLValidator.validate(text) !== true) throw new Error('Invalid EWS XML response');
-  const data = new XMLParser({ removeNSPrefix: true, ignoreAttributes: false, processEntities: true, parseTagValue: false }).parse(text);
+  const data = new XMLParser({ removeNSPrefix: true, ignoreAttributes: false, processEntities: true, parseTagValue: false, trimValues: false }).parse(text);
   const codes = walk(data, o => o.ResponseCode !== undefined).map(o => o.ResponseCode);
   if (!codes.length) throw new Error('Unexpected EWS response; check that /EWS/Exchange.asmx is enabled');
   const accepted = action === 'ResolveNames' ? ['NoError', 'ErrorNameResolutionMultipleResults', 'ErrorNameResolutionNoResults'] : ['NoError'];
@@ -121,17 +121,17 @@ function emails(value) {
   return result;
 }
 function sendSOAP(data, save = false) {
-  const to = emails(data.to), cc = emails(data.cc || '');
-  if (!save && !to.length) throw new Error('Укажите получателя');
+  const to = emails(data.to), cc = emails(data.cc || ''), bcc = emails(data.bcc || '');
+  if (!save && !to.length && !cc.length && !bcc.length) throw new Error('Укажите получателя');
   const recipients = values => values.map(email => `<t:Mailbox><t:EmailAddress>${escapeXML(email)}</t:EmailAddress></t:Mailbox>`).join('');
   const subject = `<t:Subject>${escapeXML(data.subject)}</t:Subject>`;
   const bodyType = data.bodyHtml ? 'HTML' : 'Text';
   const body = escapeXML(data.bodyHtml || data.body);
-  const recipientXML = `${to.length ? `<t:ToRecipients>${recipients(to)}</t:ToRecipients>` : ''}${cc.length || data.kind === 'reply-all' ? `<t:CcRecipients>${recipients(cc)}</t:CcRecipients>` : ''}`;
+  const recipientXML = `${to.length ? `<t:ToRecipients>${recipients(to)}</t:ToRecipients>` : ''}${cc.length || data.kind === 'reply-all' ? `<t:CcRecipients>${recipients(cc)}</t:CcRecipients>` : ''}${bcc.length ? `<t:BccRecipients>${recipients(bcc)}</t:BccRecipients>` : ''}`;
   let messageXML;
   if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
     const kind = { reply: 'ReplyToItem', 'reply-all': 'ReplyAllToItem', forward: 'ForwardItem' }[data.kind];
-    messageXML = `<t:${kind}>${subject}${recipientXML}<t:ReferenceItemId Id="${escapeXML(data.reference.id)}"${data.reference.changeKey ? ` ChangeKey="${escapeXML(data.reference.changeKey)}"` : ''}/><t:NewBodyContent BodyType="${bodyType}">${body}</t:NewBodyContent></t:${kind}>`;
+    messageXML = `<t:${kind}>${subject}${data.replaceBody === true ? `<t:Body BodyType="${bodyType}">${body}</t:Body>` : ''}${recipientXML}<t:ReferenceItemId Id="${escapeXML(data.reference.id)}"${data.reference.changeKey ? ` ChangeKey="${escapeXML(data.reference.changeKey)}"` : ''}/>${data.replaceBody === true ? '' : `<t:NewBodyContent BodyType="${bodyType}">${body}</t:NewBodyContent>`}</t:${kind}>`;
   } else messageXML = `<t:Message>${subject}<t:Body BodyType="${bodyType}">${body}</t:Body>${recipientXML}</t:Message>`;
   return soap(`<m:CreateItem MessageDisposition="${save ? 'SaveOnly' : 'SendAndSaveCopy'}"><m:SavedItemFolderId><t:DistinguishedFolderId Id="${save ? 'drafts' : 'sentitems'}"/></m:SavedItemFolderId><m:Items>${messageXML}</m:Items></m:CreateItem>`);
 }

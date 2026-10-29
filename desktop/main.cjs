@@ -15,6 +15,7 @@ const { NotificationTracker, preferences, mailAlert } = require('./notifications
 const { httpsURL, meetingLink, upcomingMeetings, countdown, pollingRange } = require('./meetings.cjs');
 let widgetWindow, widgetEvents = [], widgetDetail = null;
 let window, client, account, tray, createWindow, quitting = false;
+let unsavedChanges = false, resettingLocalData = false;
 let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false, mailPolling = false;
 let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
@@ -55,6 +56,25 @@ const credentialFile = () => path.join(app.getPath('userData'), 'account.enc');
 const settingsFile = () => path.join(app.getPath('userData'), 'notifications.json');
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if (createWindow) reveal(); });
+
+function confirmDiscardChanges() {
+  if (!unsavedChanges) return true;
+  const response = dialog.showMessageBoxSync(window, { type: 'warning', message: 'Есть несохранённые изменения', detail: 'Сохраните письмо или встречу перед выходом. Продолжить без сохранения?', buttons: ['Остаться', 'Не сохранять'], defaultId: 0, cancelId: 0 });
+  if (response !== 1) return false;
+  unsavedChanges = false;
+  return true;
+}
+async function resetLocalData() {
+  if (client || connection || resettingLocalData) throw new Error('Сначала завершите подключение к аккаунту');
+  resettingLocalData = true;
+  try {
+    const answer = await dialog.showMessageBox(window, { type: 'warning', message: 'Сбросить локальные данные?', detail: 'Сохранённый пароль, подпись, коллеги и настройки будут удалены с этого компьютера. Письма и календарь в Exchange сохранятся.', buttons: ['Отмена', 'Сбросить'], defaultId: 0, cancelId: 0 });
+    if (answer.response !== 1) return false;
+    ++accountEpoch;
+    await localStore.clear();
+    return true;
+  } finally { resettingLocalData = false; }
+}
 
 function reveal(navigation) {
   if (!window || window.isDestroyed()) createWindow();
@@ -167,6 +187,7 @@ function retireAccount() {
   return previous ? Promise.all([previous.session.clearStorageData(), previous.images.clearStorageData()]) : Promise.resolve();
 }
 async function connect(data, remember, restoring = false) {
+  if (resettingLocalData) throw new Error('Дождитесь завершения сброса локальных данных');
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
   const credentials = { server: normalizeServer(data.server), username: data.username.trim(), password: data.password };
   if (remember) localStore.requireEncryption();
@@ -200,12 +221,12 @@ async function connect(data, remember, restoring = false) {
   }
 }
 
-const methods = new Set(['folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
   if (['change', 'move', 'respond'].includes(operation) && typeof data.ref?.id !== 'string') throw new Error('Invalid item reference');
-  if (['updateEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
+  if (['editDraft', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
   if (data.scope !== undefined && !['single', 'series'].includes(data.scope)) throw new Error('Invalid meeting scope');
   if (operation === 'change' && (data.field === 'Importance' ? !['High', 'Normal'].includes(data.value) : typeof data.value !== 'boolean')) throw new Error('Invalid value');
   if (operation === 'messages' && (typeof data.folder !== 'string' || !Number.isInteger(data.offset || 0) || (data.offset || 0) < 0)) throw new Error('Invalid folder or offset');
@@ -225,22 +246,28 @@ app.whenReady().then(async () => {
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
   ]));
   createWindow = () => {
-    window = new BrowserWindow({ width: 1440, height: 940, minWidth: 1080, minHeight: 700, title: 'Aster Mail',
+    const { width, height } = screen.getPrimaryDisplay().workArea;
+    window = new BrowserWindow({ width: Math.min(1440, width), height: Math.min(940, height), minWidth: Math.min(1080, width), minHeight: Math.min(700, height), title: 'Aster Mail',
       backgroundColor: '#f7f8fb', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 20 },
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
     window.loadFile(page);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());
+    window.webContents.on('will-prevent-unload', event => { if (confirmDiscardChanges()) event.preventDefault(); });
     window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     window.on('close', event => {
       if (!quitting && client) { event.preventDefault(); window.hide(); }
     });
   };
+  ipcMain.on('aster-unsaved-changes', (event, value) => {
+    if (event.sender === window?.webContents && event.senderFrame === window.webContents.mainFrame && typeof value === 'boolean') unsavedChanges = value;
+  });
   ipcMain.handle('aster', async (event, operation, data) => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
       validate(operation, data);
+      if (operation === 'resetLocalData') return { ok: true, value: await resetLocalData() };
       if (operation === 'updateState') return { ok: true, value: updates.snapshot() };
       if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
       if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
@@ -368,5 +395,8 @@ app.whenReady().then(async () => {
   }
   app.on('activate', () => { reveal(); void pollNotifications(); });
 });
-app.on('before-quit', () => { quitting = true; connection?.controller.abort(); });
+app.on('before-quit', event => {
+  if (!confirmDiscardChanges()) { event.preventDefault(); return; }
+  quitting = true; connection?.controller.abort();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

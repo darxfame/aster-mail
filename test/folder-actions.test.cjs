@@ -9,7 +9,7 @@ function fixture(fail = '') {
     if (action === fail) throw new Error('Lost response');
     return {status:200,text:soap(action === 'GetFolder' ? '<Folder><FolderId Id="custom&amp;id" ChangeKey="fresh&amp;key"/><DisplayName>Custom</DisplayName></Folder>' : '')};
   },async () => 'canary'); client.canary = 'canary';
-  client.folders = async () => [{id:'inbox-id',wellKnown:'inbox'},{id:'trash-id',wellKnown:'deleteditems'},{id:'custom&id',name:'Custom',changeKey:'fresh&key'}];
+  client.folders = async () => [{id:'inbox-id',wellKnown:'inbox'},{id:'trash-id',wellKnown:'deleteditems'},{id:'custom&id',name:'Custom',changeKey:'fresh&key',systemIdentityKnown:true}];
   return {client,calls};
 }
 test('read-all is a single server operation for the chosen folder with read receipts suppressed', async () => {
@@ -59,4 +59,45 @@ test('a lost mutation reply is not replayed and clears stale cached counts', asy
   await client.mailCache.get('counts',async()=>({unread:5}));
   await assert.rejects(client.folderOperation({action:'rename',folder:'custom&id',name:'New'}),/Операция не повторялась/);
   assert.equal(calls.filter(c=>c.action==='UpdateFolder').length,1); assert.equal(client.mailCache.entries.size,0);
+});
+test('failed system identity reads keep folders readable but block rename and trash by raw ID', async () => {
+  for (const failedAlias of ['inbox', 'archive']) {
+    const writes = [];
+    const client = new OWAClient({server:'https://mail.example.com'}, async (_url, options) => {
+      if (options.headers.SOAPAction) { writes.push(options.headers.SOAPAction); throw new Error('Unexpected write'); }
+      const body = JSON.parse(options.body).Body;
+      if (options.headers.Action === 'GetFolder') {
+        const alias = body.FolderIds[0].Id;
+        if (alias === failedAlias) throw new Error('Connection lost');
+        return {status:200,text:JSON.stringify({Body:{Folders:[{FolderId:{Id:`real-${alias}`},DisplayName:alias}]}})};
+      }
+      return {status:200,text:JSON.stringify({Body:{RootFolder:{IncludesLastItemInRange:true,Folders:[{FolderId:{Id:`real-${failedAlias}`},DisplayName:failedAlias},{FolderId:{Id:'custom'},DisplayName:'Custom'}]}}})};
+    },async ()=>'canary');
+    client.canary = 'canary';
+    const folders = await client.folders();
+    assert.ok(folders.some(folder => folder.id === `real-${failedAlias}`));
+    for (const folder of [`real-${failedAlias}`, 'custom']) for (const action of ['rename', 'trash']) {
+      await assert.rejects(client.folderOperation({action,folder,name:'Changed'}),/определить системные папки/);
+    }
+    assert.equal(writes.length,0);
+  }
+});
+test('an explicitly absent optional archive permits custom folder mutations', async () => {
+  const writes = [];
+  const client = new OWAClient({server:'https://mail.example.com'}, async (_url, options) => {
+    if (options.headers.SOAPAction) {
+      const action = options.headers.SOAPAction.match(/\/([^/]+)"$/)[1];
+      writes.push(action);
+      return {status:200,text:soap(action === 'GetFolder' ? '<Folder><FolderId Id="custom" ChangeKey="fresh"/></Folder>' : '')};
+    }
+    const body = JSON.parse(options.body).Body;
+    if (options.headers.Action === 'GetFolder') {
+      const alias = body.FolderIds[0].Id;
+      return {status:200,text:JSON.stringify({Body:alias === 'archive' ? {ResponseCode:'ErrorFolderNotFound'} : {Folders:[{FolderId:{Id:`real-${alias}`},DisplayName:alias}]}})};
+    }
+    return {status:200,text:JSON.stringify({Body:{RootFolder:{IncludesLastItemInRange:true,Folders:[{FolderId:{Id:'custom'},DisplayName:'Custom'}]}}})};
+  },async ()=>'canary');
+  client.canary = 'canary';
+  await client.folderOperation({action:'trash',folder:'custom'});
+  assert.deepEqual(writes,['GetFolder','MoveFolder']);
 });

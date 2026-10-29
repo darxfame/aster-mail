@@ -24,7 +24,7 @@
     }).join(', ');
     if (sent && message.from?.email) seen.add(message.from.email.trim().toLowerCase());
     const ownMessage = sent || seen.has(message.from?.email?.trim().toLowerCase());
-    let to = take(ownMessage ? message.to || [] : [message.from]), cc = all ? take(message.cc || []) : '';
+    let to = take(ownMessage ? message.to || [] : [message.from, ...(all ? message.to || [] : [])]), cc = all ? take(message.cc || []) : '';
     if (!to && cc) { const addresses = cc.split(', '); to = addresses.shift(); cc = addresses.join(', '); }
     return { to, cc };
   }
@@ -32,7 +32,7 @@
   if (typeof module !== 'undefined') { module.exports = api; return; }
   root.asterRecipients = api;
   const inputs = new WeakMap(); let nextId = 0;
-  const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#meeting-message-form input[name="to"]') && !input.disabled;
+  const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#meeting-message-form input[name="to"],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"]') && !input.disabled;
   function setup(input) {
     if (inputs.has(input)) return inputs.get(input);
     const box = document.createElement('div'); box.className = 'recipient-suggestions'; box.id = `recipients-${++nextId}`; box.setAttribute('role', 'listbox'); box.setAttribute('aria-label', 'Подсказки участников'); box.hidden = true;

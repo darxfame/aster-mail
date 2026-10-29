@@ -31,6 +31,33 @@ function ruleAfterMove(message, folder) {
   moveRuleContext = { sender: message.from.email, folder };
   modal('Письмо перемещено', `Папка: ${name}. Настроить автоматический перенос новых писем?`, `<form id="mail-rule-form">${field('name', 'Название правила', `Письма от ${message.from.name || message.from.email}`.slice(0, 100), 'text', true)}${field('sender', 'Отправитель', message.from.email, 'email', true)}${field('subject', 'Тема содержит · необязательно')}<p class="form-note">Все новые входящие письма от этого адреса будут перемещаться в выбранную папку на сервере Exchange. Если указать фрагмент темы, должны совпасть оба условия. Старые письма не обрабатываются. Правило добавляется после существующих; их настройки сохраняются.</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">Без правила</button><button class="primary" type="submit">Создать правило на сервере</button></div></form>`);
 }
+let mailMoveContext;
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-mail-move]') || !state.selected || $('#modal').open) return;
+  const message = state.selected;
+  mailMoveContext = { id: message.id, generation: state.generation };
+  const choices = [];
+  const visit = (nodes, path = '') => {
+    for (const node of nodes) {
+      const label = path ? `${path} / ${node.name}` : node.name;
+      if ((state.query || node.key !== state.folder) && node.id !== message.parentId) choices.push(`<option value="${esc(node.key)}">${esc(label)}</option>`);
+      visit(node.children, label);
+    }
+  };
+  visit(window.asterFolders.tree(state.demo ? window.asterDemo.folders : state.folders, systemFolders));
+  modal('Переместить письмо', message.subject, `<form id="mail-move-form"><label class="field"><span>Папка назначения</span><select name="folder" required>${choices.join('')}</select></label>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">Отмена</button><button type="submit" class="primary">Переместить</button></div></form>`);
+  $('#mail-move-form select').focus();
+});
+document.addEventListener('submit', event => {
+  if (event.target.id !== 'mail-move-form') return;
+  event.preventDefault();
+  const context = mailMoveContext;
+  void submitForm(event.target, async data => {
+    if (!context || context.generation !== state.generation) throw new Error('Папка изменилась. Откройте перенос заново.');
+    await moveDroppedMail(context.id, data.folder);
+    $('#modal').close();
+  });
+});
 async function moveDroppedMail(id, destination) {
   const message = state.messages.find(item => item.id === id);
   if (!message || (!state.query && destination === state.folder)) return;
@@ -49,7 +76,7 @@ function clearMailDrag() {
 }
 document.addEventListener('pointerdown', event => {
   const row = event.target.closest('.message-row[data-id]');
-  if (!row || event.button !== 0 || event.pointerType === 'touch' || event.target.closest('.message-quick-actions') || $('#modal').open) return;
+  if (!row || event.button !== 0 || event.pointerType === 'touch' || event.target.closest('.message-quick-actions,.mail-select') || $('#modal').open) return;
   mailDrag = { id: row.dataset.id, row, x: event.clientX, y: event.clientY, moved: false, pointer: event.pointerId };
   (event.target.closest('.message-open') || row).setPointerCapture(event.pointerId);
 });
@@ -135,7 +162,7 @@ async function refreshMailFolders(generation) {
 }
 
 function mailRecipientDetails(message) {
-  const groups = [['to', 'Кому'], ['cc', 'Копия']];
+  const groups = [['to', 'Кому'], ['cc', 'Копия'], ['bcc', 'Скрытая копия']];
   const people = groups.flatMap(([key]) => message[key] || []);
   if (!people.length) return '<small>Получатели не указаны</small>';
   const names = people.slice(0, 2).map(person => person.name || person.email).join(', ');
