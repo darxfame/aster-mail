@@ -10,7 +10,7 @@ explicit demo data. `test/` contains Node.js tests, `assets/` contains the origi
 app mark, and `scripts/` contains development utilities. Generated bundles go in
 ignored `release/`.
 
-`desktop/notifications.cjs` owns alert deduplication. `desktop/meetings.cjs`
+`desktop/notifications.cjs` owns alert deduplication. Mail polls independently every 15 seconds; keep preview queues bounded, in memory and scoped to the current account. Reply/forward references require fresh ChangeKeys; after CreateAttachment, send with the last RootItemChangeKey. Calendar gestures must preserve duration and organizer permissions, and distinguish occurrences from series. `desktop/meetings.cjs`
 normalizes menu-bar meeting links and countdowns; `src/calendar.js` holds shared
 calendar date arithmetic. `desktop/availability.cjs` adapts OWA free/busy responses; `src/availability.js`
 calculates status and common slots. Never treat unknown availability as free.

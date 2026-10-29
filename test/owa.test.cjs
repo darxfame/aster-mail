@@ -81,13 +81,14 @@ test('reply and forward use Exchange references to preserve thread and attachmen
   }
 });
 test('attachments are saved to a draft, attached, then sent once in that order', async () => {
-  const { client, calls } = mock((_url, options) => ({ status: 200, text: soapOK(options.headers.SOAPAction.includes('/CreateItem') ? '<Items><ItemId Id="draft123" ChangeKey="ck"/></Items>' : '') }));
+  const { client, calls } = mock((_url, options) => ({ status: 200, text: soapOK(options.headers.SOAPAction.includes('/CreateItem') ? '<Items><ItemId Id="draft123" ChangeKey="ck"/></Items>' : '<AttachmentId Id="a" RootItemId="draft123" RootItemChangeKey="new-ck"/>') }));
   await client.send({ to: 'a@example.com', subject: 'File', body: 'Hello', attachments: [{ name: 'notes.txt', type: 'text/plain', content: Buffer.from('hello').toString('base64') }] });
   assert.deepEqual(calls.map(c => c.options.headers.SOAPAction.match(/\/([^/]+)"$/)[1]), ['CreateItem', 'CreateAttachment', 'SendItem']);
-  assert.match(calls[0].options.body, /SaveOnly/); assert.match(calls[1].options.body, /draft123/);
+  assert.match(calls[0].options.body, /SaveOnly/); assert.match(calls[1].options.body, /ParentItemId Id="draft123" ChangeKey="ck"/);
+  assert.match(calls[2].options.body, /ItemId Id="draft123" ChangeKey="new-ck"/);
 });
 test('attachment failure leaves an explicit draft warning and does not send', async () => {
-  const { client, calls } = mock((_url, options) => ({ status: 200, text: options.headers.SOAPAction.includes('/CreateItem') ? soapOK('<Items><ItemId Id="draft"/></Items>') : '<invalid>' }));
+  const { client, calls } = mock((_url, options) => ({ status: 200, text: options.headers.SOAPAction.includes('/CreateItem') ? soapOK('<Items><ItemId Id="draft" ChangeKey="ck"/></Items>') : '<invalid>' }));
   await assert.rejects(client.send({ to: 'a@example.com', attachments: [{ name: 'x', content: 'eA==' }] }), /Черновик уже создан/); assert.equal(calls.length, 2);
 });
 test('malformed or oversized attachments are rejected before network traffic', async () => {
@@ -173,4 +174,35 @@ test('contacts and directory search normalize separately', async () => {
   const { client } = mock((_url, options) => options.headers.SOAPAction?.includes('ResolveNames') ? { status: 200, text: soapOK('<ResolutionSet IncludesLastItemInRange="true"><Resolution><Mailbox><Name>Anna</Name><EmailAddress>a@example.com</EmailAddress><RoutingType>SMTP</RoutingType></Mailbox></Resolution></ResolutionSet>') } : ok({ ResponseMessages: { Items: [{ RootFolder: { Items: [{ ItemId: { Id: 'c1' }, DisplayName: 'Alex', EmailAddresses: [{ Value: 'alex@example.com' }] }], IncludesLastItemInRange: true } }] } }));
   assert.equal((await client.contacts({})).items[0].email, 'alex@example.com');
   assert.equal((await client.contacts({ query: 'Anna' })).items[0].name, 'Anna');
+});
+test('plain new mail sends directly without a draft or attachment writes', async () => {
+  const { client, calls } = mock(() => ({ status: 200, text: soapOK() }));
+  await client.send({ to: 'anna@example.com', subject: 'Text', body: 'Only text' });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].options.headers.SOAPAction, /CreateItem/);
+  assert.match(calls[0].options.body, /MessageDisposition="SendAndSaveCopy"/);
+  assert.doesNotMatch(calls[0].options.body, /ReferenceItemId|CreateAttachment|SendItem/);
+});
+test('text replies and forwards refresh and include the source ChangeKey, then send once', async () => {
+  for (const kind of ['reply', 'reply-all', 'forward']) {
+    const { client, calls } = mock((_url, options) => options.headers.SOAPAction
+      ? { status: 200, text: soapOK() }
+      : ok({ Items: [{ ItemId: { Id: 'original', ChangeKey: 'current&key' }, Subject: 'Source' }] }));
+    await client.send({ kind, reference: { id: 'original', changeKey: 'stale' }, to: 'anna@example.com', body: 'Text response' });
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].options.body, /ReferenceItemId Id="original" ChangeKey="current&amp;key"/);
+  }
+});
+test('the last attachment response key is used; a missing updated key never triggers a blind send', async () => {
+  const attachment = { name: 'a.txt', content: 'YQ==' };
+  for (const response of ['', '<AttachmentId Id="a" RootItemId="draft123" RootItemChangeKey="old"/><AttachmentId Id="b" RootItemId="draft123" RootItemChangeKey="last"/>']) {
+    const { client, calls } = mock((_url, options) => ({ status: 200, text: soapOK(options.headers.SOAPAction.includes('/CreateItem') ? '<ItemId Id="draft123" ChangeKey="initial"/>' : response) }));
+    if (!response) {
+      await assert.rejects(client.send({ to: 'anna@example.com', body: 'Text', attachments: [attachment] }), /Черновик уже создан/);
+      assert.equal(calls.length, 2);
+    } else {
+      await client.send({ to: 'anna@example.com', attachments: [attachment, attachment] });
+      assert.match(calls[2].options.body, /ChangeKey="last"/);
+    }
+  }
 });

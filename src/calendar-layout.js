@@ -30,6 +30,17 @@
     finish();
     return { entries, dayMinutes, start, end };
   }
-  const api = { layout };
+  function slot(start, end, y, height, step = 15) {
+    const first = Date.parse(start), last = Date.parse(end);
+    if (!Number.isFinite(first) || !(last > first) || !(height > 0)) throw new Error('Некорректный день календаря');
+    const minute = Math.max(0, Math.min((last - first) / 60000 - step, Math.round(y / height * (last - first) / 60000 / step) * step));
+    return new Date(first + minute * 60000);
+  }
+  function moved(event, start) {
+    const duration = Date.parse(event.end) - Date.parse(event.start);
+    if (!(duration > 0) || !Number.isFinite(+start)) throw new Error('Некорректное время встречи');
+    return { start: start.toISOString(), end: new Date(+start + duration).toISOString() };
+  }
+  const api = { layout, slot, moved };
   if (typeof module !== 'undefined') module.exports = api; else root.asterCalendarLayout = api;
 })(typeof window === 'undefined' ? {} : window);

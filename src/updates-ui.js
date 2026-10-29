@@ -1,4 +1,4 @@
-let updateSnapshot = { installed: '0.1.11', status: 'idle', autoCheck: true, available: null, error: '' };
+let updateSnapshot = { installed: '0.1.12', status: 'idle', autoCheck: true, available: null, error: '' };
 function updateStatus(value) {
   if (value.status === 'checking') return 'Проверяем GitHub…';
   if (value.status === 'downloading') return `Загрузка установщика · ${value.progress}%`;

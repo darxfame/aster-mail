@@ -42,3 +42,23 @@
 .contacts-view{container-type:inline-size}.colleague-row{display:grid;grid-template-columns:34px minmax(120px,1fr) minmax(0,auto) 33px 33px;grid-template-areas:"avatar name status plan remove";gap:12px}.colleague-row>.avatar{grid-area:avatar}.colleague-name{grid-area:name}.colleague-row>.availability{grid-area:status;min-width:0;overflow-wrap:anywhere}.colleague-row>[data-action="plan-colleague"]{grid-area:plan}.colleague-row>[data-action="remove-colleague"]{grid-area:remove}
 @container(max-width:700px){.colleague-row{grid-template-columns:34px minmax(0,1fr) 28px 28px;grid-template-areas:"avatar name plan remove" ". status status status";gap:6px 9px;padding:12px}.colleague-row>.icon-button{width:28px}.colleague-row>.availability{font-size:10px}}
 .availability.busy,.planner-verdict.busy{opacity:1;pointer-events:auto}
+
+/* Persistent previews: bounded to the viewport, no auto-dismiss timer. */
+.mail-alerts { position: fixed; z-index: 30; right: 20px; bottom: 24px; width: min(360px, calc(100vw - 32px)); max-height: min(520px, 65vh); overflow-y: auto; display: grid; gap: 10px; }
+.mail-alerts[hidden] { display: none; }
+.mail-alert { border: 1px solid #bda2df; border-radius: 16px; background: #faf7ff; color: #30273e; box-shadow: 0 8px 32px #21103225; overflow: hidden; }
+.mail-alert-heading { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #8054b8; color: white; font-size: 12px; }
+.mail-alert-heading svg { width: 16px; height: 16px; }
+.mail-alert-heading button { margin-left: auto; color: inherit; background: transparent; border: 0; font-size: 22px; cursor: pointer; }
+.mail-alert-open { width: 100%; display: grid; gap: 8px; text-align: left; color: inherit; background: transparent; border: 0; padding: 14px; cursor: pointer; }
+.mail-alert-open strong, .mail-alert-open span { overflow-wrap: anywhere; }
+.mail-alert-open span { white-space: pre-line; font-size: 13px; line-height: 1.5; }
+.mail-alert-open small { color: #8054b8; }
+.dark .mail-alert { background: #302a3e; color: #f0eafa; border-color: #72518f; }
+.dark .mail-alert-open small { color: #c9a5f4; }
+
+.timeline-track .event-card { touch-action: none; }
+.timeline-track .event-organized { cursor: grab; }
+.timeline-track .calendar-dragging { opacity: .35; cursor: grabbing; }
+.calendar-drop-marker { position: absolute; z-index: 8; left: 3px; right: 3px; border: 2px dashed #9b70d0; border-radius: 8px; padding: 4px; background: #b392e34a; color: #583485; font-size: 11px; pointer-events: none; overflow: hidden; }
+.dark .calendar-drop-marker { color: #f0e3ff; }

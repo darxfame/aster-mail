@@ -27,3 +27,84 @@ function restoreCalendarScroll(start, mode, previousScroll) {
   calendarScrollKey = key; updateCurrentTime();
 }
 setInterval(updateCurrentTime, 15000);
+
+// Pointer capture works in both the native webview and the browser preview.
+function calendarSlot(track, clientY) {
+  const bounds = track.getBoundingClientRect();
+  return window.asterCalendarLayout.slot(track.dataset.start, track.dataset.end, clientY - bounds.top, bounds.height);
+}
+document.addEventListener('dblclick', event => {
+  const track = event.target.closest('.timeline-track');
+  if (!track || event.target.closest('.event-card') || $('#modal').open) return;
+  event.preventDefault(); eventModal(calendarSlot(track, event.clientY));
+});
+let calendarDrag = null, calendarDrop = null, suppressCalendarClick = false;
+document.addEventListener('click', event => {
+  if (!suppressCalendarClick) return;
+  suppressCalendarClick = false; event.preventDefault(); event.stopImmediatePropagation();
+}, true);
+document.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || $('#modal').open) return;
+  const button = event.target.closest('.timeline-track .event-card');
+  if (!button) return;
+  const item = state.events.find(item => item.id === button.dataset.id);
+  if (!item || item.cancelled || item.allDay || !window.asterEvents.organizer(item, state.account?.username || '')) return;
+  const track = button.closest('.timeline-track');
+  const at = calendarSlot(track, event.clientY);
+  calendarDrag = { button, item: { ...item }, id: event.pointerId, x: event.clientX, y: event.clientY, offset: +at - Date.parse(item.start), generation: state.generation };
+  button.setPointerCapture(event.pointerId);
+});
+function clearCalendarDrag() {
+  if (calendarDrag?.button.hasPointerCapture(calendarDrag.id)) calendarDrag.button.releasePointerCapture(calendarDrag.id);
+  calendarDrag?.marker?.remove(); calendarDrag?.button.classList.remove('calendar-dragging'); calendarDrag = null;
+}
+document.addEventListener('pointermove', event => {
+  const drag = calendarDrag; if (!drag || event.pointerId !== drag.id) return;
+  if (!drag.marker && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 8) return;
+  if (!drag.marker) { drag.marker = document.createElement('div'); drag.marker.className = 'calendar-drop-marker'; drag.marker.setAttribute('role', 'status'); drag.button.classList.add('calendar-dragging'); }
+  event.preventDefault();
+  const track = document.elementFromPoint(event.clientX, event.clientY)?.closest('.timeline-track');
+  drag.target = null; drag.marker.hidden = !track;
+  if (!track) return;
+  const scroll = track.closest('.timeline-scroll'), bounds = scroll.getBoundingClientRect();
+  if (event.clientY < bounds.top + 35) scroll.scrollTop -= 20;
+  else if (event.clientY > bounds.bottom - 35) scroll.scrollTop += 20;
+  const raw = new Date(+calendarSlot(track, event.clientY) - drag.offset);
+  const start = new Date(Math.max(Date.parse(track.dataset.start), Math.min(Date.parse(track.dataset.end) - 15 * 60000, +raw)));
+  drag.target = window.asterCalendarLayout.moved(drag.item, start);
+  track.append(drag.marker); drag.marker.hidden = false;
+  drag.marker.style.top = `${(+start - Date.parse(track.dataset.start)) / 60000}px`;
+  drag.marker.style.height = `${Math.max(25, (Date.parse(drag.target.end) - start) / 60000)}px`;
+  drag.marker.textContent = `${time(start)}–${time(drag.target.end)} · ${drag.item.title}`;
+});
+document.addEventListener('pointercancel', clearCalendarDrag);
+document.addEventListener('pointerup', event => {
+  const drag = calendarDrag; if (!drag || event.pointerId !== drag.id) return;
+  const moved = Boolean(drag.marker); clearCalendarDrag();
+  if (!moved) return;
+  suppressCalendarClick = true; setTimeout(() => { suppressCalendarClick = false; }, 0);
+  if (!drag.target || drag.generation !== state.generation || drag.target.start === drag.item.start) return;
+  void prepareCalendarDrop(drag.item, drag.target).catch(showError);
+});
+async function prepareCalendarDrop(origin, target) {
+  const generation = state.generation;
+  const detail = state.demo ? demoMeeting(origin) : await api('eventDetails', ref(origin));
+  if (generation !== state.generation || state.view !== 'calendar' || $('#modal').open) return;
+  if (!window.asterEvents.organizer(detail, state.account?.username || '') || detail.canModify === false || detail.cancelled) throw new Error('Переносить можно только свои доступные для изменения встречи');
+  calendarDrop = { origin, target, detail, generation };
+  modal('Перенести встречу', origin.title, `<form id="calendar-move-form"><p>${esc(dateFormat(target.start, { weekday: 'long', day: 'numeric', month: 'long' }))} · <strong>${esc(time(target.start))}–${esc(time(target.end))}</strong></p>${detail.recurring ? '<label class="field"><span>Применить перенос к</span><select name="scope"><option value="single">Только этому повтору</option><option value="series">Всему ряду</option></select></label>' : ''}<p class="form-note">Длительность сохранится. Участники получат обновление времени.</p>${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">Отмена</button><button class="primary" type="submit">Перенести встречу</button></div></form>`);
+}
+document.addEventListener('submit', event => {
+  const form = event.target; if (form.id !== 'calendar-move-form') return;
+  event.preventDefault();
+  const move = calendarDrop;
+  void submitForm(form, async data => {
+    if (!move || move.generation !== state.generation) throw new Error('Календарь изменился. Повторите перенос.');
+    const scope = data.scope === 'series' ? 'series' : 'single';
+    const detail = scope === 'series' ? state.demo ? demoMeeting(move.origin, scope) : await api('eventDetails', { ...ref(move.origin), scope }) : move.detail;
+    const delta = Date.parse(move.target.start) - Date.parse(move.origin.start);
+    const changes = window.asterCalendarLayout.moved(detail, new Date(Date.parse(detail.start) + delta));
+    await saveMeetingChanges({ origin: move.origin, detail, scope }, changes);
+    calendarDrop = null;
+  });
+});

@@ -38,3 +38,14 @@ test('accepted meetings are green before opening; opening reads details without 
   assert.equal(calls.length, 1); assert.match(calls[0].body, /<m:GetItem>/);
   assert.doesNotMatch(calls[0].body, /AcceptItem|CreateItem|UpdateItem/);
 });
+test('calendar gestures snap to 15-minute slots and preserve duration across dates and DST', () => {
+  const L = require('../src/calendar-layout.js');
+  const start = '2026-10-29T00:00:00Z', end = '2026-10-30T00:00:00Z';
+  assert.equal(L.slot(start, end, 608, 1440).toISOString(), '2026-10-29T10:15:00.000Z');
+  assert.equal(L.slot(start, end, -50, 1440).toISOString(), start.replace('00Z', '00.000Z'));
+  assert.equal(L.slot(start, end, 2000, 1440).toISOString(), '2026-10-29T23:45:00.000Z');
+  const moved = L.moved({ start: '2026-10-28T09:00:00Z', end: '2026-10-28T09:30:00Z' }, L.slot(start, end, 608, 1440));
+  assert.equal(moved.end, '2026-10-29T10:45:00.000Z');
+  assert.equal(L.slot('2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z', 120, 1500).toISOString(), '2026-11-01T06:00:00.000Z');
+  assert.throws(() => L.slot(start, end, 0, 0));
+});

@@ -155,13 +155,22 @@ class OWAClient {
     }
     if (size > 20 * 1024 * 1024) throw new Error('Суммарный размер вложений превышает 20 МБ');
     if (!save && !P.emails(data.to).length) throw new Error('Укажите получателя');
+    if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
+      const current = await this.message(data.reference);
+      if (!current.changeKey) throw new Error('Exchange не вернул ChangeKey исходного письма. Обновите письмо перед отправкой.');
+      data = { ...data, reference: { id: current.id, changeKey: current.changeKey } };
+    }
     const response = await this.ews('CreateItem', P.sendSOAP(data, save || attachments.length > 0));
     if (!attachments.length) return true;
-    const draftID = P.walk(response, o => o.ItemId?.['@_Id'])[0]?.ItemId['@_Id'];
+    const draft = P.walk(response, o => o.ItemId?.['@_Id'])[0]?.ItemId;
+    const draftID = draft?.['@_Id'];
     if (!draftID) throw new Error('Черновик создан, но сервер не вернул его ID. Проверьте папку «Черновики».');
     try {
-      await this.ews('CreateAttachment', P.soap(`<m:CreateAttachment><m:ParentItemId Id="${P.escapeXML(draftID)}"/><m:Attachments>${attachments.map(a => `<t:FileAttachment><t:Name>${P.escapeXML(a.name)}</t:Name><t:ContentType>${P.escapeXML(a.type || 'application/octet-stream')}</t:ContentType>${a.inline ? `<t:ContentId>${P.escapeXML(a.contentId)}</t:ContentId>` : ''}<t:IsInline>${a.inline === true}</t:IsInline><t:Content>${a.content}</t:Content></t:FileAttachment>`).join('')}</m:Attachments></m:CreateAttachment>`));
-      if (!save) await this.ews('SendItem', P.soap(`<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="${P.escapeXML(draftID)}"/></m:ItemIds><m:SavedItemFolderId><t:DistinguishedFolderId Id="sentitems"/></m:SavedItemFolderId></m:SendItem>`));
+      if (!draft['@_ChangeKey']) throw new Error('Exchange не вернул ChangeKey черновика');
+      const attached = await this.ews('CreateAttachment', P.soap(`<m:CreateAttachment><m:ParentItemId Id="${P.escapeXML(draftID)}" ChangeKey="${P.escapeXML(draft['@_ChangeKey'])}"/><m:Attachments>${attachments.map(a => `<t:FileAttachment><t:Name>${P.escapeXML(a.name)}</t:Name><t:ContentType>${P.escapeXML(a.type || 'application/octet-stream')}</t:ContentType>${a.inline ? `<t:ContentId>${P.escapeXML(a.contentId)}</t:ContentId>` : ''}<t:IsInline>${a.inline === true}</t:IsInline><t:Content>${a.content}</t:Content></t:FileAttachment>`).join('')}</m:Attachments></m:CreateAttachment>`));
+      const latest = P.walk(attached, o => o['@_RootItemChangeKey']).at(-1);
+      if (!save && (!latest?.['@_RootItemChangeKey'] || latest['@_RootItemId'] !== draftID)) throw new Error('Exchange не вернул актуальный ChangeKey черновика после вложений');
+      if (!save) await this.ews('SendItem', P.soap(`<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="${P.escapeXML(draftID)}" ChangeKey="${P.escapeXML(latest['@_RootItemChangeKey'])}"/></m:ItemIds><m:SavedItemFolderId><t:DistinguishedFolderId Id="sentitems"/></m:SavedItemFolderId></m:SendItem>`));
     } catch (error) { throw new Error(`${error.message}\nЧерновик уже создан. Проверьте «Черновики» и «Отправленные» перед повторной отправкой.`); }
     return true;
   }

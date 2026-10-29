@@ -118,7 +118,7 @@ function sendSOAP(data, save = false) {
   let messageXML;
   if (data.reference && ['reply', 'reply-all', 'forward'].includes(data.kind)) {
     const kind = { reply: 'ReplyToItem', 'reply-all': 'ReplyAllToItem', forward: 'ForwardItem' }[data.kind];
-    messageXML = `<t:${kind}>${subject}${recipientXML}<t:ReferenceItemId Id="${escapeXML(data.reference.id)}"/><t:NewBodyContent BodyType="${bodyType}">${body}</t:NewBodyContent></t:${kind}>`;
+    messageXML = `<t:${kind}>${subject}${recipientXML}<t:ReferenceItemId Id="${escapeXML(data.reference.id)}"${data.reference.changeKey ? ` ChangeKey="${escapeXML(data.reference.changeKey)}"` : ''}/><t:NewBodyContent BodyType="${bodyType}">${body}</t:NewBodyContent></t:${kind}>`;
   } else messageXML = `<t:Message>${subject}<t:Body BodyType="${bodyType}">${body}</t:Body>${recipientXML}</t:Message>`;
   return soap(`<m:CreateItem MessageDisposition="${save ? 'SaveOnly' : 'SendAndSaveCopy'}"><m:SavedItemFolderId><t:DistinguishedFolderId Id="${save ? 'drafts' : 'sentitems'}"/></m:SavedItemFolderId><m:Items>${messageXML}</m:Items></m:CreateItem>`);
 }

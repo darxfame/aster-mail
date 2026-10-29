@@ -65,7 +65,7 @@ async function refreshSignatureField() {
     status.textContent = `Не удалось получить подпись: ${error.message}`;
   }
 }
-let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
+let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: true };
 function playSound(kind) {
   if (!['mail', 'meeting'].includes(kind)) return;
   const audio = new Audio(`../assets/sounds/aster-${kind}.wav`);
@@ -78,6 +78,32 @@ async function api(operation, data = {}) {
   const result = await window.aster.invoke(operation, data);
   if (!result.ok) throw new Error(result.error);
   return result.value;
+}
+let pendingMailAlerts = [];
+function renderMailAlerts(alerts) {
+  pendingMailAlerts = alerts;
+  let panel = $('#mail-alerts');
+  if (!panel) { panel = document.createElement('section'); panel.id = 'mail-alerts'; panel.className = 'mail-alerts'; panel.setAttribute('aria-label', 'Новые письма'); document.body.append(panel); }
+  panel.hidden = !alerts.length;
+  panel.innerHTML = alerts.map(alert => `<article class="mail-alert"><div class="mail-alert-heading">${icon('mail')}<span>Новое письмо</span><button type="button" data-dismiss="${esc(alert.id)}" aria-label="Закрыть уведомление">×</button></div><button type="button" class="mail-alert-open" data-open="${esc(alert.id)}"><strong>${esc(alert.title)}</strong><span>${esc(alert.body)}</span><small>Открыть письмо ↗</small></button></article>`).join('');
+  panel.onclick = async event => {
+    const button = event.target.closest('button'); if (!button) return;
+    const id = button.dataset.open || button.dataset.dismiss;
+    try {
+      if (button.dataset.open) {
+        if (id === 'test-mail') { toast('Это тестовое письмо'); }
+        else {
+          if ($('#modal').open) { toast('Сначала завершите работу с открытым окном'); return; }
+          state.view = 'mail'; state.folder = 'inbox'; state.filter = 'all'; state.query = ''; $('#search').value = '';
+          await loadView();
+          if (!state.messages.some(message => message.id === id)) state.messages.push(await api('message', { id }));
+          await openMessage(id);
+        }
+      }
+      if (window.aster) await api('dismissMailAlert', { id });
+      else renderMailAlerts(pendingMailAlerts.filter(alert => alert.id !== id));
+    } catch (error) { showError(error); }
+  };
 }
 function toast(text) { $('#toast').textContent = text; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 5000); }
 function showError(error) { $('#error').textContent = error.message || error; $('#error').hidden = false; $('#status').textContent = 'Не удалось завершить операцию'; }
@@ -432,9 +458,9 @@ async function compose(mode = 'new', contact = null) {
   if (useServer) renderSignaturePreview($('#compose-signature-preview'), source);
 }
 function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
-function eventModal() {
+function eventModal(requestedStart) {
   if (!ready()) return connectModal();
-  const start = new Date(Math.ceil(Date.now() / 3600000) * 3600000), end = new Date(+start + 3600000);
+  const start = requestedStart instanceof Date ? requestedStart : new Date(Math.ceil(Date.now() / 1800000) * 1800000), end = new Date(+start + 1800000);
   modal('Новая встреча', 'Участники получат приглашения от вашего аккаунта Exchange.', `<form id="event-form">${field('title', 'Название встречи', '', 'text', true)}<div class="form-row">${field('start', 'Начало', localDate(start), 'datetime-local', true)}${field('end', 'Окончание', localDate(end), 'datetime-local', true)}</div>${field('location', 'Место или ссылка на встречу')}${field('attendees', 'Участники · email через запятую')}${textField('body', 'Описание и повестка')}<section class="planner"><h3>${icon('clock')}Помощник планирования</h3>${colleagues().length ? `<details><summary>Добавить избранных коллег</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}Проверить занятость и найти время</button><div id="planner-results" aria-live="polite"></div></section><p class="form-note">Часовой пояс: ${esc(T.zone(timeZone))}. Без участников событие сохранится только в вашем календаре.</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}Создать и отправить приглашения</button></div></form>`);
 }
 function contactModal() {
@@ -465,11 +491,11 @@ async function settingsModal() {
     ${checkbox('notifyMeetings', 'Напоминания о встречах', p.meetings)}
     <label class="field"><span>Напоминать о встрече</span><select name="minutes">${[0, 5, 10, 15, 30].map(n => `<option value="${n}" ${p.minutes === n ? 'selected' : ''}>${n ? `За ${n} минут` : 'В момент начала'}</option>`).join('')}</select></label>
     ${checkbox('notifySounds', 'Звук нового письма и отдельный звук встречи', p.sounds)}
-    ${checkbox('notifyPreview', 'Показывать отправителя и тему в уведомлении', p.preview)}
+    ${checkbox('notifyPreview', 'Показывать отправителя, тему и превью письма', p.preview)}
     <div class="sound-tests"><button type="button" class="secondary" data-action="test-notification" data-kind="mail">${icon('mail')}Проверить письмо</button><button type="button" class="secondary" data-action="test-notification" data-kind="meeting">${icon('calendar')}Проверить встречу</button></div>
-    <p class="form-note">Оригинальные звуки Aster — CC0: можно свободно использовать и изменять. ${window.aster ? 'Проверка показывает баннер и воспроизводит звук. На macOS Aster играет звук напрямую, с обычной громкостью аудиовыхода.' : 'В браузере проверяется только звук. Системные уведомления доступны в приложении.'}</p>
-    <p class="form-note">Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Проверка Exchange — раз в минуту. После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.</p>
-    ${p.lastPoll ? `<p class="form-note">Последняя фоновая проверка: ${esc(time(p.lastPoll))}</p>` : ''}${p.error ? `<p class="form-error">${esc(p.error)}</p>` : ''}
+    <p class="form-note">Оригинальные звуки Aster — CC0: можно свободно использовать и изменять. ${window.aster ? 'Проверка показывает баннер и воспроизводит звук. На macOS Aster играет звук напрямую, с обычной громкостью аудиовыхода.' : 'В браузере проверяются звук и плашка с вымышленным письмом. Системные уведомления доступны в приложении.'}</p>
+    <p class="form-note">Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. Плашка в клиенте остаётся до открытия или закрытия. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.</p>
+    ${p.lastMailPoll ? `<p class="form-note">Последняя проверка почты: ${esc(time(p.lastMailPoll))}</p>` : ''}${p.lastPoll ? `<p class="form-note">Последняя проверка календаря: ${esc(time(p.lastPoll))}</p>` : ''}${p.error ? `<p class="form-error">${esc(p.error)}</p>` : ''}
     <p class="form-note">Подпись хранится на этом компьютере. Письма и вложения не сохраняются для офлайн-доступа в версии 0.1.</p>
     ${formError()}<div class="modal-footer"><button class="secondary ${state.account ? 'danger' : ''}" type="button" data-action="${state.account ? 'disconnect' : 'connect'}">${state.account ? 'Выйти и удалить пароль' : 'Подключить Exchange'}</button><button class="primary" type="submit">Сохранить</button></div></form>`);
   if (syncSignature) await refreshSignatureField();
@@ -540,7 +566,7 @@ async function handleAction(button) {
   }
   if (action === 'test-notification') {
     if (window.aster) { await api('testNotification', { kind: button.dataset.kind }); toast('Тест отправлен в системный центр уведомлений'); }
-    else { playSound(button.dataset.kind); toast('Проверка звука. Баннеры работают в настольном приложении.'); }
+    else { playSound(button.dataset.kind); if (button.dataset.kind === 'mail') renderMailAlerts([{ id: 'test-mail', title: 'Анна Новикова', body: 'Материалы к встрече\nДобрый день! Отправляю документы для обсуждения завтра.' }]); else toast('Проверка звука встречи'); }
     return;
   }
   if (action === 'theme') {
@@ -749,7 +775,7 @@ document.addEventListener('submit', event => {
   if (form.id === 'event-form') submitForm(form, async data => {
     data.start = T.fromWall(data.start, timeZone).toISOString(); data.end = T.fromWall(data.end, timeZone).toISOString();
     if (new Date(data.end) <= new Date(data.start)) throw new Error('Окончание должно быть позже начала');
-    if (state.demo) window.asterDemo.events.push({ id: `demo-event-${Date.now()}`, title: data.title, start: data.start, end: data.end, location: data.location, preview: data.body, organizer: { name: 'Вы', email: 'you@example.com' } }); else await api('createEvent', data);
+    if (state.demo) window.asterDemo.events.push({ id: `demo-event-${Date.now()}`, title: data.title, start: data.start, end: data.end, location: data.location, preview: data.body, isOrganizer: true, response: 'Organizer', organizer: { name: 'Вы', email: 'you@example.com' } }); else await api('createEvent', data);
     state.week = new Date(data.start); state.view = 'calendar'; state.query = ''; $('#search').value = ''; $('#modal').close(); toast(state.demo ? 'Демо: встреча создана' : 'Встреча создана в Exchange'); await loadView();
   });
   if (form.id === 'contact-form') submitForm(form, async data => {
@@ -766,17 +792,26 @@ async function boot() {
     timeZone = savedSettings.timeZone || 'system'; localStorage.setItem('aster-time-zone', timeZone);
     notificationPreferences = savedSettings;
     window.aster.onSound(playSound);
+    window.aster.onMailAlerts(renderMailAlerts);
+    renderMailAlerts(await api('mailAlerts'));
     window.aster.onNavigate(async data => {
+      try {
       if (!['mail', 'calendar'].includes(data.view)) return;
+      if ($('#modal').open) { toast('Сначала завершите работу с открытым окном. Уведомление сохранено в клиенте.'); return; }
+      state.filter = 'all';
       state.view = data.view; state.folder = 'inbox'; state.query = ''; $('#search').value = '';
       if (data.date) state.week = new Date(data.date);
       if (data.eventId) calendarPreference = 'day';
       await loadView();
-      if (data.id && state.messages.some(m => m.id === data.id)) await openMessage(data.id);
+      if (data.id) {
+        if (!state.messages.some(m => m.id === data.id)) state.messages.push(await api('message', { id: data.id }));
+        await openMessage(data.id); await api('dismissMailAlert', { id: data.id });
+      }
       if (data.eventId && state.view === 'calendar') {
         const button = [...document.querySelectorAll('[data-action="event"]')].find(button => button.dataset.id === data.eventId);
         if (button) await handleAction(button).catch(showError);
       }
+      } catch (error) { showError(error); }
     });
     try { const restored = await api('restore'); if (restored) { state.account = restored; await loadView(); try { state.folders = await api('folders'); renderSidebar(); } catch { /* System folders remain usable. */ } } }
     catch (error) { showError(error); }

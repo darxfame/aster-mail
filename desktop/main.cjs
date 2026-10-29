@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
@@ -7,13 +7,40 @@ const { Updates } = require('./updates.cjs');
 let updates;
 const { OWAClient } = require('./owa.cjs');
 const { normalizeServer } = require('./protocol.cjs');
-const { NotificationTracker, preferences } = require('./notifications.cjs');
+const { NotificationTracker, preferences, mailAlert } = require('./notifications.cjs');
 const { httpsURL, meetingLink, upcomingMeetings, countdown, pollingRange } = require('./meetings.cjs');
 let widgetWindow, widgetEvents = [], widgetDetail = null;
 let window, client, account, accountSession, tray, createWindow, quitting = false;
-let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false;
-let lastPoll = null, lastPollError = '';
+let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false, mailPolling = false;
+let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
+let mailAlerts = [];
+function publishMailAlerts() {
+  if (window && !window.isDestroyed()) window.webContents.send('aster-mail-alerts', mailAlerts);
+}
+function queueMailAlert(message) {
+  const alert = mailAlert(message, notificationSettings.preview);
+  mailAlerts = [alert, ...mailAlerts.filter(item => item.id !== alert.id)].slice(0, 20);
+  publishMailAlerts();
+  return alert;
+}
+async function pollMail() {
+  if (!client || mailPolling || !notificationSettings.mail) return;
+  mailPolling = true;
+  const active = client;
+  try {
+    const page = await active.messages({ folder: 'inbox', offset: 0 });
+    if (active !== client || !notificationSettings.mail) return;
+    lastMailPoll = new Date().toISOString(); lastMailError = '';
+    const fresh = tracker.newMail(page.items);
+    for (const message of [...fresh].reverse()) queueMailAlert(message);
+    if (fresh.length) {
+      const alert = mailAlert(fresh[0], notificationSettings.preview);
+      notify('mail', fresh.length > 1 ? `${alert.title} · ещё ${fresh.length - 1}` : alert.title, alert.body, alert.navigation);
+    }
+  } catch (error) { if (active === client) lastMailError = error.message; }
+  finally { mailPolling = false; }
+}
 const page = path.join(__dirname, '../src/index.html');
 const credentialFile = () => path.join(app.getPath('userData'), 'account.enc');
 const settingsFile = () => path.join(app.getPath('userData'), 'notifications.json');
@@ -31,7 +58,7 @@ function reveal(navigation) {
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastPollError };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, lastPoll, error: lastMailError || lastPollError };
 }
 function refreshWidget() {
   const state = widgetState();
@@ -65,7 +92,7 @@ function notify(kind, title, body, navigation) {
   if (!Notification.isSupported()) { lastPollError = 'Системные уведомления недоступны'; return; }
   // Play our sound explicitly; system notification audio can be suppressed independently.
   const notification = new Notification({ title, body, silent: true,
-    groupId: `aster-${kind}`, icon: path.join(__dirname, '../assets/icon.png'),
+    timeoutType: kind === 'mail' ? 'never' : 'default', groupId: `aster-${kind}`, icon: path.join(__dirname, '../assets/icon.png'),
   });
   activeNotifications.add(notification);
   notification.on('click', () => reveal(navigation));
@@ -82,22 +109,12 @@ function notify(kind, title, body, navigation) {
   }
 }
 async function pollNotifications() {
+  void pollMail();
   if (!client || polling) return;
   polling = true;
   const active = client;
   let error = '';
   try {
-    if (notificationSettings.mail) {
-      try {
-        const page = await active.messages({ folder: 'inbox', offset: 0 });
-        if (active !== client) return;
-        const fresh = tracker.newMail(page.items);
-        if (fresh.length) {
-          const first = fresh[0];
-          notify('mail', fresh.length > 1 ? `${fresh.length} новых писем` : 'Новое письмо', notificationSettings.preview ? `${first.from.name || first.from.email}: ${first.subject}` : 'В Exchange получено новое письмо.', { view: 'mail', id: first.id });
-        }
-      } catch (e) { error = e.message; }
-    }
     if (active === client) {
       try {
         const events = await active.calendar(pollingRange());
@@ -191,7 +208,7 @@ async function fetchContentImage(url) {
 }
 async function connect(data, remember, restoring = false) {
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error('Укажите логин и пароль');
-  client = null;
+  client = null; mailAlerts = []; publishMailAlerts();
   account = { server: normalizeServer(data.server, data.allowHttp === true), allowHttp: data.allowHttp === true, username: data.username.trim(), password: data.password };
   // An in-memory partition prevents session cookies from being persisted to disk.
   accountSession = session.fromPartition(`aster-${crypto.randomUUID()}`, { cache: false });
@@ -205,7 +222,7 @@ async function connect(data, remember, restoring = false) {
     await fs.mkdir(app.getPath('userData'), { recursive: true });
     await fs.writeFile(credentialFile(), safeStorage.encryptString(JSON.stringify(account)), { mode: 0o600 });
   } else if (!restoring) await fs.rm(credentialFile(), { force: true });
-  tracker = new NotificationTracker(); lastPoll = null; lastPollError = '';
+  tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
   widgetEvents = []; widgetDetail = null; refreshWidget();
   void pollNotifications();
   return { server: account.server, username: account.username };
@@ -228,7 +245,8 @@ app.whenReady().then(async () => {
     changed: value => { if (window && !window.isDestroyed()) window.webContents.send('aster-update', value); },
   });
   await updates.initialize();
-  try { notificationSettings = preferences(JSON.parse(await fs.readFile(settingsFile(), 'utf8'))); } catch { /* Defaults on first launch. */ }
+  try { const saved = JSON.parse(await fs.readFile(settingsFile(), 'utf8')); notificationSettings = preferences(saved.previewVersion === 1 ? saved : { ...saved, preview: true });
+    if (saved.previewVersion !== 1) await fs.writeFile(settingsFile(), JSON.stringify({ ...notificationSettings, previewVersion: 1 }), { mode: 0o600 }); } catch { /* Defaults on first launch. */ }
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
@@ -255,19 +273,25 @@ app.whenReady().then(async () => {
       if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
       if (operation === 'openUpdateInstaller') return { ok: true, value: await updates.openInstaller() };
       if (operation === 'saveUpdatePreferences') return { ok: true, value: await updates.preferences(data.autoCheck) };
-      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, error: lastPollError, supported: Notification.isSupported() } };
+      if (operation === 'mailAlerts') return { ok: true, value: mailAlerts };
+      if (operation === 'dismissMailAlert') { mailAlerts = mailAlerts.filter(item => item.id !== data.id); publishMailAlerts(); return { ok: true, value: true }; }
+      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: lastMailError || lastPollError, supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings;
         notificationSettings = preferences(data);
         if (!before.mail && notificationSettings.mail) { tracker.mailSeen.clear(); tracker.baseline = null; }
         await fs.mkdir(app.getPath('userData'), { recursive: true });
-        await fs.writeFile(settingsFile(), JSON.stringify(notificationSettings), { mode: 0o600 });
+        await fs.writeFile(settingsFile(), JSON.stringify({ ...notificationSettings, previewVersion: 1 }), { mode: 0o600 });
+        if (!notificationSettings.preview || !notificationSettings.mail) { mailAlerts = []; publishMailAlerts(); }
         refreshWidget(); void pollNotifications(); return { ok: true, value: notificationSettings };
       }
       if (operation === 'testNotification') {
         if (!['mail', 'meeting'].includes(data.kind)) throw new Error('Invalid sound');
-        notify(data.kind, data.kind === 'mail' ? 'Новое письмо · проверка' : 'Встреча через 15 минут · проверка', 'Тестовое уведомление Aster Mail. Данные Exchange не использовались.', { view: data.kind === 'mail' ? 'mail' : 'calendar' });
+        if (data.kind === 'mail') {
+          const alert = queueMailAlert({ id: 'test-mail', from: { name: 'Анна Новикова · проверка' }, subject: 'Материалы к встрече', preview: 'Добрый день! Отправляю документы для обсуждения завтра.' });
+          notify('mail', alert.title, alert.body, { view: 'mail' });
+        } else notify('meeting', 'Встреча через 15 минут · проверка', 'Тестовое уведомление Aster Mail. Данные Exchange не использовались.', { view: 'calendar' });
         return { ok: true, value: true };
       }
       if (operation === 'connect') return { ok: true, value: await connect(data, Boolean(data.remember)) };
@@ -280,7 +304,8 @@ app.whenReady().then(async () => {
       if (operation === 'disconnect') {
         client = null; if (account) account.password = ''; account = null;
         if (accountSession) await accountSession.clearStorageData();
-        tracker = new NotificationTracker(); lastPoll = null; lastPollError = '';
+        mailAlerts = []; publishMailAlerts();
+        tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
         widgetEvents = []; widgetDetail = null; refreshWidget();
         for (const n of activeNotifications) n.close(); activeNotifications.clear();
         await fs.rm(credentialFile(), { force: true }); return { ok: true, value: true };
@@ -338,13 +363,15 @@ app.whenReady().then(async () => {
   tray.on('click', toggleWidget);
   refreshWidget();
   const widgetTimer = setInterval(refreshWidget, 15000); widgetTimer.unref();
+  const mailTimer = setInterval(() => { void pollMail(); }, 15000); mailTimer.unref();
+  powerMonitor.on('resume', () => { void pollNotifications(); });
   const timer = setInterval(() => { void pollNotifications(); }, 60000); timer.unref();
   if (app.isPackaged) {
     const check = () => { if (updates.state.autoCheck) void updates.check(); };
     const firstCheck = setTimeout(check, 15000); firstCheck.unref();
     const updateTimer = setInterval(check, 6 * 60 * 60000); updateTimer.unref();
   }
-  app.on('activate', () => reveal());
+  app.on('activate', () => { reveal(); void pollNotifications(); });
 });
 app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

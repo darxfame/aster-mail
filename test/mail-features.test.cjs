@@ -47,7 +47,7 @@ test('Exchange photos work without ContentType in the SOAP response and are cach
 });
 test('signature images load as validated raster bytes, and inline attachments retain CID on send', async () => {
   const entry = (key, value) => `<DictionaryEntry><DictionaryKey><Value>${key}</Value></DictionaryKey><DictionaryValue><Value>${P.escapeXML(value)}</Value></DictionaryValue></DictionaryEntry>`;
-  const { instance, calls } = client((_url, options) => ({ status: 200, text: options.headers.SOAPAction.includes('GetUserConfiguration') ? soap(entry('signaturehtml', `<p>Anna</p><img src="data:image/png;base64,${pixel}">`)) : options.headers.SOAPAction.includes('CreateItem') ? soap('<ItemId Id="draft"/>') : soap('') }));
+  const { instance, calls } = client((_url, options) => ({ status: 200, text: options.headers.SOAPAction.includes('GetUserConfiguration') ? soap(entry('signaturehtml', `<p>Anna</p><img src="data:image/png;base64,${pixel}">`)) : options.headers.SOAPAction.includes('CreateItem') ? soap('<ItemId Id="draft" ChangeKey="ck"/>') : soap('<AttachmentId Id="a" RootItemId="draft" RootItemChangeKey="latest"/>') }));
   const signature = await instance.signature(); assert.equal(Object.keys(signature.images).length, 1); assert.deepEqual(signature.errors, {});
   await instance.send({ to: 'recipient@example.com', body: 'Hello', bodyHtml: '<p>Hello</p><img src="cid:signature@aster.local">', attachments: [{ name: 'signature.png', type: 'image/png', content: pixel, inline: true, contentId: 'signature@aster.local' }] });
   const attach = calls.find(call => call.options.headers.SOAPAction.includes('CreateAttachment')).options.body;

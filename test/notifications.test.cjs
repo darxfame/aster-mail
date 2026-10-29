@@ -53,3 +53,36 @@ test('server reminder settings override the default and can disable a single mee
   assert.equal(tracker.reminders([{ id: 'later', start, hasReminderSettings: true, reminderSet: true, reminder: 5 }], 15, now).length, 0);
   assert.equal(tracker.reminders([{ id: 'earlier', start, hasReminderSettings: true, reminderSet: true, reminder: 30 }], 5, now).length, 1);
 });
+test('mail alerts include sender, subject and bounded plain preview; privacy hides all three', () => {
+  const { mailAlert } = require('../desktop/notifications.cjs');
+  const message = { id: 'new', from: { name: 'Anna', email: 'anna@example.com' }, subject: 'Project', preview: 'Hello\nteam ' + 'a'.repeat(500) };
+  const alert = mailAlert(message);
+  assert.equal(alert.title, 'Anna'); assert.match(alert.body, /^Project\nHello team /);
+  assert.ok(alert.body.length <= 248); assert.equal(alert.navigation.id, 'new');
+  const hidden = mailAlert(message, false);
+  assert.doesNotMatch(JSON.stringify(hidden), /Anna|anna@example.com|Project|Hello/);
+});
+test('slow calendar polling does not block mail and duplicate concurrent mail polls are suppressed', async () => {
+  const vm = require('node:vm');
+  const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
+  const begin = source.indexOf('async function pollMail()'), end = source.indexOf('\nconst page =', begin);
+  let finish, calls = 0; const alerts = [];
+  const client = { messages: async () => { calls++; return new Promise(resolve => { finish = resolve; }); } };
+  const context = vm.createContext({ client, polling: true, mailPolling: false, notificationSettings: { mail: true }, tracker: { newMail: page => page }, queueMailAlert: message => ({ ...message, navigation: { id: message.id } }), mailAlert: require('../desktop/notifications.cjs').mailAlert, notify: (...args) => alerts.push(args), lastPollError: '' });
+  vm.runInContext(source.slice(begin, end), context);
+  const first = context.pollMail(); await context.pollMail(); assert.equal(calls, 1);
+  finish({ items: [{ id: 'fresh', title: 'Anna', body: 'Preview' }] }); await first;
+  assert.equal(alerts.length, 1); assert.equal(context.mailPolling, false);
+  const stale = context.pollMail(); context.client = {}; finish({ items: [{ id: 'other-account' }] }); await stale;
+  assert.equal(alerts.length, 1);
+});
+test('persistent preview queue is bounded and replaces duplicates without replaying old entries', () => {
+  const vm = require('node:vm'), source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
+  const snapshots = [];
+  const context = vm.createContext({ window: { isDestroyed: () => false, webContents: { send: (_channel, alerts) => snapshots.push(alerts) } }, notificationSettings: { preview: true }, mailAlert: require('../desktop/notifications.cjs').mailAlert });
+  vm.runInContext(source.slice(source.indexOf('let mailAlerts ='), source.indexOf('async function pollMail()')), context);
+  for (let id = 0; id < 25; id++) context.queueMailAlert({ id: String(id), from: { name: 'Anna' }, subject: 'Subject' });
+  assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].id, '24');
+  context.queueMailAlert({ id: '24', from: { name: 'Pavel' } });
+  assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].title, 'Pavel');
+});
