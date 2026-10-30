@@ -60,7 +60,7 @@ jobs:
           security create-keychain -p "$keychainPassword" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychainPassword" "$keychain"
-          security import "$bundle" -k "$keychain" -P "$MAC_SIGNING_PASSWORD" -T /usr/bin/codesign
+          security import "$bundle" -k "$keychain" -P "$MAC_SIGNING_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           echo 'Configuring signing key access'
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychainPassword" "$keychain" > /dev/null
           echo 'Trusting certificate for code signing on this temporary runner'
