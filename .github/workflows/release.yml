@@ -2,6 +2,7 @@ name: Publish installers
 on:
   push:
     tags: ['v[0-9]*']
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -32,12 +33,57 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Verify tag matches package version
+        if: github.event_name == 'push'
         run: node -e "if ('v' + require('./package.json').version !== process.env.GITHUB_REF_NAME) process.exit(1)"
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: Import macOS signing identity
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MAC_SIGNING_CERTIFICATE: ${{ secrets.MAC_SIGNING_CERTIFICATE }}
+          MAC_SIGNING_PASSWORD: ${{ secrets.MAC_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$MAC_SIGNING_CERTIFICATE" && test -n "$MAC_SIGNING_PASSWORD"
+          keychain="$RUNNER_TEMP/aster-signing.keychain-db"
+          bundle="$RUNNER_TEMP/aster-signing.p12"
+          certificate="$RUNNER_TEMP/aster-signing.pem"
+          printf '%s' "$MAC_SIGNING_CERTIFICATE" | base64 --decode > "$bundle"
+          /usr/bin/openssl pkcs12 -in "$bundle" -passin env:MAC_SIGNING_PASSWORD -clcerts -nokeys -out "$certificate"
+          /usr/bin/openssl x509 -in "$certificate" -noout -fingerprint -sha256 | grep -F 'B4:00:E2:81:A1:CE:D8:4E:AE:8E:7C:76:91:5F:9E:2E:A8:78:A9:C2:5A:B5:29:17:CB:B4:B6:FF:39:2A:55:FD'
+          keychainPassword="$(/usr/bin/openssl rand -hex 32)"
+          echo "::add-mask::$keychainPassword"
+          security create-keychain -p "$keychainPassword" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychainPassword" "$keychain"
+          security import "$bundle" -k "$keychain" -P "$MAC_SIGNING_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychainPassword" "$keychain" > /dev/null
+          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$certificate"
+          echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
       - name: Build installer
         run: ${{ matrix.command }}
+      - name: Verify macOS signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="release/mac-arm64/Aster Mail.app"
+          codesign --verify --deep --strict "$app"
+          codesign --display --requirements - "$app" 2>&1 | grep -F 'certificate leaf = H"94449af39dabd49526a09ae19047190ec2d165e8"'
+      - name: Remove macOS signing identity
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          certificate="$RUNNER_TEMP/aster-signing.pem"
+          keychain="$RUNNER_TEMP/aster-signing.keychain-db"
+          if [ -f "$certificate" ]; then security remove-trusted-cert "$certificate" || echo '::warning::Could not remove signing trust'; fi
+          status=0
+          if [ -f "$keychain" ]; then security delete-keychain "$keychain" || status=1; fi
+          rm -f "$RUNNER_TEMP/aster-signing.p12" "$certificate"
+          exit "$status"
       - uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.target }}
@@ -45,6 +91,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   publish:
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     permissions:

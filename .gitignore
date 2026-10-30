@@ -7,6 +7,9 @@ release/
 !.env.example
 # Local account data, signing material and scratch output
 account.enc
+login-hint.enc
+login-hint.json
+local-data.enc
 notifications.json
 *.pfx
 *.p12

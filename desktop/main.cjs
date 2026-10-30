@@ -233,6 +233,7 @@ async function connect(data, remember, restoring = false) {
     const saved = await localStore.load(`${credentials.server}|${credentials.username.toLowerCase()}`, assertCurrent); assertCurrent();
     if (remember) await localStore.saveCredentials(credentials, assertCurrent);
     else if (!restoring) await localStore.removeCredentials(assertCurrent);
+    await localStore.saveLoginHint(credentials, assertCurrent);
     assertCurrent();
     candidate.syncId = crypto.randomUUID(); client = candidate;
     notificationSettings = preferences({ ...saved.notifications, language: saved.notifications?.language || i18n.language });
@@ -364,7 +365,12 @@ app.whenReady().then(async () => {
         return { ok: true, value: true };
       }
       if (operation === 'connect') return { ok: true, value: await connect(data, Boolean(data.remember)) };
+      if (operation === 'loginHint') {
+        const epoch = accountEpoch;
+        return { ok: true, value: await localStore.loadLoginHint(() => { if (epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); }) };
+      }
       if (operation === 'restore') {
+        if (client && account) return { ok: true, value: { server: account.server, username: account.username, sessionId: client.syncId, localData: localStore.data.values || {}, notifications: notificationSettings } };
         const epoch = accountEpoch;
         const saved = await localStore.loadCredentials(() => { if (epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); });
         if (!saved) return { ok: true, value: null };
@@ -393,9 +399,8 @@ app.whenReady().then(async () => {
       if (operation === 'saveMeetingReminders') {
         const normalized = require('./notifications.cjs').meetingReminders([{ id: data.ref?.id, start: data.start, minutes: data.minutes }]);
         if (normalized.length !== 1 || typeof data.custom !== 'boolean') throw new Error(tr('Некорректное напоминание'));
-        const current = await activeClient.eventDetails(data.ref);
-        if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
-        if (current.id !== data.ref.id || Date.parse(current.start) !== Date.parse(data.start) || current.cancelled) throw new Error(tr('Встреча изменилась. Откройте её заново.'));
+        // Local schedules target an exact occurrence; changed/cancelled events are
+        // filtered by the next poll. Saving must not require a network read.
         const entry = normalized[0];
         const remaining = notificationSettings.meetingReminders.filter(value => value.id !== entry.id || value.start !== entry.start);
         const next = preferences({ ...notificationSettings, meetingReminders: data.custom ? [...remaining, entry] : remaining });

@@ -6,7 +6,7 @@ const initials = name => (name || '?').split(/[\s@.]+/).filter(Boolean).slice(0,
 const avatar = (name, tone = 0, email = '') => `<div class="avatar tone-${tone % 5}" ${email ? `data-person-email="${esc(email)}"` : ''}>${esc(initials(name))}</div>`;
 // Discard legacy plaintext preferences instead of importing unscoped corporate data.
 for (const key of Object.keys(window.localStorage)) if (key.startsWith('aster-') && key !== 'aster-language') window.localStorage.removeItem(key);
-let localValues = {}, localSave = Promise.resolve();
+let localValues = {}, localSave = Promise.resolve(), loginHint = null;
 const localPreferences = {
   getItem: key => localValues[key] ?? null,
   setItem(key, value) {
@@ -538,8 +538,8 @@ function renderContacts() {
   renderColleagues();
 }
 function connectModal() {
-  const server = state.account?.server || '', protocol = 'https';
-  modal(tr('Подключить Exchange'), tr('Адрес и логин вашего корпоративного OWA.'), `<form id="connect-form"><div class="server-address"><label class="field"><span>${tr("Протокол")}</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="custom">${tr("Свой · полный URL")}</option></select></label>${field('server', tr('Адрес OWA-сервера'), server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', tr('Логин · name@company.ru или DOMAIN\\login'), state.account?.username || '', 'text', true)}${field('password', tr('Пароль'), '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">${tr("Запомнить пароль в защищённом системном хранилище")}</label><p class="form-note">${tr("Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.")}</p>${formError()}${window.aster && !state.account ? tr('<button type="button" class="secondary" data-action="reset-local-data">Сбросить локальные настройки входа…</button>') : ''}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">${tr("Посмотреть демо")}</button><button class="primary" type="submit">${tr("Подключиться")} ${icon('chevron')}</button></div></form>`);
+  const server = state.account?.server || loginHint?.server || '', protocol = 'https';
+  modal(tr('Подключить Exchange'), tr('Адрес и логин вашего корпоративного OWA.'), `<form id="connect-form"><div class="server-address"><label class="field"><span>${tr("Протокол")}</span><select name="protocol"><option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option><option value="custom">${tr("Свой · полный URL")}</option></select></label>${field('server', tr('Адрес OWA-сервера'), server.replace(/^https?:\/\//, ''), 'text', true)}</div><p id="protocol-note" class="form-note"></p>${field('username', tr('Логин · name@company.ru или DOMAIN\\login'), state.account?.username || loginHint?.username || '', 'text', true)}${field('password', tr('Пароль'), '', 'password', true)}<label class="checkbox"><input name="remember" type="checkbox">${tr("Запомнить пароль в защищённом системном хранилище")}</label><p class="form-note">${tr("Поддерживаются формы OWA и NTLM на том же сервере. Если нужен VPN, подключите его до входа. Для HTTPS сертификат должен быть доверен системой.")}</p><p class="form-note">${tr("Адрес, логин и настройки сохраняются зашифрованными. Пароль сохраняется только с этой галочкой; иначе после завершения приложения потребуется ввести его снова. На Mac шифрование использует связку ключей и может запросить доступ даже без сохранения пароля.")}</p>${formError()}${window.aster && !state.account ? tr('<button type="button" class="secondary" data-action="reset-local-data">Сбросить локальные настройки входа…</button>') : ''}<div class="modal-footer"><button type="button" class="secondary" data-action="demo">${tr("Посмотреть демо")}</button><button class="primary" type="submit">${tr("Подключиться")} ${icon('chevron')}</button></div></form>`);
   refreshProtocolNote();
 }
 function refreshProtocolNote() {
@@ -837,7 +837,7 @@ async function handleAction(button) {
   if (action === 'reset-local-data') {
     if (modalBusy || state.account) return;
     return submitForm($('#connect-form'), async () => {
-      if (await api('resetLocalData')) toast(tr('Локальные настройки сброшены. Подключитесь заново.'));
+      if (await api('resetLocalData')) { loginHint = null; connectModal(); toast(tr('Локальные настройки сброшены. Подключитесь заново.')); }
     });
   }
   if (action === 'retry-message') return openMessage(button.dataset.id);
@@ -1132,6 +1132,7 @@ document.addEventListener('submit', event => {
   });
 });
 function applyAccount(value) {
+  loginHint = value ? { server: value.server, username: value.username } : null;
   connectionState = { status: value ? 'connected' : 'disconnected' };
   state.recoverView = null; state.recoverMessage = null;
   window.asterMailFind?.reset();
@@ -1201,6 +1202,7 @@ async function boot() {
       }
       } catch (error) { showError(error); }
     });
+    try { loginHint = await api('loginHint'); } catch (error) { showError(error); }
     try { const restored = await api('restore'); if (restored) { applyAccount(restored); await loadView(); } }
     catch (error) { showError(error); }
   }

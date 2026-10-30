@@ -48,7 +48,7 @@ test('a renderer request carries its original session and discards late results 
 
 test('a superseded login cannot publish a client or credentials after another account connects', async () => {
   const mainSource = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
-  const attempts = [], sessions = [], saved = [];
+  const attempts = [], sessions = [], saved = [], hints = [];
   class FakeClient {
     constructor(account, transport, cookieToken, clearCookies) {
       this.account = account; this.transport = transport; this.cookieToken = cookieToken; this.clearCookies = clearCookies;
@@ -62,7 +62,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },
     createTransport: (_net, account, session, signal) => Object.assign(() => {}, { account, session, signal }), net: {}, fetchContentImage() {},
-    localStore: { requireEncryption() {}, load: async (_owner, guard) => { guard(); return {}; }, saveCredentials: async (account, guard) => { guard(); saved.push(account.username); }, removeCredentials: async guard => guard() },
+    localStore: { saveLoginHint: async (account, guard) => { guard(); hints.push(account.username); }, requireEncryption() {}, load: async (_owner, guard) => { guard(); return {}; }, saveCredentials: async (account, guard) => { guard(); saved.push(account.username); }, removeCredentials: async guard => guard() },
     mailAlerts: [], publishMailAlerts() {}, NotificationTracker: class {}, preferences: () => ({ preview: false }), refreshWidget() {}, activeNotifications: new Set(), pollNotifications() {},
   });
   vm.runInContext(mainSource.slice(mainSource.indexOf('function retireAccount('), mainSource.indexOf('\nconst methods')), context);
@@ -73,8 +73,26 @@ test('a superseded login cannot publish a client or credentials after another ac
   attempts[1].finish(); const connected = await second;
   attempts[0].finish(); await assert.rejects(first, /Сессия аккаунта завершена/);
   assert.equal(context.client.account.username, 'bob'); assert.equal(connected.username, 'bob');
-  assert.deepEqual(saved, ['bob']); assert.equal(attempts[0].transport.signal.aborted, true); assert.equal(attempts[0].account.password, '');
+  assert.deepEqual(hints, ['bob']); assert.deepEqual(saved, ['bob']); assert.equal(attempts[0].transport.signal.aborted, true); assert.equal(attempts[0].account.password, '');
   assert.notEqual(attempts[0].transport.session.id, attempts[1].transport.session.id);
   assert.equal(await attempts[1].cookieToken(), sessions[2].id);
   assert.throws(() => attempts[0].clearCookies(), /Сессия аккаунта завершена/);
+});
+
+test('recreated main windows restore the live account without reading credentials or reconnecting', async () => {
+  const mainSource = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
+  const block = mainSource.slice(mainSource.indexOf("      if (operation === 'restore')"), mainSource.indexOf("      if (operation === 'disconnect')"));
+  let reads = 0;
+  const context = vm.createContext({ tr: value => value, operation: 'restore', accountEpoch: 1,
+    account: { server: 'https://mail.example.com', username: 'alice', password: 'never-expose' },
+    client: { syncId: 'still-running' }, notificationSettings: { preview: false },
+    localStore: { data: { values: { 'aster-theme': 'dark' } }, loadCredentials: async () => { reads++; return null; } },
+    connect() { throw new Error('Must not reconnect'); },
+  });
+  const run = () => vm.runInContext(`(async () => { ${block} })()`, context);
+  const restored = (await run()).value;
+  assert.equal(restored.sessionId, 'still-running'); assert.equal(restored.localData['aster-theme'], 'dark');
+  assert.equal(restored.password, undefined); assert.equal(reads, 0);
+  context.client = null; context.account = null;
+  assert.equal((await run()).value, null); assert.equal(reads, 1);
 });

@@ -29,6 +29,23 @@ async function setup(t, provider = encryption()) {
   return { directory, store: new LocalStore(directory, provider), provider };
 }
 const guard = () => {};
+test('encrypted login hints survive restart without a password and clear on logout', async t => {
+  const { store, directory, provider } = await setup(t);
+  assert.equal(await store.loadLoginHint(), null);
+  await store.saveLoginHint({ server: 'https://mail.example.com/owa/', username: ' alice ', password: 'never-save', cookies: 'never-save' }, guard);
+  const restarted = new LocalStore(directory, provider);
+  assert.deepEqual(await restarted.loadLoginHint(), { server: 'https://mail.example.com', username: 'alice' });
+  const bytes = await fs.readFile(path.join(directory, 'login-hint.enc'));
+  assert.doesNotMatch(bytes.toString(), /alice|mail.example.com|never-save/);
+  assert.deepEqual(JSON.parse(provider.decryptString(bytes)), { server: 'https://mail.example.com', username: 'alice' });
+  if (process.platform !== 'win32') assert.equal((await fs.stat(path.join(directory, 'login-hint.enc'))).mode & 0o777, 0o600);
+  assert.equal(await restarted.loadCredentials(), null);
+  await assert.rejects(store.saveLoginHint({ server: 'http://mail.example.com', username: 'alice' }, guard), /HTTPS/);
+  await assert.rejects(store.saveLoginHint({ server: 'https://mail.example.com/?token=secret', username: 'alice' }, guard));
+  await assert.rejects(store.saveLoginHint({ server: 'https://mail.example.com', username: 'bob' }, () => { throw new Error('Retired'); }), /Retired/);
+  assert.equal((await restarted.loadLoginHint()).username, 'alice');
+  await store.clear(); assert.equal(await restarted.loadLoginHint(), null);
+});
 test('preferences and credentials are encrypted, scoped to the account and removed on logout', async t => {
   const { store, directory, provider } = await setup(t);
   await store.load('https://mail.example.com|alice');
@@ -52,6 +69,7 @@ test('unavailable or plaintext key providers never write local secrets', async t
     await store.load('account');
     await assert.rejects(store.save({ values: { 'aster-signature': 'secret' } }, guard), /хранилище/);
     await assert.rejects(store.saveCredentials({ password: 'secret' }, guard), /хранилище/);
+    await assert.rejects(store.saveLoginHint({ server: 'https://mail.example.com', username: 'alice' }, guard), /хранилище/);
   }
   assert.deepEqual(await fs.readdir(directory), []);
 });
@@ -123,4 +141,16 @@ test('directory enumeration failure still persists revocation before any restore
   finally { fs.readdir = original; }
   assert.equal(await new LocalStore(directory, provider).loadCredentials(), null);
   assert.ok(await fs.stat(path.join(directory, 'account.enc')));
+});
+
+test('login profiles reject corrupted ciphertext and discard plaintext leftovers without importing them', async t => {
+  const { store, directory, provider } = await setup(t);
+  await fs.writeFile(path.join(directory, 'login-hint.json'), JSON.stringify({ server: 'https://untrusted.example.com', username: 'alice' }));
+  assert.equal(await store.loadLoginHint(), null);
+  assert.deepEqual(await fs.readdir(directory), []);
+  await store.saveLoginHint({ server: 'https://mail.example.com', username: 'alice' }, guard);
+  const file = path.join(directory, 'login-hint.enc'), bytes = await fs.readFile(file);
+  bytes[bytes.length - 1] ^= 1; await fs.writeFile(file, bytes);
+  await assert.rejects(new LocalStore(directory, provider).loadLoginHint());
+  await store.clear();
 });

@@ -148,12 +148,12 @@ test('common intervals apply to every eligible meeting and individual schedules 
   assert.deepEqual(preferences({ meetingMinutes: [] }).meetingMinutes, []);
 });
 
-test('saving individual reminders checks the current occurrence and account before persisting settings', async () => {
+test('individual reminders save offline, target an exact occurrence and reject retired accounts', async () => {
   const vm = require('node:vm');
   const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   const block = source.slice(source.indexOf("      if (operation === 'saveMeetingReminders')"), source.indexOf("      if (operation === 'saveLocalData')"));
   const start = new Date(now + 3600000).toISOString(), writes = [];
-  const activeClient = { eventDetails: async () => ({ id: 'event', start }) };
+  const activeClient = { eventDetails: async () => { throw new Error('Must not access OWA'); } };
   const context = vm.createContext({ tr: value => value, require: name => { assert.equal(name, './notifications.cjs'); return require('../desktop/notifications.cjs'); }, preferences,
     operation: 'saveMeetingReminders', activeClient, client: activeClient, notificationSettings: preferences({ meetingMinutes: [30, 5] }),
     localStore: { save: async (patch, guard) => { guard(); writes.push(patch); } },
@@ -163,8 +163,9 @@ test('saving individual reminders checks the current occurrence and account befo
   await run(); assert.equal(writes.length, 1); assert.deepEqual(writes[0].notifications.meetingMinutes, [30, 5]);
   assert.deepEqual(writes[0].notifications.meetingReminders[0], { id: 'event', start, minutes: [30, 10, 5] });
   context.data.custom = false; await run(); assert.equal(writes[1].notifications.meetingReminders.length, 0);
-  activeClient.eventDetails = async () => ({ id: 'event', start: new Date(now).toISOString() });
-  await assert.rejects(run(), /Встреча изменилась/); assert.equal(writes.length, 2);
-  activeClient.eventDetails = async () => { context.client = {}; return { id: 'event', start }; };
+  context.data.custom = true; context.data.start = 'invalid';
+  await assert.rejects(run(), /Некорректное напоминание/); assert.equal(writes.length, 2);
+  context.data.start = start;
+  context.localStore.save = async (patch, guard) => { context.client = {}; guard(); writes.push(patch); };
   await assert.rejects(run(), /Сессия аккаунта завершена/); assert.equal(writes.length, 2);
 });

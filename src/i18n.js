@@ -32,6 +32,7 @@
     "За день": "A day before",
     "За 2 часа": "2 hours before",
     "За час": "An hour before",
+    "Адрес, логин и настройки сохраняются зашифрованными. Пароль сохраняется только с этой галочкой; иначе после завершения приложения потребуется ввести его снова. На Mac шифрование использует связку ключей и может запросить доступ даже без сохранения пароля.": "The server address, username and settings are saved encrypted. The password is saved only when this box is checked; otherwise you must enter it again after quitting the app. On Mac, encryption uses Keychain and may request access even when the password is not saved.",
     "Общие напоминания для всех встреч": "Common reminders for all meetings",
     "Можно выбрать несколько интервалов. Индивидуальные напоминания встречи заменяют общие. Пустой выбор отключает общие напоминания. Без общей настройки используется напоминание Exchange или интервал по умолчанию.": "Select multiple intervals. A meeting's individual reminders replace common reminders. An empty selection disables common reminders. Without a common setting, the Exchange reminder or the default interval is used.",
     "OWA-отправка с файлами и картинками подписи пока не подтверждена. Продолжите в OWA.": "OWA sending with files and signature images has not been verified yet. Continue in OWA.",

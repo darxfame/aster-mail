@@ -68,6 +68,32 @@ class LocalStore {
     });
   }
   removeCredentials(guard) { return this.run(() => { guard(); return fs.rm(path.join(this.directory, 'account.enc'), { force: true }); }); }
+  // The profile is available before authentication, but contains no password.
+  saveLoginHint(account, guard) {
+    return this.run(async () => {
+      await this.write('login-hint.enc', this.loginHint(account), guard);
+      guard(); await fs.rm(path.join(this.directory, 'login-hint.json'), { force: true });
+    });
+  }
+  loginHint(value) {
+    if (typeof value?.username !== 'string' || !value.username.trim() || value.username.length > 1024) throw new Error(tr('Укажите логин и пароль'));
+    return { server: require('../src/server.js').normalize(value.server), username: value.username.trim() };
+  }
+  loadLoginHint(guard = () => {}) {
+    return this.run(async () => {
+      guard();
+      // Discard the short-lived plaintext format instead of trusting its server address.
+      await fs.rm(path.join(this.directory, 'login-hint.json'), { force: true }); guard();
+      try {
+        try { await fs.lstat(path.join(this.directory, 'logout.pending')); return null; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        const bytes = await fs.readFile(path.join(this.directory, 'login-hint.enc')); guard();
+        this.requireEncryption();
+        const value = this.loginHint(JSON.parse(this.encryption.decryptString(bytes)));
+        guard(); return value;
+      } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    });
+  }
   clear() {
     return this.run(async () => {
       this.owner = null; this.data = {};
@@ -80,7 +106,7 @@ class LocalStore {
       let names;
       try { names = await fs.readdir(this.directory); }
       catch { throw new Error(markerError ? tr('Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.') : tr('Автовход заблокирован. Не удалось прочитать каталог приложения; повторите сброс локальных данных.')); }
-      const files = names.filter(name => ['local-data.enc', 'account.enc', 'notifications.json'].includes(name) || /^(?:local-data|account)\.enc\.[0-9a-f-]+\.tmp$/.test(name));
+      const files = names.filter(name => ['local-data.enc', 'account.enc', 'notifications.json', 'login-hint.json', 'login-hint.enc'].includes(name) || /^(?:(?:local-data|account|login-hint)\.enc|login-hint\.json)\.[0-9a-f-]+\.tmp$/.test(name));
       const results = await Promise.allSettled(files.map(name => fs.rm(path.join(this.directory, name), { force: true })));
       if (results.some(result => result.status === 'rejected')) {
         throw new Error(markerError ? tr('Не удалось удалить локальные данные и заблокировать автовход. Проверьте права на каталог приложения и повторите сброс перед закрытием Aster.') : tr('Сессия завершена, автовход заблокирован. Не удалось удалить часть локальных данных; повторите сброс в окне подключения.'));
