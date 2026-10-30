@@ -92,3 +92,19 @@ test('a symlink cannot be opened as a verified installer', async t => {
   try { await fs.symlink(other, file); } catch (error) { if (error.code === 'EPERM') { t.skip('Symlink creation not permitted on this Windows runner'); return; } throw error; }
   await assert.rejects(updater.openInstaller(), /изменён/); assert.equal(opened.length, 0);
 });
+test('automatic checks start immediately, retry network failure after a minute and keep the six-hour success interval', async t => {
+  let requests = 0;
+  const { updater } = await fixture(t, async () => {
+    requests++;
+    if (requests === 1) throw new Error('Offline');
+    return new Response(JSON.stringify(release()));
+  });
+  const now = Date.now();
+  await updater.checkAutomatically(now); assert.equal(requests, 1); assert.match(updater.state.error, /Offline/);
+  await updater.checkAutomatically(now + 59999); assert.equal(requests, 1);
+  await updater.checkAutomatically(now + 60000); assert.equal(requests, 2); assert.equal(updater.state.status, 'available');
+  await updater.checkAutomatically(now + 120000); assert.equal(requests, 2);
+  await updater.checkAutomatically(now + 6 * 60 * 60000 + 1000); assert.equal(requests, 3);
+  await updater.preferences(false);
+  await updater.checkAutomatically(now + 12 * 60 * 60000); assert.equal(requests, 3);
+});

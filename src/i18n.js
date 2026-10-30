@@ -875,6 +875,10 @@
     "Установщик изменён; скачайте его заново": "Installer has changed; download it again"
   };
   english["Язык интерфейса"] = "Interface language";
+  english["Доступно обновление Aster Mail"] = "Aster Mail update available";
+  english["Кнопка «Обновить приложение» скачает, проверит и откроет установщик. Завершите установку по его инструкциям; приложение не закрывается автоматически."] = "Update downloads, verifies and opens the installer. Follow its instructions to finish installing; the app will not quit automatically.";
+  english["Позже"] = "Later";
+  english["Обновить приложение"] = "Update app";
   let language = 'ru';
   const normalize = value => value === 'en' ? 'en' : 'ru';
   function text(value) {

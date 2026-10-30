@@ -50,6 +50,9 @@ generator are CC0; preserve their separate license.
 `desktop/updates.cjs` checks stable GitHub releases and verifies installer size
 and SHA-256 before opening. Keep update traffic separate from OWA, allow only
 HTTPS GitHub/CDN destinations, and never auto-quit or replace the unsigned app.
+Automatic checks retry failures after a minute and honor the six-hour successful
+check interval. Queue update prompts behind open/dirty dialogs. Download and open
+an installer only after an explicit action; closing its prompt cancels launching.
 `src/server.js` accepts HTTPS only, including restored accounts. Preserve
 same-origin authentication and TLS validation for HTTPS.
 

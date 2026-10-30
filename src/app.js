@@ -1190,4 +1190,4 @@ new ResizeObserver(() => {
   if (state.view === 'calendar' && ready() && $('#calendar-mode') && calendarMode() !== renderedCalendarMode) void loadView();
 }).observe($('#workspace'));
 setInterval(() => { if (state.view === 'contacts' && ready()) void refreshColleagues(); }, 60000);
-boot();
+boot().catch(showError).finally(enableUpdatePrompts);

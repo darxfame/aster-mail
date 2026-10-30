@@ -300,7 +300,11 @@ app.whenReady().then(async () => {
       if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
       if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
       if (operation === 'openUpdateInstaller') return { ok: true, value: await updates.openInstaller() };
-      if (operation === 'saveUpdatePreferences') return { ok: true, value: await updates.preferences(data.autoCheck) };
+      if (operation === 'saveUpdatePreferences') {
+        const value = await updates.preferences(data.autoCheck);
+        if (app.isPackaged && data.autoCheck) void updates.checkAutomatically();
+        return { ok: true, value };
+      }
       if (operation === 'mailAlerts') return { ok: true, value: mailAlerts };
       if (operation === 'dismissMailAlert') { mailAlerts = mailAlerts.filter(item => item.id !== data.id); publishMailAlerts(); return { ok: true, value: true }; }
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: attachmentCleanupError || lastMailError || lastPollError, supported: Notification.isSupported() } };
@@ -422,14 +426,13 @@ app.whenReady().then(async () => {
   const attachmentTimer = setInterval(() => { attachmentFiles.cleanupExpired().then(() => { attachmentCleanupError = ''; }, error => { attachmentCleanupError = error.message; }); }, 60000); attachmentTimer.unref();
   const widgetTimer = setInterval(refreshWidget, 15000); widgetTimer.unref();
   const mailTimer = setInterval(() => { void pollMail(); }, 15000); mailTimer.unref();
-  powerMonitor.on('resume', () => { void pollNotifications(); });
+  powerMonitor.on('resume', () => { void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
   const timer = setInterval(() => { void pollNotifications(); }, 60000); timer.unref();
   if (app.isPackaged) {
-    const check = () => { if (updates.state.autoCheck) void updates.check(); };
-    const firstCheck = setTimeout(check, 15000); firstCheck.unref();
-    const updateTimer = setInterval(check, 6 * 60 * 60000); updateTimer.unref();
+    void updates.checkAutomatically();
+    const updateTimer = setInterval(() => { void updates.checkAutomatically(); }, 60000); updateTimer.unref();
   }
-  app.on('activate', () => { reveal(); void pollNotifications(); });
+  app.on('activate', () => { reveal(); void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
 });
 app.on('before-quit', event => {
   if (!confirmDiscardChanges()) { event.preventDefault(); return; }

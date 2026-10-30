@@ -64,6 +64,14 @@ class Updates {
     await fs.writeFile(path.join(this.directory, 'preferences.json'), JSON.stringify({ autoCheck }), { mode: 0o600 });
     return this.publish({ autoCheck });
   }
+  async checkAutomatically(now = Date.now()) {
+    if (!this.state.autoCheck || this.busy) return this.snapshot();
+    if (this.lastAutomaticAttempt !== undefined && now - this.lastAutomaticAttempt < 60000) return this.snapshot();
+    const checked = Date.parse(this.state.lastChecked);
+    if (!this.state.error && Number.isFinite(checked) && now - checked < 6 * 60 * 60000) return this.snapshot();
+    this.lastAutomaticAttempt = now;
+    return this.check();
+  }
   async check() {
     if (this.busy) return this.snapshot();
     this.busy = true;
