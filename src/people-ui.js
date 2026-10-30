@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sequence !== current || accountKey() !== fingerprint || state.view !== 'contacts' || input.value.trim() !== query) return;
         const found = window.asterRecipients.matches([...result.items, ...window.asterRecipients.matches(local, query)], '');
         show(found, found.length ? '' : tr('Совпадений не найдено'));
-      } catch (error) { if (sequence === current && state.view === 'contacts') show(window.asterRecipients.matches(local, query), `${tr("Каталог недоступен:")} ${error.message}`); }
+      } catch (error) { if (sequence === current && state.view === 'contacts') show(window.asterRecipients.matches(local, query), `${tr("Каталог недоступен:")} ${errorText(error)}`); }
     }, 250);
   });
   box.addEventListener('pointerdown', event => event.preventDefault());

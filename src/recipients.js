@@ -28,10 +28,10 @@
     if (!to && cc) { const addresses = cc.split(', '); to = addresses.shift(); cc = addresses.join(', '); }
     return { to, cc };
   }
-  const api = { token, replace, matches, reply };
-  if (typeof module !== 'undefined') { module.exports = api; return; }
-  root.asterRecipients = api;
-  api.decorate = form => {
+  const recipients = { token, replace, matches, reply };
+  if (typeof module !== 'undefined') { module.exports = recipients; return; }
+  root.asterRecipients = recipients;
+  recipients.decorate = form => {
     for (const name of ['to', 'cc', 'bcc']) {
       const input = form.elements[name]; if (!input) continue;
       setup(input);
@@ -82,15 +82,15 @@
     const excluded = [input.value.slice(0, current.start), input.value.slice(current.end), ...['attendees', 'optionalAttendees', 'to', 'cc', 'bcc'].filter(name => name !== input.name).map(name => input.form.elements[name]?.value || '')].join(',').split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
     const local = state.demo ? window.asterDemo.contacts : [...colleagues(), ...state.contacts];
     const found = matches(local, query, excluded); show(input, found, tr('Поиск в каталоге…'));
-    const generation = context.generation, fingerprint = input.value, account = `${state.demo}|${state.account?.server}|${state.account?.username}`;
+    const generation = context.generation, fingerprint = input.value, account = `${state.demo}|${state.account?.server}|${state.account?.username}|${state.account?.sessionId}`;
     context.timer = setTimeout(async () => {
-      const current = () => input.isConnected && document.activeElement === input && context.generation === generation && input.value === fingerprint && input.selectionStart === cursor && account === `${state.demo}|${state.account?.server}|${state.account?.username}`;
+      const current = () => input.isConnected && document.activeElement === input && context.generation === generation && input.value === fingerprint && input.selectionStart === cursor && account === `${state.demo}|${state.account?.server}|${state.account?.username}|${state.account?.sessionId}`;
       try {
         const result = state.demo ? { items: matches(window.asterDemo.directory, query) } : await api('contacts', { query });
         if (!current()) return;
         const people = matches([...result.items, ...found], '', excluded);
         show(input, people, result.truncated ? tr('Много совпадений в справочнике Exchange. Уточните имя или email.') : people.length ? '' : tr('В справочнике Exchange совпадений нет. Можно ввести полный email вручную.'));
-      } catch (error) { if (current()) show(input, found, `${tr("Поиск в общем справочнике не выполнен:")} ${error.message}${tr(". Можно ввести полный email вручную.")}`); }
+      } catch (error) { if (current()) show(input, found, `${tr("Поиск в общем справочнике не выполнен:")} ${errorText(error)}${tr(". Можно ввести полный email вручную.")}`); }
     }, 250);
   }
   document.addEventListener('focusin', event => { if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target); });

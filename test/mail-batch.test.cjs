@@ -63,7 +63,7 @@ test('selection is limited to loaded messages, never marks them read, and clears
   const handlers = {}, notes = [];
   const state = { account: { sessionId: 'account' }, view: 'mail', folder: 'inbox', filter: 'all', query: '' };
   const items = Array.from({ length: 125 }, (_, i) => ({ id: String(i), read: false }));
-  const context = vm.createContext({ tr: value => value, state, document: { addEventListener: (name, handler) => { handlers[name] = handler; } }, renderMessages() {}, filteredMessages: () => items, toast: note => notes.push(note) });
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, state, document: { addEventListener: (name, handler) => { handlers[name] = handler; } }, renderMessages() {}, filteredMessages: () => items, toast: note => notes.push(note) });
   vm.runInContext(rendererSource, context);
   context.syncMailSelection(items);
   handlers.change({ target: { checked: true, hasAttribute: name => name === 'data-mail-select-all' } });
@@ -80,7 +80,7 @@ test('partial results clear selection, show counts and cannot accidentally repea
   const errors = []; let calls = 0, loads = 0;
   const messages = refs.map(ref => ({ ...ref }));
   const state = { account: { sessionId: 'account' }, view: 'mail', folder: 'inbox', filter: 'all', query: '', generation: 1, messages };
-  const context = vm.createContext({ tr: value => value,
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value,
     state, document: { addEventListener() {} }, readingMessages: new Map(),
     renderMessages() {}, ref: message => ({ id: message.id, changeKey: message.changeKey }),
     showError: error => errors.push(error.message), toast() {}, loadView: async () => { loads++; },

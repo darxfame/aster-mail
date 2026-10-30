@@ -50,7 +50,7 @@ test('preferences and credentials are encrypted, scoped to the account and remov
   const { store, directory, provider } = await setup(t);
   await store.load('https://mail.example.com|alice');
   const values = { 'aster-signature': 'Confidential signature', 'aster-colleagues': '[{"email":"private@example.com"}]' };
-  await store.save({ values, notifications: { preview: false } }, guard);
+  await store.save({ values, notifications: { preview: false, debugErrors: true } }, guard);
   await store.saveCredentials({ username: 'alice', password: 'fictional-secret' }, guard);
   for (const name of await fs.readdir(directory)) {
     const bytes = await fs.readFile(path.join(directory, name));
@@ -59,6 +59,8 @@ test('preferences and credentials are encrypted, scoped to the account and remov
   }
   const restored = new LocalStore(directory, provider);
   assert.deepEqual((await restored.load('https://mail.example.com|alice')).values, values);
+  assert.equal(store.data.notifications.debugErrors, true);
+  assert.equal(restored.data.notifications.debugErrors, true);
   assert.deepEqual(await restored.load('https://mail.example.com|bob'), {});
   await store.clear(); assert.deepEqual(await fs.readdir(directory), []);
 });

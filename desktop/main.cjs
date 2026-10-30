@@ -1,5 +1,6 @@
 const i18n = require('../src/i18n.js');
 const tr = i18n.text;
+const errorMessage = require('../src/errors.js').message;
 const { app, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
@@ -20,7 +21,7 @@ const { fetchContentImage } = require('./content-images.cjs');
 let localStore, connection, accountEpoch = 0;
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences, mailAlert } = require('./notifications.cjs');
-const { httpsURL, meetingLink, upcomingMeetings, countdown, pollingRange } = require('./meetings.cjs');
+const { httpsURL, meetingLink, upcomingMeetings, nearestMeetings, countdown, pollingRange } = require('./meetings.cjs');
 let widgetWindow, widgetEvents = [], widgetDetail = null;
 let window, client, account, tray, createWindow, quitting = false;
 let unsavedChanges = false, resettingLocalData = false;
@@ -103,13 +104,15 @@ function updateTrayMenu() {
 function widgetState() {
   const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, lastPoll, error: lastMailError || lastPollError };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
 }
 function refreshWidget() {
   const state = widgetState();
   if (tray) {
-    if (process.platform === 'darwin') tray.setTitle(client ? state.countdown.label : '');
-    tray.setToolTip(state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
+    const nearest = nearestMeetings(state.calendarEvents);
+    const multiple = nearest.length > 1;
+    if (process.platform === 'darwin') tray.setTitle(client ? multiple && state.countdown.active ? `${tr('Встречи')} · ${nearest.length}` : state.countdown.label : '');
+    tray.setToolTip(multiple ? `${tr('Встречи')} · ${nearest.length}\n${nearest.slice(0, 5).map(event => event.title).join('\n')}` : state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.send('aster-widget-update', state);
 }
@@ -296,6 +299,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('aster', async (event, operation, data) => {
     let composeEntry, composeWrite = false;
+    const debugErrors = notificationSettings.debugErrors;
     try {
       if (composeWindows.entries.has(event.sender)) composeEntry = composeWindows.authorize(event.sender, event.senderFrame, operation, data?.sessionId);
       else if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
@@ -337,7 +341,7 @@ app.whenReady().then(async () => {
       }
       if (operation === 'mailAlerts') return { ok: true, value: mailAlerts };
       if (operation === 'dismissMailAlert') { mailAlerts = mailAlerts.filter(item => item.id !== data.id); publishMailAlerts(); return { ok: true, value: true }; }
-      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: attachmentCleanupError || lastMailError || lastPollError, supported: Notification.isSupported() } };
+      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings, next = preferences({ ...data, meetingReminders: notificationSettings.meetingReminders });
@@ -446,7 +450,7 @@ app.whenReady().then(async () => {
       if (composeEntry && ['send', 'draft', 'editDraft'].includes(operation) && window && !window.isDestroyed()) window.webContents.send('aster-compose-saved');
       if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
       return { ok: true, value };
-    } catch (error) { return { ok: false, error: error.message, connectionError: error.connectionError === true }; }
+    } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: debugErrors }), userFacing: true, connectionError: error.connectionError === true }; }
     finally { if (composeWrite) composeEntry.busy = false; }
   });
   createWindow();
@@ -466,7 +470,7 @@ app.whenReady().then(async () => {
         widgetWindow.hide(); await shell.openExternal(url);
       } else throw new Error('Unknown widget operation');
       return { ok: true };
-    } catch (error) { return { ok: false, error: error.message }; }
+    } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: notificationSettings.debugErrors }), userFacing: true }; }
   });
   const image = nativeImage.createFromPath(path.join(__dirname, '../assets/icon.png')).resize({ width: 18, height: 18 });
   tray = new Tray(image); tray.setToolTip(tr('Aster Mail · почта и встречи'));

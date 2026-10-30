@@ -9,7 +9,7 @@ function fixture(api = async () => assert.fail('Unexpected request')) {
   const version = { classList: { toggle() {} } };
   const document = { visibilityState: 'visible', querySelector: selector => selector === '#modal' ? dialog : selector === '#updates-panel' ? dialog.open ? panel : null : version,
     addEventListener(name, callback) { listeners[name] = callback; } };
-  const context = vm.createContext({ document, window: { aster: {}, asterI18n: { locale: 'en-GB' }, addEventListener() {} },
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, document, window: { aster: {}, asterI18n: { locale: 'en-GB' }, addEventListener() {} },
     tr: value => value, esc: value => String(value).replaceAll('<', '&lt;'), modalBusy: false, modalDirty: false, modalSequence: 0, api,
     modal(title, description, body) { context.modalSequence++; dialog.open = true; shown.push({ title, description, body }); }, toast() {}, setTimeout: callback => callback() });
   vm.runInContext(source, context);

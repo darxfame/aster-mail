@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { httpsURL, meetingLink, upcomingMeetings, countdown } = require('../desktop/meetings.cjs');
+const { httpsURL, meetingLink, upcomingMeetings, nearestMeetings, countdown } = require('../desktop/meetings.cjs');
 const now = Date.parse('2026-10-28T10:00:00Z');
 const event = { id: 'next', start: '2026-10-28T10:12:00Z', end: '2026-10-28T11:00:00Z' };
 test('meeting links accept HTTPS without credentials and find supported call links', () => {
@@ -25,4 +25,14 @@ test('menu bar distinguishes time until start from time until end and expires at
   assert.equal(countdown(event, Date.parse(event.end) - 8 * 60000).label, 'До конца · 8 мин');
   assert.equal(countdown(event, Date.parse(event.start)).active, true);
   assert.equal(countdown(event, Date.parse(event.end)).label, 'Свободно');
+});
+test('nearest meetings include every simultaneous start and every ongoing meeting', () => {
+  const other = { ...event, id: 'other', start: '2026-10-28T13:12:00+03:00', end: '2026-10-28T10:40:00Z' };
+  const later = { ...event, id: 'later', start: '2026-10-28T10:30:00Z' };
+  const events = [other, later, { ...event, id: 'declined', response: 'Decline' }, event, { ...event, id: 'all-day', allDay: true }, { ...event, id: 'cancelled', cancelled: true }];
+  assert.deepEqual(nearestMeetings(events, now).map(e => e.id), ['other', 'next']);
+  assert.deepEqual(nearestMeetings(events, Date.parse(later.start)).map(e => e.id), ['other', 'next', 'later']);
+  assert.deepEqual(nearestMeetings(events, Date.parse(other.end)).map(e => e.id), ['next', 'later']);
+  assert.deepEqual(nearestMeetings(events, Date.parse(event.end)), []);
+  assert.deepEqual(events.map(e => e.id), ['other', 'later', 'declined', 'next', 'all-day', 'cancelled']);
 });

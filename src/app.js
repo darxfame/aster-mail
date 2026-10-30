@@ -98,7 +98,7 @@ async function refreshSignatureField() {
     status.textContent = signature.text || signature.html ? tr('Подпись загружена из OWA. Форматирование сохранится при отправке; настройки OWA для новых писем и ответов учитываются.') : tr('На сервере сохранена пустая подпись.');
   } catch (error) {
     checkbox.checked = false; input.readOnly = false; input.value = state.signature;
-    status.textContent = `${tr("Не удалось получить подпись:")} ${error.message}`;
+    status.textContent = `${tr("Не удалось получить подпись:")} ${errorText(error)}`;
   }
 }
 let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
@@ -119,7 +119,7 @@ async function api(operation, data = {}) {
     const sessionId = state.account?.sessionId;
     const result = await window.aster.invoke(operation, { ...data, sessionId });
     if (!['connect', 'restore', 'disconnect'].includes(operation) && sessionId !== state.account?.sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    if (!result.ok) throw Object.assign(new Error(result.error), { connectionError: result.connectionError === true });
+    if (!result.ok) throw Object.assign(new Error(result.error), { connectionError: result.connectionError === true, userFacing: result.userFacing === true, operation });
     return result.value;
   } finally { if (writing) mailWrites--; }
 
@@ -151,12 +151,15 @@ function renderMailAlerts(alerts) {
   };
 }
 function toast(text) { $('#toast').textContent = text; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 5000); }
+function errorText(error, operation = error?.operation || '') {
+  return window.asterErrors.message(error, { operation, debug: notificationPreferences.debugErrors === true });
+}
 function showError(error) {
   if (error.connectionError && state.account) {
     if (connectionState.status !== 'auth-required') connectionState.status = 'reconnecting';
     renderConnection(); return;
   }
-  $('#error').textContent = error.message || error; $('#error').hidden = false; $('#status').textContent = tr('Не удалось завершить операцию');
+  $('#error').textContent = errorText(error); $('#error').hidden = false; $('#status').textContent = tr('Не удалось завершить операцию');
 }
 function clearError() { $('#error').hidden = true; }
 function renderConnection() {
@@ -339,12 +342,22 @@ async function markMessageRead(message, folderKey) {
   readingMessages.set(message.id, pending);
   try { await pending; } finally { readingMessages.delete(message.id); }
 }
+function readerNotice(content) {
+  return `<div class="reader-toolbar reader-notice-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}${tr('К письмам')}</button></div>${content}`;
+}
+function returnToMailList() {
+  const id = state.selected?.id;
+  ++messageOpenSequence; state.selected = null; state.recoverMessage = null;
+  clearError(); renderMail();
+  $('#status').textContent = tr('Письма');
+  [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === id)?.focus({ preventScroll: true });
+}
 async function openMessage(id, generation = state.generation, { markRead = true } = {}) {
   const summary = state.messages.find(m => m.id === id);
   if (!summary) return;
   const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
   state.selected = summary; document.body.classList.add('reader-open'); renderMessages();
-  $('#reader').innerHTML = `<div class="loading">${icon('refresh')}${tr("Открываем письмо…")}</div>`;
+  $('#reader').innerHTML = readerNotice(`<div class="loading">${icon('refresh')}${tr("Открываем письмо…")}</div>`);
   try {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
@@ -354,21 +367,21 @@ async function openMessage(id, generation = state.generation, { markRead = true 
     const marking = !markRead || isDraftMessage(selected) ? Promise.resolve() : markMessageRead(selected, folderKey);
     renderReader();
     try { await marking; }
-    catch (error) { showError(Object.assign(new Error(`${tr("Письмо открыто, но не удалось отметить его прочитанным:")} ${error.message}`), { connectionError: error.connectionError === true })); }
+    catch (error) { showError(Object.assign(new Error(`${tr("Письмо открыто, но не удалось отметить его прочитанным:")} ${errorText(error)}`), { connectionError: error.connectionError === true, userFacing: true })); }
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     renderMessages(); renderSidebar(); renderReader();
     if (selected.meeting?.id && !selected.meeting.cancelled) {
       try {
         const meeting = state.demo ? window.asterDemo.events.find(e => e.id === selected.meeting.id) : await api('event', ref(selected.meeting));
         if (meeting) Object.assign(selected.meeting, { ...meeting, statusLoaded: true });
-      } catch (error) { selected.meeting.statusError = error.message; }
+      } catch (error) { selected.meeting.statusError = errorText(error); }
       if (state.selected === selected && generation === state.generation) renderReader();
     }
   } catch (error) {
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     showError(error);
-    if (error.connectionError) { state.recoverMessage = { id, generation }; $('#reader').innerHTML = `<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`; return; }
-    $('#reader').innerHTML = `<div class="empty-state"><h2>${tr("Не удалось открыть письмо")}</h2><p>${esc(error.message)}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">${tr("Повторить загрузку")}</button></div>`;
+    if (error.connectionError) { state.recoverMessage = { id, generation }; $('#reader').innerHTML = readerNotice(`<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`); return; }
+    $('#reader').innerHTML = readerNotice(`<div class="empty-state"><h2>${tr("Не удалось открыть письмо")}</h2><p>${esc(errorText(error))}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">${tr("Повторить загрузку")}</button></div>`);
   }
 }
 function isDraftMessage(message) {
@@ -376,7 +389,7 @@ function isDraftMessage(message) {
 }
 function rsvpButtons(id, changeKey, cancelled = false, response, isOrganizer = false, statusError = '') {
   if (cancelled) return tr('<p class="form-note" role="status">Встреча отменена организатором. Ответ не требуется.</p>');
-  if (statusError) return `<p class="form-note" role="status">${tr("Не удалось проверить ответ:")} ${esc(statusError)}${tr(". Обновите письмо.")}</p>`;
+  if (statusError) return `<p class="form-note" role="status">${tr("Не удалось проверить ответ:")} ${esc(errorText(statusError))}${tr(". Обновите письмо.")}</p>`;
   if (response === undefined) return tr('<p class="form-note" role="status">Проверяем ваш ответ в календаре Exchange…</p>');
   const status = window.asterEvents.responseState({ response, isOrganizer });
   if (status === 'organizer') return tr('<p class="form-note">Вы организатор встречи.</p>');
@@ -485,7 +498,7 @@ async function refreshColleagues() {
     const result = await fetchAvailability(list.map(c => c.email), start, end);
     if (request !== colleagueRequest || scope !== colleaguesKey()) return;
     colleagueData = result; colleagueUpdated = new Date();
-  } catch (error) { if (request !== colleagueRequest || scope !== colleaguesKey()) return; colleagueData = []; colleagueError = error.message; }
+  } catch (error) { if (request !== colleagueRequest || scope !== colleaguesKey()) return; colleagueData = []; colleagueError = errorText(error); }
   renderColleagues();
 }
 function directoryModal() {
@@ -528,7 +541,7 @@ async function runPlanner(button) {
     const suggestions = window.asterAvailability.suggestions(people, start, duration, Date.now(), timeZone);
     const unknown = people.some(p => window.asterAvailability.status(p, +start).kind === 'unknown');
     box.innerHTML = `<div class="planner-verdict ${free ? 'free' : 'busy'}">${free ? tr('Выбранное время свободно у всех проверенных участников') : unknown ? tr('Есть недоступные данные или пересечения — свободное время не подтверждено') : tr('Выбранное время пересекается с занятостью участников')}</div><div class="planner-people">${people.map(p => { const status = availabilityLabel(p, +start); return `<div><strong>${esc(colleagues().find(c => c.email.toLowerCase() === p.email.toLowerCase())?.name || (['__self__', own?.toLowerCase()].includes(p.email) ? tr('Вы') : p.email))}</strong><span class="availability ${status.kind}"><i></i>${esc(status.text)}</span></div>`; }).join('')}</div><h4>${tr("Общее свободное время ·")} ${esc(dateFormat(start, { day: 'numeric', month: 'long' }))}</h4><div class="planner-slots">${suggestions.map(slot => `<button type="button" class="secondary" data-action="planner-slot" data-start="${slot}" data-duration="${duration}">${esc(time(slot))}–${esc(time(new Date(Date.parse(slot) + duration * 60000)))}</button>`).join('') || tr('<p class="form-note">Общих интервалов с 09:00 до 18:00 не найдено. Выберите другой день или проверьте доступ к календарям.</p>')}</div><p class="form-note">${state.demo ? tr('Деморежим: занятость вымышлена. ') : ''}${tr("Проверка с шагом 15 минут, с учётом всей длительности встречи. Ваш календарь включён. Перед отправкой можно проверить время повторно.")}</p>`;
-  } catch (error) { if (box.isConnected && plannerFingerprint(form) === fingerprint) box.innerHTML = `<p class="form-error">${esc(error.message)}</p>`; }
+  } catch (error) { if (box.isConnected && plannerFingerprint(form) === fingerprint) box.innerHTML = `<p class="form-error">${esc(errorText(error))}</p>`; }
   finally { button.disabled = false; }
 }
 
@@ -722,6 +735,8 @@ async function settingsModal() {
     <h3 class="settings-heading">${tr("Данные на компьютере")}</h3>
     <p class="form-note">${tr("Подпись, коллеги и настройки сохраняются зашифрованными и удаляются при выходе. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). При открытии вложения создаётся временная копия для системного приложения; при выходе из аккаунта или завершении Aster она удаляется. При выходе кэш очищается.")}</p>
     <h3 class="settings-heading">${tr("Приложение")}</h3>
+    ${checkbox('debugErrors', tr('Debug errors · технические сведения об ошибках'), p.debugErrors)}
+    <p class="form-note">${tr('По умолчанию показываются понятные сообщения. Этот флаг добавляет технические коды ошибок; содержимое писем и пароли не выводятся.')}</p>
     <button class="secondary" type="button" data-action="updates">${tr("Обновления Aster Mail")}</button>
     </section>
     </div>
@@ -750,7 +765,7 @@ async function submitForm(form, operation) {
   const errorBox = form.querySelector('.form-error[role="alert"]');
   errorBox.textContent = '';
   try { await operation(Object.fromEntries(new FormData(form))); }
-  catch (error) { errorBox.textContent = error.message; }
+  catch (error) { errorBox.textContent = errorText(error); }
   finally {
     modalBusy = false; form.classList.remove('busy'); form.inert = false; form.removeAttribute('aria-busy');
     if (form.isConnected && $('#modal').open && form.contains(active)) active.focus({ preventScroll: true });
@@ -824,7 +839,7 @@ async function handleAction(button) {
   const { action } = button.dataset;
   if (action.startsWith('mini-') || action === 'folder-branch') return handleSidebarAction(button);
   if (action.startsWith('meeting-')) return handleMeetingAction(button);
-  if (action === 'back-to-list') { state.selected = null; renderMail(); return; }
+  if (action === 'back-to-list') return returnToMailList();
   if (action === 'toggle-sidebar') {
     sidebarCollapsed = !document.body.classList.contains('sidebar-collapsed');
     compactSidebarExpanded = !sidebarCollapsed && window.innerWidth <= 900;
@@ -962,7 +977,7 @@ async function handleAction(button) {
         toast(state.demo ? tr('Демо: ответ на приглашение принят') : tr('Ответ отправлен организатору'));
       }
     } catch (error) {
-      if ($('#modal').open && $('#modal .form-error')) $('#modal .form-error').textContent = error.message;
+      if ($('#modal').open && $('#modal .form-error')) $('#modal .form-error').textContent = errorText(error);
       else throw error;
     } finally { buttons.forEach((b, i) => { b.disabled = disabled[i]; }); } return;
   }
@@ -1092,9 +1107,10 @@ document.addEventListener('submit', event => {
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
     submitForm(form, async data => {
-      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
+      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       T.zone(next.timeZone);
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
+      clearError();
       applyLanguage(next.language);
       await applyInterfaceScale(data.interfaceScale);
       timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);

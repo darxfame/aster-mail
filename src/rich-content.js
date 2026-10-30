@@ -66,6 +66,7 @@
       const body = frame.contentDocument?.body; if (!body) return;
       const resize = () => { if (frame.isConnected) frame.style.height = `${Math.max(160, Math.min(20000, body.scrollHeight + 16))}px`; };
       const unavailable = (img, reason) => {
+        reason = errorText(reason, 'contentImages');
         const placeholder = frame.contentDocument.createElement('span');
         placeholder.className = 'aster-image-unavailable';
         placeholder.setAttribute('role', 'img');

@@ -69,11 +69,11 @@ async function openMeeting(summary) {
       } catch (error) {
         if (request !== meetingRequest || !dialog.open || dialog.dataset.meetingCard !== 'true') return;
         const note = [...document.querySelectorAll('.meeting-image')].find(node => node.dataset.id === attachment.id)?.querySelector('.image-status');
-        if (note) note.textContent = `${tr("Предпросмотр недоступен:")} ${error.message}`;
+        if (note) note.textContent = `${tr("Предпросмотр недоступен:")} ${errorText(error)}`;
       }
     }
   } catch (error) {
-    if (request === meetingRequest && dialog.open && dialog.dataset.meetingCard === 'true') $('#modal-content').innerHTML = `<div class="modal-header"><h2>${tr("Не удалось открыть встречу")}</h2><button class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></div><div class="modal-body"><p class="form-error">${esc(error.message)}</p><button class="secondary" data-action="meeting-return">${tr("Повторить загрузку")}</button></div>`;
+    if (request === meetingRequest && dialog.open && dialog.dataset.meetingCard === 'true') $('#modal-content').innerHTML = `<div class="modal-header"><h2>${tr("Не удалось открыть встречу")}</h2><button class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></div><div class="modal-body"><p class="form-error">${esc(errorText(error))}</p><button class="secondary" data-action="meeting-return">${tr("Повторить загрузку")}</button></div>`;
     if (request === meetingRequest) activeMeeting = { origin: summary };
   }
 }

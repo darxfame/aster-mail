@@ -37,7 +37,7 @@ function renderUpdates() {
     ${value.lastChecked ? `<p class="form-note">${tr("Последняя проверка:")} ${esc(new Date(value.lastChecked).toLocaleString(window.asterI18n.locale))}</p>` : ''}
     ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="${tr("Загрузка обновления")}"></progress>` : ''}
     ${value.available?.notes ? `<details class="update-notes"><summary>${tr("Что нового в")} ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
-    ${value.error ? `<p class="form-error" role="alert">${esc(value.error)}</p>` : ''}
+    ${value.error ? `<p class="form-error" role="alert">${esc(errorText(value.error))}</p>` : ''}
     <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
     ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}</div>`;
 }
@@ -63,7 +63,7 @@ document.addEventListener('click', async event => {
       if (updateSnapshot.status === 'ready' && !updateSnapshot.error && dialog.open && version === modalSequence) receiveUpdate(await api('openUpdateInstaller'));
     } else receiveUpdate(await api(button.dataset.update));
   }
-  catch (error) { toast(error.message); renderUpdates(); }
+  catch (error) { toast(errorText(error)); renderUpdates(); }
 });
 document.addEventListener('close', () => { setTimeout(maybePromptUpdate, 0); }, true);
 document.addEventListener('visibilitychange', maybePromptUpdate);
@@ -72,6 +72,6 @@ document.addEventListener('change', async event => {
   if (event.target.id !== 'automatic-updates') return;
   event.target.disabled = true;
   try { receiveUpdate(await api('saveUpdatePreferences', { autoCheck: event.target.checked })); }
-  catch (error) { event.target.checked = updateSnapshot.autoCheck; toast(error.message); }
+  catch (error) { event.target.checked = updateSnapshot.autoCheck; toast(errorText(error)); }
   finally { event.target.disabled = false; }
 });

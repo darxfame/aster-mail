@@ -7,11 +7,32 @@ const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 const functions = source.slice(source.indexOf('function applyMessageRead('), source.indexOf('function rsvpButtons('));
 function reader(api) {
   const state = { generation: 1, folder: 'inbox', query: '', filter: 'unread', offset: 2, folders: [{ id: 'inbox-id', wellKnown: 'inbox', unread: 2 }], messages: ['a', 'b'].map(id => ({ id, read: false, changeKey: `key-${id}`, parentId: 'inbox-id' })) };
-  const errors = [];
-  const context = vm.createContext({ tr: value => value, state, api, messageOpenSequence: 0, readingMessages: new Map(), ref: m => ({ id: m.id, changeKey: m.changeKey }), document: { body: { classList: { add() {} } } }, $: () => ({}), icon: () => '', renderMessages() {}, renderReader() {}, renderSidebar() {}, showError: error => errors.push(error.message) });
+  const errors = [], nodes = { '#reader': {} };
+  let focused;
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, esc: value => value, state, api, messageOpenSequence: 0, readingMessages: new Map(), ref: m => ({ id: m.id, changeKey: m.changeKey }), document: { body: { classList: { add() {} } }, querySelectorAll: () => state.messages.map(message => ({ dataset: { id: message.id }, focus() { focused = message.id; } })) }, $: key => nodes[key] || {}, icon: () => '', clearError() { errors.length = 0; }, renderMail() { nodes['#reader'].innerHTML = 'Message list'; }, renderMessages() {}, renderReader() {}, renderSidebar() {}, showError: error => errors.push(error.message) });
   vm.runInContext(functions, context);
-  return { context, state, errors, open: id => context.openMessage(id) };
+  return { context, state, errors, nodes, get focused() { return focused; }, open: id => context.openMessage(id) };
 }
+test('back navigation remains available in failed and reconnecting reader states', async () => {
+  for (const connectionError of [false, true]) {
+    const r = reader(async () => { throw Object.assign(new Error('OWA GetItem: HTTP 404'), { connectionError }); });
+    await r.open('a');
+    assert.match(r.nodes['#reader'].innerHTML, /data-action="back-to-list"/);
+    r.context.returnToMailList();
+    assert.equal(r.state.selected, null); assert.equal(r.state.recoverMessage, null);
+    assert.equal(r.errors.length, 0); assert.equal(r.focused, 'a');
+  }
+});
+test('returning to the list while loading prevents a late message from opening or being marked read', async () => {
+  let finish; const calls = [];
+  const r = reader((operation) => { calls.push(operation); return new Promise(resolve => { finish = resolve; }); });
+  const pending = r.open('a');
+  assert.match(r.nodes['#reader'].innerHTML, /data-action="back-to-list"/);
+  r.context.returnToMailList();
+  finish({ id: 'a', read: false }); await pending;
+  assert.deepEqual(calls, ['message']);
+  assert.equal(r.nodes['#reader'].innerHTML, 'Message list'); assert.equal(r.state.selected, null);
+});
 test('opening mail marks the actual message read before loading meeting status', async () => {
   const calls = [];
   const r = reader(async (operation, data) => { calls.push([operation, data]); return operation === 'message' ? { ...r.state.messages.find(m => m.id === data.id), meeting: { id: 'meeting' } } : operation === 'change' ? { changeKey: 'fresh' } : {}; });
@@ -58,7 +79,7 @@ test('signature numeric CR and LF entities become line breaks without decoding H
   assert.equal(result.html, '<div>Анна</div>\n<p>Почта</p>');
 });
 test('late mail rendering after navigating to contacts ignores removed DOM nodes', () => {
-  const context = vm.createContext({ tr: value => value, state: { view: 'contacts', selected: { id: 'a' } }, $: () => null });
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, state: { view: 'contacts', selected: { id: 'a' } }, $: () => null });
   for (const [start, end] of [['function renderMail()', 'function renderMessages()'], ['function renderMessages()', 'function applyMessageRead('], ['function renderReader()', 'function calendarEvents(']]) {
     const from = source.indexOf(start), to = source.indexOf(end, from);
     assert.ok(from >= 0 && to > from);

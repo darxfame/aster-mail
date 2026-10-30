@@ -59,7 +59,7 @@ test('connection indicator rejects old accounts, suppresses only connection bann
   const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   const indicator = { dataset: {}, setAttribute() {} }, modal = { open: true }, banner = { hidden: true }, status = {};
   let loads = 0;
-  const context = vm.createContext({ tr: value => value, state: { account: { sessionId: 'current' }, generation: 2, recoverView: 2 }, connectionState: { status: 'connected' },
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, state: { account: { sessionId: 'current' }, generation: 2, recoverView: 2 }, connectionState: { status: 'connected' },
     $: selector => ({ '#connection': indicator, '#modal': modal, '#error': banner, '#status': status })[selector],
     loadView: () => { loads++; }, openMessage: () => assert.fail('No read may replace an open form'),
   });

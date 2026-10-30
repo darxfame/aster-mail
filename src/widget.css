@@ -24,3 +24,21 @@ footer { padding: 7px 10px; font-size: 9px; }
 .grid-event-main strong { font-size: 10px; line-height: 1.2; }
 .grid-event-main small { font-size: 8px; line-height: 1.2; margin-top: 1px; }
 .grid-join { width: 21px; height: 21px; font-size: 12px; }
+
+.featured-meetings { flex: none; display: grid; gap: 6px; max-height: 280px; overflow: auto; padding: 2px; margin: -2px; }
+.meeting-count { font-size: 10px; color: var(--muted); padding: 0 2px; }
+.featured-meetings.multiple { max-height: 200px; }
+.multiple .featured { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 6px 8px; }
+.multiple .featured-title { grid-column: 1; grid-row: 1; align-self: center; font-size: 12px; -webkit-line-clamp: 1; }
+.multiple .time { grid-column: 1; grid-row: 2; align-self: center; font-size: 9px; margin: 0; }
+.multiple .status-line { grid-column: 2; grid-row: 2; margin: 0; }
+.multiple .eyebrow, .multiple .actions .open { display: none; }
+.multiple .countdown { font-size: 9px; }
+.multiple .actions { grid-column: 2; grid-row: 1; margin: 0; justify-content: end; }
+.multiple .join { width: 24px; height: 24px; flex: none; padding: 0; font-size: 15px; }
+.featured-meetings.many { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 232px; }
+.meeting-count { grid-column: 1 / -1; }
+.many .featured-title { grid-column: 1 / -1; -webkit-line-clamp: 2; }
+.many .time, .many .status-line { grid-column: 1; }
+.many .status-line { grid-row: 3; }
+.many .actions { grid-row: 2 / span 2; align-self: center; }

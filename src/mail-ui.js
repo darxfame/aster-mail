@@ -250,7 +250,7 @@ async function openContactCard(person, lookup = false) {
       return;
     }
     update(base, tr('Дополнительные сведения в справочнике не найдены.'));
-  } catch (error) { update(base, `${tr("Справочник недоступен:")} ${error.message}`); }
+  } catch (error) { update(base, `${tr("Справочник недоступен:")} ${errorText(error)}`); }
 }
 
 // Each result group has its own paging and error state; mail-only actions stay mail-only.
@@ -277,7 +277,7 @@ function renderSearchObjects() {
     if (!group || kind === 'mail' && !group.error) return '';
     const label = { calendar: tr('Календарь'), contacts: tr('Личные контакты'), mail: tr('Письма') }[kind];
     const rows = kind === 'mail' ? '' : group.items.map((item, index) => `<button type="button" class="search-object" data-action="search-object" data-kind="${kind}" data-index="${index}">${icon(kind === 'calendar' ? 'calendar' : 'people')}<span><strong>${esc(item.title || item.name || item.email || tr('Без названия'))}</strong><small>${esc(kind === 'calendar' ? `${item.start ? dateFormat(item.start, { day: 'numeric', month: 'long', year: 'numeric' }) + ' · ' + time(item.start) : tr('Дата не указана')}${item.recurring ? tr(' · Повторяется') : ''} · ${item.location || ''}` : [item.email, item.company].filter(Boolean).join(' · '))}</small></span></button>`).join('');
-    return `<details class="search-object-group" data-search-kind="${kind}" ${group.expanded || !state.messages.length || group.error ? 'open' : ''}><summary>${label}${kind === 'mail' ? '' : ` · ${group.items.length}${group.more ? '+' : ''}`}</summary>${rows}${group.error ? `<p class="search-source-error" role="status">${tr("Поиск не завершён:")} ${esc(group.error)}</p><button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">${tr("Повторить")}</button>` : !group.items.length ? tr('<p class="form-note">Совпадений нет</p>') : ''}${group.more && !group.error ? `<button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">${tr("Ещё:")} ${label.toLowerCase()}</button>` : ''}</details>`;
+    return `<details class="search-object-group" data-search-kind="${kind}" ${group.expanded || !state.messages.length || group.error ? 'open' : ''}><summary>${label}${kind === 'mail' ? '' : ` · ${group.items.length}${group.more ? '+' : ''}`}</summary>${rows}${group.error ? `<p class="search-source-error" role="status">${tr("Поиск не завершён:")} ${esc(errorText(group.error, 'search'))}</p><button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">${tr("Повторить")}</button>` : !group.items.length ? tr('<p class="form-note">Совпадений нет</p>') : ''}${group.more && !group.error ? `<button type="button" class="secondary" data-action="search-more-objects" data-kind="${kind}">${tr("Ещё:")} ${label.toLowerCase()}</button>` : ''}</details>`;
   }).join('');
 }
 async function moreSearchObjects(button) {
@@ -291,7 +291,7 @@ async function moreSearchObjects(button) {
     if (generation !== state.generation || query !== state.query || group !== state.searchObjects?.[kind]) return;
     const items = new Map([...group.items, ...result.items].map(item => [item.id, item]));
     state.searchObjects[kind] = { ...result, items: [...items.values()], expanded: true };
-  } catch (error) { if (generation === state.generation && group === state.searchObjects?.[kind]) group.error = error.message; }
+  } catch (error) { if (generation === state.generation && group === state.searchObjects?.[kind]) group.error = errorText(error); }
   finally { if (generation === state.generation) renderMessages(); }
 }
 

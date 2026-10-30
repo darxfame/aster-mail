@@ -21,6 +21,12 @@
     return events.filter(event => !event.cancelled && !event.allDay && !['Decline', 'Declined'].includes(event.response) && Number.isFinite(Date.parse(event.start)) && Date.parse(event.end) > now)
       .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   }
+  function nearestMeetings(events, now = Date.now()) {
+    const upcoming = upcomingMeetings(events, now);
+    if (!upcoming.length) return [];
+    const firstStart = Date.parse(upcoming[0].start);
+    return upcoming.filter(event => firstStart <= now ? Date.parse(event.start) <= now : Date.parse(event.start) === firstStart);
+  }
   function countdown(event, now = Date.now()) {
     if (!event || !Number.isFinite(Date.parse(event.start)) || !(Date.parse(event.end) > now)) return { label: tr('Свободно'), duration: '', detail: tr('Нет ближайших встреч'), active: false };
     const active = Date.parse(event.start) <= now;
@@ -38,6 +44,6 @@
     const urls = links(event).filter(value => value.startsWith('https:'));
     return urls.find(url => url === event.joinUrl) || urls.find(value => /(^|\.)(teams\.microsoft\.com|teams\.live\.com|zoom\.us|webex\.com|meet\.google\.com|telemost\.yandex\.ru|ktalk\.ru|kontur\.talk|talk\.kontur\.ru|meet\.jit\.si)$/i.test(new URL(value).hostname)) || urls.find(url => url === event.location?.trim()) || null;
   }
-  const api = { organizer, kind, responseState, upcomingMeetings, countdown, links, joinURL };
+  const api = { organizer, kind, responseState, upcomingMeetings, nearestMeetings, countdown, links, joinURL };
   if (typeof module !== 'undefined') module.exports = api; else root.asterEvents = api;
 })(typeof window === 'undefined' ? {} : window);

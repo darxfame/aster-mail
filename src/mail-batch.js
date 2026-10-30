@@ -66,14 +66,14 @@ async function runMailBatch(action, folder) {
     const skipped = result.results.filter(item => item.status === 'skipped').length;
     // Never leave an unconfirmed write preselected for an accidental repeated operation.
     mailSelection.clear();
-    const note = `${tr("Выполнено:")} ${done} ${tr("из")} ${refs.length}.${uncertain ? ` ${tr("Не подтверждено: 1. Не обработано:")} ${skipped}. ${uncertain.error}` : ''}`;
-    if (uncertain) showError(new Error(note)); else toast(note);
+    const note = `${tr("Выполнено:")} ${done} ${tr("из")} ${refs.length}.${uncertain ? ` ${tr("Не подтверждено: 1. Не обработано:")} ${skipped}. ${errorText(uncertain.error, 'mailBatch')}` : ''}`;
+    if (uncertain) showError(Object.assign(new Error(note), { userFacing: true })); else toast(note);
     await loadView();
-    if (uncertain && account === state.account && scope === mailSelectionKey()) showError(new Error(note));
+    if (uncertain && account === state.account && scope === mailSelectionKey()) showError(Object.assign(new Error(note), { userFacing: true }));
   } catch (error) {
     if (account === state.account && scope === mailSelectionKey()) {
       mailSelection.clear();
-      showError(new Error(`${error.message}${tr("\nРезультат операций может быть неизвестен. Проверьте выбранные письма в OWA перед повтором.")}`));
+      showError(Object.assign(new Error(`${errorText(error)}${tr("\nРезультат операций может быть неизвестен. Проверьте выбранные письма в OWA перед повтором.")}`), { userFacing: true }));
     }
   } finally {
     mailBatchBusy = false;
