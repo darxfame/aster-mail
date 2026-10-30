@@ -307,7 +307,7 @@ function renderMessages() {
   $('#messages').innerHTML = related + (state.query ? tr('<h3 class="search-mail-heading">Письма</h3>') : '') + (items.map((m, i) => {
     const key = dayKey(m.date), label = key === dayKey(new Date()) ? tr('Сегодня') : dateFormat(m.date, { day: 'numeric', month: 'long' });
     const heading = key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : ''; previousDay = key;
-    return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
+    return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
   }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? tr('Непрочитанных писем нет') : state.filter === 'flagged' ? tr('Избранных писем нет') : tr('Здесь пока нет писем')}</p></div>`);
   restoreFocus();
   renderMailBatchToolbar();
@@ -704,7 +704,10 @@ async function settingsModal() {
     <h3 class="settings-section-title">${tr("Уведомления и звуки")}</h3>
     ${checkbox('notifyMail', tr('Всплывающие уведомления о новых письмах'), p.mail)}
     ${checkbox('notifyMeetings', tr('Напоминания о встречах'), p.meetings)}
-    <label class="field"><span>${tr("Напоминать о встрече")}</span><select name="minutes">${[0, 5, 10, 15, 30].map(n => `<option value="${n}" ${p.minutes === n ? 'selected' : ''}>${n ? `${tr("За")} ${n} ${tr("минут")}` : tr('В момент начала')}</option>`).join('')}</select></label>
+    <label class="field"><span>${tr("Интервал по умолчанию")}</span><select name="minutes">${[0, 5, 10, 15, 30].map(n => `<option value="${n}" ${p.minutes === n ? 'selected' : ''}>${n ? `${tr("За")} ${n} ${tr("минут")}` : tr('В момент начала')}</option>`).join('')}</select></label>
+    ${checkbox('useMeetingMinutes', tr('Общие напоминания для всех встреч'), Array.isArray(p.meetingMinutes))}
+    ${meetingReminderChoices('meetingMinute', p.meetingMinutes || [p.minutes], !Array.isArray(p.meetingMinutes))}
+    <p class="form-note">${tr('Можно выбрать несколько интервалов. Индивидуальные напоминания встречи заменяют общие. Пустой выбор отключает общие напоминания. Без общей настройки используется напоминание Exchange или интервал по умолчанию.')}</p>
     ${checkbox('notifySounds', tr('Звук нового письма и отдельный звук встречи'), p.sounds)}
     ${checkbox('notifyPreview', tr('Показывать отправителя, тему и текст в уведомлениях'), p.preview)}
     <div class="sound-tests"><button type="button" class="secondary" data-action="test-notification" data-kind="mail">${icon('mail')}${tr("Проверить письмо")}</button><button type="button" class="secondary" data-action="test-notification" data-kind="meeting">${icon('calendar')}${tr("Проверить встречу")}</button></div>
@@ -1038,6 +1041,7 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('change', event => {
   if (event.target.name === 'protocol') refreshProtocolNote();
+  if (event.target.name === 'useMeetingMinutes') event.target.closest('form').querySelector('.meeting-reminder-times').disabled = !event.target.checked;
   if (event.target.name === 'allDay' && event.target.closest('#event-form')) {
     const form = $('#event-form');
     if (event.target.checked && form.elements.start.value) {
@@ -1081,15 +1085,16 @@ document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target;
   if (form.id === 'search-form') { state.query = $('#search').value.trim(); if (state.view === 'calendar') renderCalendar(); else loadView(); return; }
   if (form.id === 'meeting-reminder-form') { submitMeetingReminder(form); return; }
+  if (form.id === 'meeting-local-reminders-form') { submitLocalMeetingReminders(form); return; }
   if (form.id === 'meeting-message-form') { submitMeetingMessage(form); return; }
   if (form.id === 'event-form' && form.dataset.editing === 'true') { submitMeetingEdit(form); return; }
   if (form.id === 'directory-form') { searchDirectory(form); return; }
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
     submitForm(form, async data => {
-      const next = { mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
+      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       T.zone(next.timeZone);
-      notificationPreferences = window.aster ? await api('saveNotifications', next) : next;
+      notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
       applyLanguage(next.language);
       await applyInterfaceScale(data.interfaceScale);
       timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);
@@ -1207,7 +1212,8 @@ function preserveListFocus(container) {
   const buttons = [...container.querySelectorAll('button,input[type="checkbox"]')], index = buttons.indexOf(active);
   return () => {
     const replacements = [...container.querySelectorAll('button,input[type="checkbox"]')];
-    const replacement = active.isConnected ? active : replacements.find(button => Object.entries(identity).every(([key, value]) => button.dataset[key] === value)) || replacements[Math.min(index, replacements.length - 1)];
+    const replacement = active.isConnected ? active : replacements.find(button => Object.entries(identity).every(([key, value]) => button.dataset[key] === value)) || (container.id === 'messages' && identity.action === 'message' ? $('#reader') : replacements[Math.min(index, replacements.length - 1)]);
+    if (replacement?.id === 'reader') replacement.tabIndex = -1;
     replacement?.focus({ preventScroll: true });
   };
 }
@@ -1221,7 +1227,7 @@ function confirmDiscardChanges() {
   return !modalDirty || confirm(tr('Закрыть без сохранения изменений?'));
 }
 for (const name of ['input', 'change']) document.addEventListener(name, event => {
-  if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form')) setModalDirty(true);
+  if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form, #meeting-local-reminders-form')) setModalDirty(true);
 });
 $('#modal').addEventListener('close', () => { if ($('#modal').open) return; setModalDirty(false); resumeConnectionReads(); });
 document.addEventListener('click', event => {

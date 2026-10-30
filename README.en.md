@@ -49,7 +49,9 @@ See the [detailed limitations (Russian)](docs/USER-GUIDE.md#ограничени
   suggestions for a common meeting time. On macOS, a menu-bar meeting widget
   shows your next meeting and a countdown.
 - **Stay focused:** light and dark themes, configurable notifications, a compact
-  connection indicator, and automatic OWA connection recovery.
+  connection indicator, and automatic OWA connection recovery. Multiple meeting
+  reminders support common intervals and individual schedules, while Aster is
+  running and the computer is awake.
 
 Available since [0.1.23](https://github.com/darxfame/aster-mail/releases/tag/v0.1.23):
 separate To/Cc fields, recipient cards, and search across mail,

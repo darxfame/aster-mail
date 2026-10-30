@@ -71,7 +71,7 @@ class OWAClient {
       else if (error.connectionError) this.onConnectionState?.('reconnecting');
       throw error;
     }
-    finally { if (['UpdateItem', 'MoveItem', 'DeleteItem'].includes(action)) this.mailCache.clear({ preserveImages: true }); }
+    finally { if (['CreateItem', 'SendItem', 'UpdateItem', 'MoveItem', 'DeleteItem'].includes(action)) this.mailCache.clear({ preserveImages: true }); }
   }
   async requestJSON(action, payload, { retry = true, headerBody = false } = {}) {
     if (['CreateItem', 'UpdateItem', 'MoveItem', 'DeleteItem', 'SendItem'].includes(action)) retry = false;

@@ -178,7 +178,7 @@ async function pollNotifications() {
           if (widgetDetail?.key === key) Object.assign(next, { body: widgetDetail.data.body, joinUrl: widgetDetail.data.joinUrl || next.joinUrl, cancelled: widgetDetail.data.cancelled });
         }
         widgetEvents = events;
-        for (const event of notificationSettings.meetings ? tracker.reminders(events, notificationSettings.minutes) : []) {
+        for (const event of notificationSettings.meetings ? tracker.reminders(events, notificationSettings.minutes, Date.now(), notificationSettings.meetingReminders, notificationSettings.meetingMinutes) : []) {
           const minutes = Math.max(0, Math.ceil((new Date(event.start) - Date.now()) / 60000));
           notify('meeting', minutes ? `${tr("Встреча через")} ${minutes} ${tr("мин.")}` : tr('Встреча начинается'), notificationSettings.preview ? event.title : tr('Откройте рабочий календарь.'), { view: 'calendar', date: event.start });
         }
@@ -339,7 +339,7 @@ app.whenReady().then(async () => {
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: attachmentCleanupError || lastMailError || lastPollError, supported: Notification.isSupported() } };
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
-        const before = notificationSettings, next = preferences(data);
+        const before = notificationSettings, next = preferences({ ...data, meetingReminders: notificationSettings.meetingReminders });
         if (client) {
           const active = connection;
           if (data.sessionId !== client.syncId) throw new Error(tr('Сессия аккаунта завершена'));
@@ -390,6 +390,20 @@ app.whenReady().then(async () => {
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
       const activeClient = client;
       if (data.sessionId !== activeClient.syncId) throw new Error(tr('Сессия аккаунта завершена'));
+      if (operation === 'saveMeetingReminders') {
+        const normalized = require('./notifications.cjs').meetingReminders([{ id: data.ref?.id, start: data.start, minutes: data.minutes }]);
+        if (normalized.length !== 1 || typeof data.custom !== 'boolean') throw new Error(tr('Некорректное напоминание'));
+        const current = await activeClient.eventDetails(data.ref);
+        if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+        if (current.id !== data.ref.id || Date.parse(current.start) !== Date.parse(data.start) || current.cancelled) throw new Error(tr('Встреча изменилась. Откройте её заново.'));
+        const entry = normalized[0];
+        const remaining = notificationSettings.meetingReminders.filter(value => value.id !== entry.id || value.start !== entry.start);
+        const next = preferences({ ...notificationSettings, meetingReminders: data.custom ? [...remaining, entry] : remaining });
+        await localStore.save({ notifications: next }, () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); });
+        if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+        notificationSettings = next;
+        return { ok: true, value: next.meetingReminders };
+      }
       if (operation === 'saveLocalData') {
         const active = connection;
         await localStore.save({ values: data.values }, () => { if (connection !== active) throw new Error(tr('Сессия аккаунта завершена')); });

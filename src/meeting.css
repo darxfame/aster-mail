@@ -239,3 +239,5 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
   .reader-mail-actions .toolbar-divider { display: none; }
   .reader-replies { flex: 0 1 auto; }
 }
+
+.meeting-reminder-times{border:1px solid var(--line);border-radius:9px;margin:16px 0;padding:12px 16px;color:var(--text);min-width:0}.meeting-reminder-times legend{font-size:12px;color:var(--muted);padding:0 6px}.meeting-reminder-times>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meeting-reminder-times .checkbox{margin:0;font-size:12px}.meeting-reminder-times:disabled{opacity:.5}

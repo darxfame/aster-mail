@@ -22,6 +22,30 @@ function renderSignaturePreview(target, signature) {
   window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', title: tr('Подпись OWA'), loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
   if (Object.keys(signature.errors || {}).length) { const note = document.createElement('p'); note.className = 'form-error'; note.textContent = tr('Не все картинки подписи доступны. Обновите подпись перед отправкой.'); target.append(note); }
 }
+function navigateMailMessage(event) {
+  if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  if (state.view !== 'mail' || mailBatchBusy || document.querySelector('dialog[open]')) return;
+  const target = event.target;
+  if (target.isContentEditable || target.closest('input,textarea,select,[role="slider"],[role="separator"]')) return;
+  const frame = target.ownerDocument?.defaultView?.frameElement;
+  if (!target.closest('#messages,#reader') && !(target === document.body && state.selected) && !(frame?.isConnected && frame.matches('#reader .email-frame'))) return;
+  const visible = new Set(filteredMessages().map(message => message.id));
+  // Retain the current position when marking read removes it from the unread filter.
+  const items = state.messages.filter(message => visible.has(message.id) || message.id === state.selected?.id);
+  const current = items.findIndex(message => message.id === state.selected?.id);
+  const index = current < 0 ? event.key === 'ArrowDown' ? 0 : items.length - 1 : current + (event.key === 'ArrowDown' ? 1 : -1);
+  event.preventDefault();
+  const next = items[index];
+  if (!next || !visible.has(next.id)) return;
+  void openMessage(next.id);
+  const button = [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === next.id);
+  const reader = $('#reader');
+  reader.tabIndex = -1;
+  reader.focus({ preventScroll: true });
+  button?.scrollIntoView({ block: 'nearest' });
+}
+document.addEventListener('keydown', navigateMailMessage);
+
 async function toggleMailProperty(id, field) {
   const message = state.messages.find(item => item.id === id); if (!message) return;
   if (readingMessages.has(id)) await readingMessages.get(id);

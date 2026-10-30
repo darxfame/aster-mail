@@ -100,6 +100,7 @@
     const frameLoaded = () => {
       if (disposed || !reader.isConnected) return;
       frame.contentDocument?.addEventListener('keydown', keydown);
+      frame.contentDocument?.addEventListener('keydown', navigateMailMessage);
       const style = frame.contentDocument.createElement('style');
       style.textContent = '::highlight(aster-mail-matches){background:#ffe38a;color:#252033}::highlight(aster-mail-current){background:#e78216;color:#17121c}';
       frame.contentDocument.head.append(style); search();
@@ -111,6 +112,7 @@
       disposed = true; clear(); document.removeEventListener('keydown', keydown);
       frame?.removeEventListener('load', frameLoaded);
       frame?.contentDocument?.removeEventListener('keydown', keydown);
+      frame?.contentDocument?.removeEventListener('keydown', navigateMailMessage);
     } };
   }
   root.asterMailFind = { mount, reset() {

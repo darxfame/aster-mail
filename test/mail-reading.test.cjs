@@ -66,3 +66,16 @@ test('late mail rendering after navigating to contacts ignores removed DOM nodes
   }
   assert.doesNotThrow(() => context.renderMessages()); assert.doesNotThrow(() => context.renderReader()); assert.doesNotThrow(() => context.renderMail());
 });
+
+test('rapid keyboard-style opens discard an older detail response without marking it read', async () => {
+  const pending = new Map(), changes = [];
+  const r = reader(async (operation, data) => {
+    if (operation === 'message') return new Promise(resolve => pending.set(data.id, resolve));
+    changes.push(data.ref.id); return { changeKey: 'fresh' };
+  });
+  const first = r.open('a'), second = r.open('b');
+  pending.get('b')({ ...r.state.messages[1], text: 'latest' }); await second;
+  pending.get('a')({ ...r.state.messages[0], text: 'stale' }); await first;
+  assert.equal(r.state.selected.id, 'b'); assert.equal(r.state.selected.text, 'latest');
+  assert.deepEqual(changes, ['b']); assert.equal(r.state.messages[0].read, false);
+});
