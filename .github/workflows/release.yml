@@ -60,11 +60,14 @@ jobs:
           security create-keychain -p "$keychainPassword" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychainPassword" "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
           security import "$bundle" -k "$keychain" -P "$MAC_SIGNING_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           echo 'Configuring signing key access'
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychainPassword" "$keychain" > /dev/null
           echo 'Trusting certificate for code signing on this temporary runner'
           sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$certificate"
+          cp /usr/bin/true "$RUNNER_TEMP/aster-signing-check"
+          codesign --force --sign 'Aster Mail Local Signing' --keychain "$keychain" --timestamp=none "$RUNNER_TEMP/aster-signing-check"
           echo 'Signing identity ready'
           echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
       - name: Build installer
@@ -84,13 +87,11 @@ jobs:
         run: |
           certificate="$RUNNER_TEMP/aster-signing.pem"
           keychain="$RUNNER_TEMP/aster-signing.keychain-db"
-          if [ -f "$certificate" ]; then
-            sudo security remove-trusted-cert -d "$certificate" || echo '::warning::Could not remove signing trust'
-            sudo security delete-certificate -Z 94449AF39DABD49526A09AE19047190EC2D165E8 /Library/Keychains/System.keychain || true
-          fi
+          # Public code-signing trust disappears with the GitHub-hosted VM.
+          # Remove the private identity and export before any optional cleanup.
           status=0
           if [ -f "$keychain" ]; then security delete-keychain "$keychain" || status=1; fi
-          rm -f "$RUNNER_TEMP/aster-signing.p12" "$certificate"
+          rm -f "$RUNNER_TEMP/aster-signing.p12" "$certificate" "$RUNNER_TEMP/aster-signing-check"
           exit "$status"
       - uses: actions/upload-artifact@v4
         with:
