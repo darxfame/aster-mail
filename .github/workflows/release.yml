@@ -40,6 +40,7 @@ jobs:
       - run: npm test
       - name: Import macOS signing identity
         if: runner.os == 'macOS'
+        timeout-minutes: 2
         shell: bash
         env:
           MAC_SIGNING_CERTIFICATE: ${{ secrets.MAC_SIGNING_CERTIFICATE }}
@@ -60,8 +61,11 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychainPassword" "$keychain"
           security import "$bundle" -k "$keychain" -P "$MAC_SIGNING_PASSWORD" -T /usr/bin/codesign
+          echo 'Configuring signing key access'
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychainPassword" "$keychain" > /dev/null
-          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$certificate"
+          echo 'Trusting certificate for code signing on this temporary runner'
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$certificate"
+          echo 'Signing identity ready'
           echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
       - name: Build installer
         run: ${{ matrix.command }}
@@ -75,11 +79,15 @@ jobs:
           codesign --display --requirements - "$app" 2>&1 | grep -F 'certificate leaf = H"94449af39dabd49526a09ae19047190ec2d165e8"'
       - name: Remove macOS signing identity
         if: always() && runner.os == 'macOS'
+        timeout-minutes: 1
         shell: bash
         run: |
           certificate="$RUNNER_TEMP/aster-signing.pem"
           keychain="$RUNNER_TEMP/aster-signing.keychain-db"
-          if [ -f "$certificate" ]; then security remove-trusted-cert "$certificate" || echo '::warning::Could not remove signing trust'; fi
+          if [ -f "$certificate" ]; then
+            sudo security remove-trusted-cert -d "$certificate" || echo '::warning::Could not remove signing trust'
+            sudo security delete-certificate -Z 94449AF39DABD49526A09AE19047190EC2D165E8 /Library/Keychains/System.keychain || true
+          fi
           status=0
           if [ -f "$keychain" ]; then security delete-keychain "$keychain" || status=1; fi
           rm -f "$RUNNER_TEMP/aster-signing.p12" "$certificate"
