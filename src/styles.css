@@ -97,3 +97,16 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .mail-attachment .attachment-open{display:block;padding:0;text-align:left;font:inherit;font-weight:600;color:var(--text);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;max-width:100%}.mail-attachment .attachment-open:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 #connection.connection{display:flex;align-items:center;justify-content:center;gap:7px;flex:none;font-size:10px;white-space:nowrap;min-width:16px;padding:5px;color:var(--muted)}#connection[data-state="reconnecting"] i{background:#c48d30}#connection[data-state="auth-required"] i{background:#bd6464}#connection[data-state="disconnected"] i{background:#9291a7}#connection[data-state="connected"] i{background:#68b88e}@media(max-width:900px){#connection.connection span{display:none}}
+
+/* Short windows use a single row of labelled icons; narrow windows use a rail. */
+@media(max-height:650px) {
+  .navigation-sidebar:not(.sidebar-collapsed) .bottom-dock .view-switcher { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 2px; padding: 3px; }
+  .navigation-sidebar .bottom-dock .view-tab { min-height: 34px; padding: 7px; }
+  .navigation-sidebar .bottom-dock .view-tab span { display: none; }
+  .navigation-sidebar #sidebar-dock { padding: 7px 0; }
+}
+@media(max-width:900px) {
+  .navigation-sidebar.sidebar-collapsed .bottom-dock .view-tab { width: 44px; min-height: 32px; padding: 6px; }
+  .navigation-sidebar.sidebar-collapsed #sidebar-dock { padding: 6px 0; }
+  .sidebar-toggle { width: 16px; height: 34px; left: -8px; }
+}

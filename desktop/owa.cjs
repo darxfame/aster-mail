@@ -93,7 +93,7 @@ class OWAClient {
       throw Object.assign(new Error(tr('Сессия истекла. Соединение восстанавливается; операция не повторялась.')), { connectionError: true });
     }
     if ([408, 429, 502, 503, 504].includes(response.status)) throw Object.assign(new Error(tr('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.')), { connectionError: true });
-    if (response.status >= 400) throw new Error(`OWA ${action}: HTTP ${response.status}`);
+    if (response.status >= 400) throw Object.assign(new Error(`OWA ${action}: HTTP ${response.status}`), { status: response.status });
     let json;
     try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch {
       if (/^\s*(?:<!doctype|<html|<form)/i.test(response.text)) {

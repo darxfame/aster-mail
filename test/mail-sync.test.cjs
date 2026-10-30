@@ -58,6 +58,6 @@ test('recipient roles stay separate and names are escaped with contact buttons b
   const context=vm.createContext({ tr: value => value,esc:value=>String(value).replace(/[<>&"]/g,char=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[char])),avatar:()=>'',icon:()=>''});
   vm.runInContext(source.slice(source.indexOf('function mailRecipientDetails(')),context);
   const html=context.mailRecipientDetails({to:Array.from({length:100},(_,i)=>({name:i===0?'<b>Анна</b>':`Участник ${i}`,email:`person${i}@example.com`})),cc:[{name:'Елена',email:'elena@example.com'}]});
-  assert.match(html,/<details class="mail-recipients" open><summary>/);
+  assert.match(html,/<details class="mail-recipients"><summary>/);
   assert.match(html,/Кому · 100/); assert.match(html,/Копия · 1/); assert.doesNotMatch(html,/Получатели · 101/); assert.match(html,/&lt;b&gt;Анна&lt;\/b&gt;/); assert.match(html,/class="mail-recipient-list"/); assert.match(html,/data-group="cc" data-index="0"/);
 });

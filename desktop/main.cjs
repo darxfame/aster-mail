@@ -5,6 +5,8 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { ComposeWindows } = require('./compose-windows.cjs');
+let composeWindows;
 const { Updates } = require('./updates.cjs');
 const { AttachmentFiles, safeName } = require('./attachment-files.cjs');
 let attachmentFiles;
@@ -188,6 +190,7 @@ async function pollNotifications() {
 
 
 function retireAccount() {
+  composeWindows?.destroyAll();
   const previous = connection;
   connection = null; client = null; account = null;
   if (previous) {
@@ -205,6 +208,7 @@ async function connect(data, remember, restoring = false) {
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error(tr('Укажите логин и пароль'));
   const credentials = { server: normalizeServer(data.server), username: data.username.trim(), password: data.password };
   if (remember) localStore.requireEncryption();
+  if (composeWindows && !composeWindows.confirmAll()) throw new Error(tr('Закрытие писем отменено'));
   const epoch = ++accountEpoch;
   const retired = retireAccount();
   const current = { account: credentials, controller: new AbortController(),
@@ -268,9 +272,10 @@ app.whenReady().then(async () => {
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
   ]));
+  composeWindows = new ComposeWindows({ BrowserWindow, dialog, page, tr });
   createWindow = () => {
     const { width, height } = screen.getPrimaryDisplay().workArea;
-    window = new BrowserWindow({ width: Math.min(1440, width), height: Math.min(940, height), minWidth: Math.min(1080, width), minHeight: Math.min(700, height), title: 'Aster Mail',
+    window = new BrowserWindow({ width: Math.min(1440, width), height: Math.min(940, height), minWidth: Math.min(760, width), minHeight: Math.min(540, height), title: 'Aster Mail',
       backgroundColor: '#f7f8fb', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 20 },
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
@@ -284,12 +289,36 @@ app.whenReady().then(async () => {
     });
   };
   ipcMain.on('aster-unsaved-changes', (event, value) => {
+    const composeEntry = composeWindows.entries.get(event.sender);
+    if (composeEntry && event.senderFrame === event.sender.mainFrame && typeof value === 'boolean') composeEntry.dirty = value;
     if (event.sender === window?.webContents && event.senderFrame === window.webContents.mainFrame && typeof value === 'boolean') unsavedChanges = value;
   });
   ipcMain.handle('aster', async (event, operation, data) => {
+    let composeEntry, composeWrite = false;
     try {
-      if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
+      if (composeWindows.entries.has(event.sender)) composeEntry = composeWindows.authorize(event.sender, event.senderFrame, operation, data?.sessionId);
+      else if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
       validate(operation, data);
+      if (composeEntry) {
+        if (!composeEntry.demo && (!client || client.syncId !== composeEntry.sessionId)) throw new Error(tr('Сессия аккаунта завершена'));
+        if (operation === 'composeContext') return { ok: true, value: composeEntry.context };
+        if (operation === 'composeReady') { composeEntry.ready(); return { ok: true, value: true }; }
+        if (operation === 'closeCompose') { if (!composeEntry.busy) composeEntry.window.close(); return { ok: true, value: true }; }
+        if (['send', 'draft'].includes(operation) || operation === 'editDraft' && data.action !== 'read') {
+          if (composeEntry.busy) throw new Error('Compose operation in progress');
+          composeEntry.busy = true; composeWrite = true;
+        }
+      }
+      if (operation === 'detachCompose') {
+        if (!data.snapshot || !['new', 'reply', 'reply-all', 'forward', 'draft'].includes(data.snapshot.mode) || !data.snapshot.data || !Array.isArray(data.snapshot.files)) throw new Error('Invalid compose context');
+        if (!data.demo && (!client || data.sessionId !== client.syncId)) throw new Error(tr('Сессия аккаунта завершена'));
+        return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences: data.preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
+      }
+      if (operation === 'setInterfaceScale') {
+        if (typeof data.scale !== 'number' || !Number.isFinite(data.scale) || data.scale < 0.8 || data.scale > 1.5) throw new Error('Invalid interface scale');
+        window.webContents.setZoomFactor(data.scale);
+        return { ok: true, value: data.scale };
+      }
       if (operation === 'setLanguage') {
         if (!['ru', 'en'].includes(data.language)) throw new Error('Invalid language');
         i18n.setLanguage(data.language); updateTrayMenu(); refreshWidget();
@@ -343,6 +372,7 @@ app.whenReady().then(async () => {
       }
       if (operation === 'disconnect') {
         if (client && data.sessionId !== client.syncId) throw new Error(tr('Сессия аккаунта завершена'));
+        if (!composeWindows.confirmAll()) throw new Error(tr('Закрытие писем отменено'));
         ++accountEpoch;
         const retired = retireAccount();
         const results = await Promise.allSettled([retired, localStore.clear(), window.webContents.session.clearStorageData({ storages: ['localstorage', 'indexdb', 'cachestorage'] })]);
@@ -394,9 +424,11 @@ app.whenReady().then(async () => {
       if (!methods.has(operation)) throw new Error('Unknown operation');
       const value = await activeClient[operation](data);
       if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+      if (composeEntry && ['send', 'draft', 'editDraft'].includes(operation) && window && !window.isDestroyed()) window.webContents.send('aster-compose-saved');
       if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
       return { ok: true, value };
     } catch (error) { return { ok: false, error: error.message, connectionError: error.connectionError === true }; }
+    finally { if (composeWrite) composeEntry.busy = false; }
   });
   createWindow();
   ipcMain.handle('aster-widget', async (event, operation, data) => {
@@ -435,12 +467,12 @@ app.whenReady().then(async () => {
   app.on('activate', () => { reveal(); void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
 });
 app.on('before-quit', event => {
-  if (!confirmDiscardChanges()) { event.preventDefault(); return; }
+  if (!confirmDiscardChanges() || composeWindows && !composeWindows.confirmAll()) { event.preventDefault(); return; }
   try { attachmentFiles?.clearSync(); } catch {
     const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Временные вложения не удалены'), detail: tr('Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.'), buttons: [tr('Остаться'), tr('Выйти')], defaultId: 0, cancelId: 0 });
     if (answer !== 1) { event.preventDefault(); return; }
   }
-  quitting = true; connection?.controller.abort();
+  quitting = true; composeWindows?.destroyAll(); connection?.controller.abort();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => { try { attachmentFiles?.clearSync(); } catch { /* The user has acknowledged locked copies before quitting; retry at startup. */ } });

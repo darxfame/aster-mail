@@ -11,7 +11,7 @@ test('resumed compose updates the same draft, preserves untouched original HTML 
     let closed = false, refreshed = false;
     const draft = { id: 'draft', changeKey: 'version', html: '<p>Original <img src="cid:logo@example.com"></p>', text: '', attachments: [{ size: 8 }] };
     const data = { to: '', cc: '', bcc: 'anna@example.com', subject: 'Resume' };
-    const context = vm.createContext({ tr: value => value,
+    const context = vm.createContext({ isComposeWindow: false, setModalDirty() {}, tr: value => value,
       composeData: { draftReference: { id: draft.id, changeKey: draft.changeKey }, draftOriginal: draft, draftInitial: '<p>Sanitized initial</p>', editor: { read: () => ({ body: 'Original', bodyHtml: '<p>Sanitized initial</p>' }) }, attachments: [], signature: null },
       state: { demo: false, folder: 'inbox', folders: [] },
       $: selector => selector === '#compose-form' ? { reportValidity: () => true } : { close: () => { closed = true; } },
@@ -36,7 +36,7 @@ test('resumed compose updates the same draft, preserves untouched original HTML 
 test('edited draft sends edited HTML and an uncertain write leaves the compose dialog open', async () => {
   const failure = new Error('Result unknown');
   let payload;
-  const context = vm.createContext({ tr: value => value,
+  const context = vm.createContext({ isComposeWindow: false, setModalDirty() {}, tr: value => value,
     composeData: { draftReference: { id: 'draft', changeKey: 'version' }, draftOriginal: { html: 'original', attachments: [] }, draftInitial: 'initial', editor: { read: () => ({ body: 'Edited', bodyHtml: '<b>Edited</b>' }) }, attachments: [] },
     state: { demo: false }, $: () => ({ reportValidity: () => true, close() { assert.fail('Failed compose must remain open'); } }),
     submitForm: (_form, operation) => operation({ to: 'anna@example.com', subject: 'Edited' }),
@@ -59,7 +59,7 @@ test('draft editor retains only inert CID images and never mounts remote or data
   const editorSource = fs.readFileSync(require.resolve('../src/mail-editor.js'), 'utf8');
   const removed = [];
   const images = ['cid:logo@example.com', 'https://tracker.example.com/pixel', 'data:image/svg+xml,unsafe', 'file:///secret', 'cid:invalid content'];
-  const context = vm.createContext({ tr: value => value,
+  const context = vm.createContext({ isComposeWindow: false, setModalDirty() {}, tr: value => value,
     preserveCidImages: true,
     root: { asterRichContent: { sanitize(_value, options) {
       assert.equal(options.images, true);
@@ -76,7 +76,7 @@ test('late draft and signature reads cannot replace a newer composer, dialog or 
     let finish;
     const state = { account: {}, demo: false, generation: 1, folder: 'inbox', folders: [], selected: { id: 'draft' } };
     const originalCompose = { editor: 'newer unsaved text' };
-    const context = vm.createContext({ tr: value => value,
+    const context = vm.createContext({ isComposeWindow: false, setModalDirty() {}, tr: value => value,
       modalBusy: false, composeSequence: 0, modalSequence: 0, composeData: originalCompose, state,
       ready: () => true, isDraftMessage: () => true, ref: value => ({ id: value.id }), syncSignature: true,
       getServerSignature: () => new Promise(resolve => { finish = resolve; }),
@@ -99,7 +99,7 @@ test('pending submissions block keyboard edits and report failures in the visibl
     setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key),
     querySelector(selector) { assert.equal(selector, '.form-error[role="alert"]'); return errorBox; },
   };
-  const context = vm.createContext({ tr: value => value,
+  const context = vm.createContext({ isComposeWindow: false, setModalDirty() {}, tr: value => value,
     modalBusy: false, document: { activeElement: {} },
     FormData: class { *[Symbol.iterator]() { yield ['to', 'anna@example.com']; } },
   });

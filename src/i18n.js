@@ -1,6 +1,13 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Дополнительные действия": "More actions",
+    "В отдельное окно": "Open in separate window",
+    "Этот черновик уже открыт в отдельном окне": "This draft is already open in a separate window",
+    "Не удалось открыть окно письма": "Could not open the message window",
+    "Окно письма закрыто": "Message window closed",
+    "Закрытие писем отменено": "Closing messages was cancelled",
+    "Не удалось прочитать вложение": "Could not read the attachment",
     "МБ": "MB",
     "КБ": "KB",
     "Входящие": "Inbox",
@@ -879,6 +886,17 @@
   english["Кнопка «Обновить приложение» скачает, проверит и откроет установщик. Завершите установку по его инструкциям; приложение не закрывается автоматически."] = "Update downloads, verifies and opens the installer. Follow its instructions to finish installing; the app will not quit automatically.";
   english["Позже"] = "Later";
   english["Обновить приложение"] = "Update app";
+  english["Ширина списка писем"] = "Message list width";
+  english["Выберите масштаб от 80% до 150%"] = "Choose a scale from 80% to 150%";
+  english["Масштаб интерфейса и текста"] = "Interface and text scale";
+  english["Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка."] = "Scaling enlarges text and interface controls. In a narrow window the message opens separately from the list.";
+  english["Справочник"] = "Directory";
+  english["Выбрать из справочника:"] = "Choose from directory:";
+  english["Введите минимум две буквы имени или email для поиска в общем справочнике Exchange."] = "Type at least two letters of a name or email to search the Exchange directory.";
+  english["OWA: неподдерживаемый формат справочника"] = "OWA: unsupported directory format";
+  english["Справочник вернул записи без SMTP-адресов. Уточните поиск или введите email вручную."] = "The directory returned entries without SMTP addresses. Refine your search or enter an email manually.";
+  english["Не удалось выполнить поиск в справочнике OWA:"] = "OWA directory search failed:";
+  english["Поиск в справочнике недоступен:"] = "Directory search unavailable:";
   let language = 'ru';
   const normalize = value => value === 'en' ? 'en' : 'ru';
   function text(value) {

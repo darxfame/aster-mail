@@ -44,7 +44,7 @@ See the [detailed limitations (Russian)](docs/USER-GUIDE.md#ограничени
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,
-  server drafts, and attachments opened in their system application.
+  independent compose windows, server drafts, and attachments opened in their system application.
 - **Calendar:** day and week views, invitations, colleague availability, and
   suggestions for a common meeting time. On macOS, a menu-bar meeting widget
   shows your next meeting and a countdown.

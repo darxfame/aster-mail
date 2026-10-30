@@ -31,6 +31,21 @@
   const api = { token, replace, matches, reply };
   if (typeof module !== 'undefined') { module.exports = api; return; }
   root.asterRecipients = api;
+  api.decorate = form => {
+    for (const name of ['to', 'cc', 'bcc']) {
+      const input = form.elements[name]; if (!input) continue;
+      setup(input);
+      const label = input.closest('.field').querySelector('span');
+      input.setAttribute('aria-label', label.textContent);
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'recipient-directory-button';
+      button.textContent = tr('Справочник'); button.setAttribute('aria-label', `${tr('Выбрать из справочника:')} ${label.textContent}`);
+      button.addEventListener('click', event => {
+        event.preventDefault(); input.focus(); search(input);
+        if (token(input.value, input.selectionStart ?? input.value.length).query.length < 2) show(input, [], tr('Введите минимум две буквы имени или email для поиска в общем справочнике Exchange.'));
+      });
+      label.append(button);
+    }
+  };
   const inputs = new WeakMap(); let nextId = 0;
   const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#meeting-message-form input[name="to"],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"]') && !input.disabled;
   function setup(input) {
@@ -40,6 +55,7 @@
     input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false'); input.setAttribute('aria-controls', box.id); input.autocomplete = 'off';
     const context = { box, generation: 0, options: [], active: -1, timer: null }; inputs.set(input, context);
     input.addEventListener('blur', () => hide(input));
+    input.addEventListener('click', () => search(input));
     box.addEventListener('pointerdown', event => { const option = event.target.closest('[role="option"]'); if (option) { event.preventDefault(); choose(input, Number(option.dataset.index)); } });
     return context;
   }
@@ -63,12 +79,12 @@
     const context = setup(input); hide(input);
     const cursor = input.selectionStart ?? input.value.length, current = token(input.value, cursor), query = current.query;
     if (query.length < 2 || query.length > 254) return;
-    const excluded = [input.value.slice(0, current.start), input.value.slice(current.end), ...['attendees', 'optionalAttendees'].filter(name => name !== input.name).map(name => input.form.elements[name]?.value || '')].join(',').split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
+    const excluded = [input.value.slice(0, current.start), input.value.slice(current.end), ...['attendees', 'optionalAttendees', 'to', 'cc', 'bcc'].filter(name => name !== input.name).map(name => input.form.elements[name]?.value || '')].join(',').split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
     const local = state.demo ? window.asterDemo.contacts : [...colleagues(), ...state.contacts];
     const found = matches(local, query, excluded); show(input, found, tr('Поиск в каталоге…'));
     const generation = context.generation, fingerprint = input.value, account = `${state.demo}|${state.account?.server}|${state.account?.username}`;
     context.timer = setTimeout(async () => {
-      const current = () => input.isConnected && document.activeElement === input && context.generation === generation && input.value === fingerprint && account === `${state.demo}|${state.account?.server}|${state.account?.username}`;
+      const current = () => input.isConnected && document.activeElement === input && context.generation === generation && input.value === fingerprint && input.selectionStart === cursor && account === `${state.demo}|${state.account?.server}|${state.account?.username}`;
       try {
         const result = state.demo ? { items: matches(window.asterDemo.directory, query) } : await api('contacts', { query });
         if (!current()) return;
@@ -79,6 +95,9 @@
   }
   document.addEventListener('focusin', event => { if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target); });
   document.addEventListener('input', event => { if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target); });
+  document.addEventListener('keyup', event => {
+    if (event.target instanceof HTMLInputElement && eligible(event.target) && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) search(event.target);
+  });
   document.addEventListener('keydown', event => {
     const input = event.target, context = inputs.get(input); if (!context || context.box.hidden) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hide(input); return; }

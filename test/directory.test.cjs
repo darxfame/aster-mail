@@ -8,17 +8,17 @@ const response = (code, inner = '') => `<Envelope><ResolveNamesResponse><Respons
 const person = (name, email, routing = 'SMTP', extra = '') => `<Resolution><Mailbox><Name>${name}</Name><EmailAddress>${email}</EmailAddress><RoutingType>${routing}</RoutingType></Mailbox>${extra}</Resolution>`;
 function client(xml) {
   const calls = [];
-  const instance = new OWAClient(account, async (url, options) => { calls.push({ url, options }); return { status: 200, text: xml }; }, async () => 'canary'); instance.canary = 'canary';
+  const instance = new OWAClient(account, async (url, options) => { calls.push({ url, options }); return { status: 200, text: url.includes('/owa/') ? JSON.stringify({ Body: { ResponseCode: 'ErrorInvalidOperation' } }) : xml }; }, async () => 'canary'); instance.canary = 'canary';
   return { instance, calls };
 }
 test('meeting recipient lookup searches Active Directory even with no saved contacts', async () => {
   const { instance, calls } = client(response('NoError', `<ResolutionSet IncludesLastItemInRange="true">${person('Ирина Новикова', 'irina@example.com')}</ResolutionSet>`));
   const result = await instance.contacts({ query: 'Новик' });
   assert.equal(result.items[0].name, 'Ирина Новикова'); assert.equal(result.items[0].source, 'directory');
-  assert.match(calls[0].url, /\/EWS\/Exchange.asmx$/); assert.match(calls[0].options.headers.SOAPAction, /ResolveNames/);
-  assert.match(calls[0].options.body, /SearchScope="ActiveDirectoryContacts"/);
-  assert.match(calls[0].options.body, /<m:UnresolvedEntry>Новик<\/m:UnresolvedEntry>/);
-  assert.equal(calls.length, 1);
+  assert.match(calls[1].url, /\/EWS\/Exchange.asmx$/); assert.match(calls[1].options.headers.SOAPAction, /ResolveNames/);
+  assert.match(calls[1].options.body, /SearchScope="ActiveDirectoryContacts"/);
+  assert.match(calls[1].options.body, /<m:UnresolvedEntry>Новик<\/m:UnresolvedEntry>/);
+  assert.equal(calls.length, 2); assert.equal(JSON.parse(calls[0].options.body).Body.ParentFolderId.BaseFolderId.Id, 'directory');
 });
 test('multiple ambiguous names are normal suggestions, zero matches are an empty result', async () => {
   const xml = response('ErrorNameResolutionMultipleResults', `<ResolutionSet IncludesLastItemInRange="false">${person('Ирина', 'irina@example.com')}${person('Ирина Другая', 'other@example.com')}</ResolutionSet>`);
@@ -36,7 +36,7 @@ test('directory failures keep the actual cause, and invalid queries never reach 
   await assert.rejects(client(response('ErrorAccessDenied')).instance.contacts({ query: 'Ирина' }), /EWS ResolveNames.*ErrorAccessDenied/);
   const fake = client(response('NoError'));
   await assert.rejects(fake.instance.contacts({ query: 'a' })); assert.equal(fake.calls.length, 0);
-  const escaped = client(response('ErrorNameResolutionNoResults')); await escaped.instance.contacts({ query: 'A & B' }); assert.match(escaped.calls[0].options.body, /A &amp; B/);
+  const escaped = client(response('ErrorNameResolutionNoResults')); await escaped.instance.contacts({ query: 'A & B' }); assert.match(escaped.calls[1].options.body, /A &amp; B/);
 });
 test('demo can suggest a GAL-only person without adding them to personal contacts', () => {
   const fs = require('node:fs'), vm = require('node:vm');
@@ -45,4 +45,35 @@ test('demo can suggest a GAL-only person without adding them to personal contact
   const demo = context.window.asterDemo;
   assert.equal(demo.contacts.some(person => person.email === 'irina.novikova@example.com'), false);
   assert.equal(demo.directory.some(person => person.email === 'irina.novikova@example.com'), true);
+});
+test('OWA FindPeople queries the Exchange directory without any EWS request', async () => {
+  const calls = [];
+  const instance = new OWAClient(account, async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return { status: 200, text: JSON.stringify({ Body: { ResultSet: [{ DisplayName: 'Fictional colleague', EmailAddress: { EmailAddress: 'colleague@example.com', RoutingType: 'SMTP' } }], TotalNumberOfPeopleInView: 1 } }) };
+  }, async () => 'canary'); instance.canary = 'canary';
+  const result = await instance.contacts({ query: 'colleague' });
+  assert.equal(result.provider, 'owa'); assert.equal(result.items[0].email, 'colleague@example.com');
+  assert.equal(calls.length, 1); assert.match(calls[0].url, /owa\/service.svc/);
+  assert.equal(calls[0].body.Body.ParentFolderId.BaseFolderId.Id, 'directory');
+  assert.equal(calls[0].body.Body.QueryString, 'colleague');
+  assert.equal(calls[0].body.Body.ShouldResolveOneOffEmailAddress, false);
+  assert.equal(calls[0].body.Body.IndexedPageItemView.MaxEntriesReturned, 20);
+});
+test('OWA permission and network errors remain visible and never trigger an EWS fallback', async () => {
+  for (const network of [false, true]) {
+    let calls = 0;
+    const instance = new OWAClient(account, async () => {
+      calls++;
+      return network ? { status: 503, text: '' } : { status: 200, text: JSON.stringify({ Body: { ResponseCode: 'ErrorAccessDenied' } }) };
+    }, async () => 'canary'); instance.canary = 'canary';
+    await assert.rejects(instance.contacts({ query: 'fictional' }), error => network ? error.connectionError === true : /ErrorAccessDenied/.test(error.message));
+    assert.equal(calls, 1);
+  }
+});
+test('OWA personas convert explicit SMTP alternatives, deduplicate and reject unresolved EX names', () => {
+  const { normalizePeople } = require('../desktop/directory.cjs');
+  const result = normalizePeople({ ResultSet: [{ DisplayName: 'Fictional', EmailAddresses: [{ RoutingType: 'EX', EmailAddress: '/o=fictional/cn=person', OriginalDisplayName: 'person@example.com' }] }, { EmailAddress: { EmailAddress: 'PERSON@example.com' } }], TotalNumberOfPeopleInView: 50 });
+  assert.equal(result.items.length, 1); assert.equal(result.items[0].email, 'person@example.com'); assert.equal(result.truncated, true);
+  assert.throws(() => normalizePeople({ ResultSet: [{ EmailAddress: { RoutingType: 'EX', EmailAddress: '/o=fictional' } }] }), /SMTP/);
 });

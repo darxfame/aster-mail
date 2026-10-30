@@ -39,6 +39,19 @@ function applyLanguage(value) {
 }
 
 const state = { demo: false, account: null, view: 'mail', folder: 'inbox', folders: [], messages: [], selected: null, filter: 'all', query: '', more: false, offset: 0, week: new Date(), events: [], contacts: [], generation: 0, signature: localPreferences.getItem('aster-signature') || '', theme: localPreferences.getItem('aster-theme') || 'light' };
+const isComposeWindow = window.location.hash === '#compose';
+let interfaceScale = 1;
+async function applyInterfaceScale(value, save = true) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale) || scale < 0.8 || scale > 1.5) throw new Error(tr('Выберите масштаб от 80% до 150%'));
+  if (window.aster) await api('setInterfaceScale', { scale });
+  else {
+    document.documentElement.style.zoom = String(scale);
+    document.querySelector('.app-shell').style.height = `${100 / scale}vh`;
+  }
+  interfaceScale = scale;
+  if (save) localPreferences.setItem('aster-interface-scale', String(scale));
+}
 let toastTimer, composeData, modalBusy = false;
 let messageOpenSequence = 0;
 let composeSequence = 0, modalSequence = 0;
@@ -50,6 +63,7 @@ const calendarMode = () => window.asterCalendar.mode(calendarPreference, $('#wor
 const calendarRange = () => window.asterCalendar.range(state.week, calendarMode(), timeZone);
 let syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
 let serverSignature = null;
+let compactSidebarExpanded = false, narrowSidebar = window.innerWidth <= 900;
 let sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
 document.body.classList.toggle('desktop', Boolean(window.aster));
 async function getServerSignature() {
@@ -203,7 +217,7 @@ function renderSidebar() {
     button.classList.toggle('active', button.dataset.view === state.view);
     button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
   });
-  const hidden = sidebarCollapsed;
+  const hidden = sidebarCollapsed || window.innerWidth <= 900 && !compactSidebarExpanded;
   document.body.classList.toggle('sidebar-collapsed', hidden);
   const toggle = $('#sidebar-toggle');
   toggle.setAttribute('aria-expanded', String(!hidden));
@@ -274,7 +288,8 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}${tr("» · весь ящик")}`) : tr('Всё важное — на своём месте')}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все письма')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}${tr("» · весь ящик")}`) : tr('Всё важное — на своём месте')}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все письма')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  applyMailListWidth();
   renderMessages();
   if (state.selected) renderReader(); else $('#reader').innerHTML = `<div class="empty">${icon('mail')}<h2>${tr("Место для ваших мыслей")}</h2><p>${tr("Выберите письмо, чтобы прочитать его, или напишите новое.")}</p></div>`;
 }
@@ -387,7 +402,8 @@ async function demoContentImages(html) {
 function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}${tr("К письмам")}</button><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${tr("Избранное")}" aria-label="${tr("Избранное")}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${tr("Важность")}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button><button class="icon-button" data-action="unread" title="${tr("Отметить непрочитанным")}" aria-label="${tr("Отметить непрочитанным")}">${icon('mail')}</button><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? tr('<button class="primary" data-action="edit-draft">Продолжить черновик</button>') : `<button class="secondary" data-action="reply">${icon('reply')}${tr("Ответить")}</button><button class="secondary" data-action="reply-all">${tr("Ответить всем")}</button><button class="secondary" data-action="forward">${tr("Переслать")} ${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}${tr("Картинки: встроенные и с сервера OWA · активное содержимое отключено")}</div><div id="message-body"></div></div></div>`;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}${tr("К письмам")}</button><details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${tr("Избранное")}" aria-label="${tr("Избранное")}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${tr("Важность")}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button><button class="icon-button" data-action="unread" title="${tr("Отметить непрочитанным")}" aria-label="${tr("Отметить непрочитанным")}">${icon('mail')}</button></div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? tr('<button class="primary" data-action="edit-draft">Продолжить черновик</button>') : `<button class="secondary" data-action="reply">${icon('reply')}${tr("Ответить")}</button><button class="secondary" data-action="reply-all">${tr("Ответить всем")}</button><button class="secondary" data-action="forward">${tr("Переслать")} ${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}${tr("Картинки: встроенные и с сервера OWA · активное содержимое отключено")}</div><div id="message-body"></div></div></div>`;
+  applyReaderDensity();
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
       dark: state.theme === 'dark', title: tr('Содержимое письма'),
@@ -533,7 +549,7 @@ function refreshProtocolNote() {
   $('#protocol-note').textContent = tr('Разрешён только HTTPS с доверенным сертификатом. Можно указать домен, порт и /owa/.');
 }
 
-async function compose(mode = 'new', contact = null) {
+async function compose(mode = 'new', contact = null, snapshot = null) {
   if (modalBusy) return;
   const request = ++composeSequence, generation = state.generation, modalVersion = modalSequence;
   if (!ready()) return connectModal();
@@ -542,26 +558,28 @@ async function compose(mode = 'new', contact = null) {
   const current = () => request === composeSequence && generation === state.generation && modalVersion === modalSequence && composeAccount === state.account && composeDemo === state.demo && !modalBusy;
   if (draftMode) {
     if (!m || !isDraftMessage(m)) throw new Error(tr('Выберите черновик.'));
-    m = state.demo ? structuredClone(m) : await api('editDraft', { action: 'read', ref: ref(m) });
+    m = snapshot ? m : state.demo ? structuredClone(m) : await api('editDraft', { action: 'read', ref: ref(m) });
   }
   if (!current()) return;
   const sent = state.folder === 'sentitems' || state.folders.some(folder => folder.wellKnown === 'sentitems' && (folder.id === state.folder || folder.id === m?.parentId));
-  const source = !draftMode && syncSignature ? await getServerSignature() : null;
+  const source = snapshot ? snapshot.data.signature : !draftMode && syncSignature ? await getServerSignature() : null;
   const useServer = source && (mode === 'new' ? source.autoAddSignature : source.autoAddSignatureOnReply);
   const signatureText = draftMode || source ? '' : state.signature;
   if (!current()) return;
   if (draftMode && [...(m.to || []), ...(m.cc || []), ...(m.bcc || [])].some(person => !person.email)) throw new Error(tr('Черновик содержит получателя без SMTP-адреса. Откройте его в OWA, чтобы не потерять адресата.'));
   let recipients = draftMode ? { to: m.to.map(person => person.email).join(', '), cc: m.cc.map(person => person.email).join(', '), bcc: (m.bcc || []).map(person => person.email).join(', ') } : { to: contact?.email || '', cc: '', bcc: '' };
-  if (mode.startsWith('reply')) {
+  if (!snapshot && mode.startsWith('reply')) {
     const identity = state.demo ? { emails: ['you@example.com'] } : await api('identity');
     if (mode === 'reply-all' && !sent && !identity.emails.length) throw new Error(tr('OWA не вернул ваш почтовый адрес. Для «Ответить всем» подключитесь с основным email вместо DOMAIN\\login.'));
     recipients = window.asterRecipients.reply(m, identity.emails, mode === 'reply-all', sent);
   }
   if (!current()) return;
   composeData = { kind: draftMode ? 'new' : mode, reference: !draftMode && mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? source : null, draftReference: draftMode ? ref(m) : null, draftOriginal: draftMode ? m : null };
+  if (snapshot) { composeData = { ...snapshot.data, attachments: snapshot.files.map(file => new File([Uint8Array.from(atob(file.content), c => c.charCodeAt(0))], file.name, { type: file.type })) }; recipients = snapshot.fields; }
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
   modal(draftMode ? tr('Продолжить черновик') : mode === 'forward' ? tr('Переслать письмо') : mode.startsWith('reply') ? tr('Ответить') : tr('Новое письмо'), state.demo ? tr('Деморежим: письмо не будет отправлено на сервер.') : `${tr("Отправка через корпоративный Exchange по")} ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', tr('Кому · адреса через запятую'), recipients.to)}${field('cc', tr('Копия'), recipients.cc)}${field('bcc', tr('Скрытая копия'), recipients.bcc || '')}${field('subject', tr('Тема'), draftMode ? m.subject : mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}<div class="compose-message-area"><div class="compose-editor-field" id="compose-editor-field"></div>${!draftMode && mode !== 'new' && m ? `<details class="compose-history" open><summary>${tr("Предыдущая переписка ·")} ${esc(m.from.name || m.from.email)}</summary><button type="button" class="secondary" id="edit-history">${tr("Редактировать")}</button><p class="form-note">${tr("При редактировании сохраняются текст и форматирование; изображения из цитаты не переносятся.")}</p><div id="compose-history-body"></div></details>` : ''}</div>${useServer ? tr('<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>') : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="${tr("Прикрепить файлы")}"><span>${tr("Или перетащите файлы в окно письма")}</span></label><div id="picked-files" class="picked-files"></div><p class="form-note">${tr("Вложения до 20 МБ суммарно. Предыдущая переписка будет включена в письмо; пересылка сохраняет исходные вложения.")}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">${tr("Сохранить черновик")}</button><button class="primary" type="submit">${icon('send')}${tr("Отправить")}</button></div></form>`);
   $('#modal').classList.add('compose-dialog');
+  window.asterRecipients.decorate($('#compose-form'));
   const expand = document.createElement('button');
   expand.type = 'button'; expand.className = 'secondary'; expand.textContent = tr('Развернуть окно');
   expand.setAttribute('aria-pressed', 'false');
@@ -571,6 +589,12 @@ async function compose(mode = 'new', contact = null) {
     expand.textContent = expanded ? tr('Свернуть окно') : tr('Развернуть окно');
   });
   $('#modal .modal-header').insertBefore(expand, $('#modal .modal-header > button'));
+  if (window.aster && !isComposeWindow) {
+    const detach = document.createElement('button');
+    detach.type = 'button'; detach.className = 'secondary'; detach.textContent = tr('В отдельное окно');
+    detach.addEventListener('click', () => { void detachCompose(mode); });
+    expand.before(detach);
+  }
   const dialog = $('#modal');
   dialog.ondragover = event => {
     if (![...event.dataTransfer.types].includes('Files')) return;
@@ -609,6 +633,15 @@ async function compose(mode = 'new', contact = null) {
       event.currentTarget.hidden = true;
     });
 
+  }
+  if (snapshot) {
+    for (const name of ['to', 'cc', 'bcc', 'subject']) $('#compose-form').elements[name].value = snapshot.fields[name] || '';
+    composeData.editor = window.asterMailEditor.mount($('#compose-editor-field'), '', { html: snapshot.body.bodyHtml, preserveCidImages: draftMode });
+    if (snapshot.history && $('#edit-history')) {
+      $('#edit-history').click();
+      composeData.historyEditor = window.asterMailEditor.mount($('#compose-history-body'), '', { id: 'compose-history-editor', label: tr('Предыдущая переписка'), html: snapshot.history.bodyHtml });
+    }
+    addComposeFiles([]);
   }
   // File drops inside the script-free preview frame do not bubble to the dialog.
   for (const frame of $('#compose-form').querySelectorAll('iframe')) {
@@ -651,6 +684,8 @@ async function settingsModal() {
     <h3 class="settings-section-title">${tr("Оформление и навигация")}</h3>
     <label class="field"><span>${tr('Язык интерфейса')}</span><select name="language"><option value="ru" ${window.asterI18n.language === 'ru' ? 'selected' : ''}>Русский</option><option value="en" ${window.asterI18n.language === 'en' ? 'selected' : ''}>English</option></select></label>
     <label class="field"><span>${tr("Оформление")}</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>${tr("Светлое")}</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${tr("Тёмное")}</option></select></label>
+    <label class="field"><span>${tr('Масштаб интерфейса и текста')}</span><select name="interfaceScale">${[0.8, 0.9, 1, 1.1, 1.25, 1.5].map(scale => `<option value="${scale}" ${interfaceScale === scale ? 'selected' : ''}>${Math.round(scale * 100)}%</option>`).join('')}</select></label>
+    <p class="form-note">${tr('Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка.')}</p>
     <h3 class="settings-heading">${tr("Дата и время")}</h3>
     <label class="field"><span>${tr("Часовой пояс")}</span><select name="timeZone"><option value="system" ${timeZone === 'system' ? 'selected' : ''}>${tr("Как на компьютере ·")} ${esc(T.zone())}</option>${zones.map(zone => `<option value="${esc(zone)}" ${timeZone === zone ? 'selected' : ''}>${esc(zone.replaceAll('_', ' '))}</option>`).join('')}</select></label>
     <p class="form-note">${tr("Пояс применяется к календарю, письмам, виджету и времени создания встреч. Отсчёт до встречи не зависит от пояса отображения. «Как на компьютере» следует системным настройкам.")}</p>
@@ -758,7 +793,7 @@ async function sendCompose(save) {
     if (state.demo) {
       const addresses = value => (value || '').split(/[,;\n]/).map(email => email.trim()).filter(Boolean).map(email => ({ name: '', email }));
       if (draft) window.asterDemo.messages = window.asterDemo.messages.filter(message => message.id !== draft.id);
-      const storedAttachments = (draft?.attachments || []).concat(attachments.map((attachment, index) => ({ id: `demo-file-${Date.now()}-${index}`, name: attachment.name, size: Math.floor(attachment.content.length * 3 / 4), type: attachment.type, contentId: attachment.contentId || '', inline: attachment.inline === true })));
+      const storedAttachments = (draft?.attachments || (composeData.kind === 'forward' ? state.selected?.attachments : null) || []).concat(attachments.map((attachment, index) => ({ id: `demo-file-${Date.now()}-${index}`, name: attachment.name, size: Math.floor(attachment.content.length * 3 / 4), type: attachment.type, contentId: attachment.contentId || '', inline: attachment.inline === true })));
       window.asterDemo.messages.unshift({
         id: draft?.id || `demo-${Date.now()}`, changeKey: `demo-${Date.now()}`, subject: data.subject || tr('(Без темы)'),
         from: { name: tr('Вы'), email: 'you@example.com' }, to: addresses(data.to), cc: addresses(data.cc), bcc: addresses(data.bcc),
@@ -772,8 +807,9 @@ async function sendCompose(save) {
       if (draftReference) await api('editDraft', { ...data, action: save ? 'save' : 'send', ref: draftReference, attachments });
       else await api(save ? 'draft' : 'send', { ...data, ...outgoing, attachments });
     }
+    setModalDirty(false);
     $('#modal').close(); toast(state.demo ? `${tr("Демо: письмо")} ${save ? tr('сохранено в черновиках') : tr('добавлено в отправленные')}` : save ? tr('Черновик сохранён в Exchange') : tr('Письмо отправлено'));
-    if (composeData.draftReference || ['sentitems', 'drafts'].includes(state.folder) || state.folders.some(folder => ['sentitems', 'drafts'].includes(folder.wellKnown) && folder.id === state.folder)) await loadView();
+    if (!isComposeWindow && (composeData.draftReference || ['sentitems', 'drafts'].includes(state.folder) || state.folders.some(folder => ['sentitems', 'drafts'].includes(folder.wellKnown) && folder.id === state.folder))) await loadView();
   });
 }
 async function handleAction(button) {
@@ -787,7 +823,8 @@ async function handleAction(button) {
   if (action.startsWith('meeting-')) return handleMeetingAction(button);
   if (action === 'back-to-list') { state.selected = null; renderMail(); return; }
   if (action === 'toggle-sidebar') {
-    sidebarCollapsed = !sidebarCollapsed;
+    sidebarCollapsed = !document.body.classList.contains('sidebar-collapsed');
+    compactSidebarExpanded = !sidebarCollapsed && window.innerWidth <= 900;
     localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed));
     renderSidebar(); return;
   }
@@ -974,7 +1011,7 @@ sidebarResize.addEventListener('pointermove', event => {
   if (!sidebarDrag) return;
   const delta = event.clientX - sidebarDrag.x;
   const collapsed = sidebarDrag.collapsed ? delta < 32 : delta <= -32;
-  if (collapsed !== sidebarCollapsed) { sidebarCollapsed = collapsed; renderSidebar(); }
+  if (collapsed !== sidebarCollapsed) { sidebarCollapsed = collapsed; compactSidebarExpanded = !collapsed; renderSidebar(); }
 });
 function finishSidebarDrag(event) {
   if (!sidebarDrag) return;
@@ -987,7 +1024,7 @@ sidebarResize.addEventListener('pointercancel', finishSidebarDrag);
 sidebarResize.addEventListener('lostpointercapture', finishSidebarDrag);
 sidebarResize.addEventListener('keydown', event => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  event.preventDefault(); sidebarCollapsed = ['ArrowLeft', 'Home'].includes(event.key);
+  event.preventDefault(); sidebarCollapsed = ['ArrowLeft', 'Home'].includes(event.key); compactSidebarExpanded = !sidebarCollapsed;
   localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed)); renderSidebar();
 });
 document.addEventListener('input', event => {
@@ -1054,6 +1091,7 @@ document.addEventListener('submit', event => {
       T.zone(next.timeZone);
       notificationPreferences = window.aster ? await api('saveNotifications', next) : next;
       applyLanguage(next.language);
+      await applyInterfaceScale(data.interfaceScale);
       timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);
       miniMonthCursor = null;
       if (data.syncSignature) await getServerSignature();
@@ -1110,15 +1148,25 @@ function applyAccount(value) {
   sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
   serverSignature = null; composeData = null; activeMeeting = null; meetingEdit = null; meetingRequest++;
   moveRuleContext = null; mailDrag = null; mailPeopleChoices = []; contactCardContext = null; state.searchObjects = null;
+  restoreMailListWidth();
+  const savedScale = Number(localPreferences.getItem('aster-interface-scale')) || 1;
+  void applyInterfaceScale(savedScale >= 0.8 && savedScale <= 1.5 ? savedScale : 1, false).catch(showError);
   colleagueData = []; directoryResults = []; directoryRequest++; colleagueRequest++;
   state.query = ''; $('#search').value = ''; renderMailAlerts([]);
   $('#people-search-suggestions')?.replaceChildren();
   document.body.classList.toggle('dark', state.theme === 'dark'); renderSidebar();
 }
 async function boot() {
+  if (isComposeWindow && window.aster) return bootComposeWindow();
   if (window.aster) await api('setLanguage', { language: window.asterI18n.language });
+  installMailLayout();
   renderSidebar(); welcome();
   if (window.aster) {
+    window.aster.onComposeSaved?.(() => {
+      if (!ready() || state.view !== 'mail') return;
+      void refreshMailFolders(state.generation);
+      if (!$('#modal').open && !state.selected && ['sentitems', 'drafts'].includes(state.folder)) void loadView().catch(showError);
+    });
     window.aster.onUpdate(receiveUpdate);
     receiveUpdate(await api('updateState'));
     const savedSettings = await api('notificationSettings');
@@ -1175,7 +1223,7 @@ function confirmDiscardChanges() {
 for (const name of ['input', 'change']) document.addEventListener(name, event => {
   if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form')) setModalDirty(true);
 });
-$('#modal').addEventListener('close', () => { setModalDirty(false); resumeConnectionReads(); });
+$('#modal').addEventListener('close', () => { if ($('#modal').open) return; setModalDirty(false); resumeConnectionReads(); });
 document.addEventListener('click', event => {
   if (event.target.closest('[data-action="planner-slot"]') && $('#event-form')) setModalDirty(true);
   if (!event.target.closest('[data-action="meeting-return"]') || !modalDirty) return;
@@ -1187,6 +1235,8 @@ window.addEventListener('beforeunload', event => {
   event.preventDefault(); event.returnValue = '';
 });
 new ResizeObserver(() => {
+  if (!isComposeWindow && narrowSidebar !== (window.innerWidth <= 900)) { narrowSidebar = window.innerWidth <= 900; compactSidebarExpanded = false; renderSidebar(); }
+  if (state.view === 'mail' && $('#messages')) { applyMailListWidth(); applyReaderDensity(); }
   if (state.view === 'calendar' && ready() && $('#calendar-mode') && calendarMode() !== renderedCalendarMode) void loadView();
 }).observe($('#workspace'));
 setInterval(() => { if (state.view === 'contacts' && ready()) void refreshColleagues(); }, 60000);

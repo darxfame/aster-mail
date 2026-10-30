@@ -121,3 +121,5 @@ Keep credentials out of source, logs, and renderer storage. Preserve TLS checks,
 same-origin authentication, isolated rendering, and the no-retry sending policy.
 Maintain MIT attribution for adapted mac-owa-widget code. Do not import Mustang's
 proprietary modules. Update README limitations when capabilities change.
+
+`desktop/compose-windows.cjs` owns detached editors. Bind each editor to its account session and main frame, restrict its IPC operations, transfer payloads in memory only after readiness acknowledgement, and preserve the source on failure. Confirm dirty editors before account retirement/quit and never close during an active server write. `src/compose-ui.js` transfers sanitized editor snapshots; exclude in-flight image promises from message snapshots.

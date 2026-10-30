@@ -6,7 +6,15 @@ function mailAttachments(message) {
     return `<article class="mail-attachment"><span class="file-extension extension-${type}">${esc(extension)}</span><div><button type="button" class="attachment-open" data-action="open-attachment" data-id="${esc(file.id)}" aria-label="${tr("Открыть вложение:")} ${esc(file.name)}" title="${tr("Открыть в системном приложении")}">${esc(file.name)}</button><small>${bytes(file.size || 0)}</small><button type="button" data-action="attachment" data-id="${esc(file.id)}" data-name="${esc(file.name)}" aria-label="${tr("Сохранить как:")} ${esc(file.name)}">${tr("Сохранить как…")}</button></div></article>`;
   };
   const files = message.attachments;
-  return `<section class="mail-attachments-top attachments-count-${Math.min(files.length, 4)}" aria-label="${tr("Вложения письма")}"><div class="mail-attachment-grid attachment-preview">${files.slice(0, 3).map(card).join('')}</div>${files.length > 1 ? `<details class="attachment-more"><summary><span class="attachment-expand">${tr("Все вложения (")}${files.length})</span><span class="attachment-collapse">${tr("Свернуть вложения")}</span></summary><div class="mail-attachment-grid attachment-rest">${files.slice(1).map(card).join('')}</div></details>` : ''}</section>`;
+  return `<section class="mail-attachments-top attachments-count-${Math.min(files.length, 4)}" aria-label="${tr("Вложения письма")}"><details class="mail-attachments-details" open><summary>${tr("Вложения письма")} · ${files.length}</summary><div class="mail-attachment-grid attachment-preview">${files.slice(0, 3).map(card).join('')}</div>${files.length > 1 ? `<details class="attachment-more"><summary><span class="attachment-expand">${tr("Все вложения (")}${files.length})</span><span class="attachment-collapse">${tr("Свернуть вложения")}</span></summary><div class="mail-attachment-grid attachment-rest">${files.slice(1).map(card).join('')}</div></details>` : ''}</details></section>`;
+}
+function applyReaderDensity() {
+  const compact = window.innerHeight <= 650;
+  for (const details of document.querySelectorAll('.mail-attachments-details,.reader-more-actions')) {
+    if (details.dataset.compact === String(compact)) continue;
+    details.dataset.compact = String(compact);
+    details.open = !compact;
+  }
 }
 function renderSignaturePreview(target, signature) {
   if (!target) return;
@@ -167,7 +175,7 @@ function mailRecipientDetails(message) {
   return `<div class="mail-recipient-groups" aria-label="${tr("Получатели письма")}">${groups.map(([key, label]) => {
     const people = message[key] || [];
     if (!people.length) return key === 'to' ? tr('<div class="recipient-empty">Кому: не указано</div>') : '';
-    return `<details class="mail-recipients" open><summary><span>${label} · ${people.length}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="${tr("Открыть контакт:")} ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || tr('Участник'))}</strong><small>${esc(person.email || tr('Адрес не указан'))}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
+    return `<details class="mail-recipients"><summary><span>${label} · ${people.length}</span><span class="recipient-summary-names">${esc(people.map(person => person.name || person.email || tr('Участник')).join(', '))}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="${tr("Открыть контакт:")} ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || tr('Участник'))}</strong><small>${esc(person.email || tr('Адрес не указан'))}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
   }).join('')}</div>`;
 }
 let mailPeopleChoices = [];
@@ -261,4 +269,55 @@ async function moreSearchObjects(button) {
     state.searchObjects[kind] = { ...result, items: [...items.values()], expanded: true };
   } catch (error) { if (generation === state.generation && group === state.searchObjects?.[kind]) group.error = error.message; }
   finally { if (generation === state.generation) renderMessages(); }
+}
+
+let preferredMailListWidth = 340, mailListDrag = null;
+function clampMailListWidth(value, workspaceWidth) {
+  const maximum = Math.max(260, Math.min(720, workspaceWidth - 386));
+  return Math.round(Math.max(260, Math.min(maximum, Number.isFinite(Number(value)) ? Number(value) : 340)));
+}
+function applyMailListWidth() {
+  const width = clampMailListWidth(preferredMailListWidth, $('#workspace').clientWidth);
+  document.body.classList.toggle('mail-compact', $('#workspace').clientWidth < 720);
+  document.documentElement.style.setProperty('--mail-list-width', `${width}px`);
+  const separator = document.querySelector('.mail-list-resize');
+  if (separator) {
+    separator.setAttribute('aria-valuenow', String(width));
+    separator.setAttribute('aria-valuemax', String(clampMailListWidth(720, $('#workspace').clientWidth)));
+  }
+}
+function restoreMailListWidth() {
+  preferredMailListWidth = Number(localPreferences.getItem('aster-mail-list-width')) || 340;
+  applyMailListWidth();
+}
+function installMailLayout() {
+document.addEventListener('pointerdown', event => {
+  const separator = event.target.closest('.mail-list-resize');
+  if (!separator || event.button !== 0 || $('#modal').open) return;
+  mailListDrag = { separator, pointer: event.pointerId, x: event.clientX, width: separator.previousElementSibling.clientWidth, coordinateScale: window.aster ? 1 : interfaceScale, preference: preferredMailListWidth, account: state.account, generation: state.generation };
+  separator.setPointerCapture(event.pointerId); event.preventDefault();
+  document.body.classList.add('mail-list-dragging');
+});
+document.addEventListener('pointermove', event => {
+  if (!mailListDrag || mailListDrag.pointer !== event.pointerId || mailListDrag.generation !== state.generation || mailListDrag.account !== state.account) return;
+  preferredMailListWidth = clampMailListWidth(mailListDrag.width + (event.clientX - mailListDrag.x) / mailListDrag.coordinateScale, $('#workspace').clientWidth);
+  applyMailListWidth();
+});
+function finishMailListDrag(event) {
+  if (!mailListDrag || mailListDrag.pointer !== event.pointerId) return;
+  const drag = mailListDrag; mailListDrag = null; document.body.classList.remove('mail-list-dragging');
+  if (drag.account !== state.account || drag.generation !== state.generation) return;
+  if (event.type !== 'pointerup') preferredMailListWidth = drag.preference;
+  else localPreferences.setItem('aster-mail-list-width', String(preferredMailListWidth));
+  applyMailListWidth();
+}
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) document.addEventListener(type, finishMailListDrag);
+document.addEventListener('keydown', event => {
+  if (!event.target.matches('.mail-list-resize') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const current = Number(event.target.getAttribute('aria-valuenow')) || 340;
+  preferredMailListWidth = clampMailListWidth(event.key === 'Home' ? 260 : event.key === 'End' ? 720 : current + (event.key === 'ArrowRight' ? 20 : -20), $('#workspace').clientWidth);
+  localPreferences.setItem('aster-mail-list-width', String(preferredMailListWidth)); applyMailListWidth();
+});
+
 }

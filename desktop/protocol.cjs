@@ -55,7 +55,7 @@ function walk(value, predicate, results = []) {
 }
 function checkJSON(json) {
   const failure = walk(json, o => typeof o.ResponseCode === 'string' && o.ResponseCode !== 'NoError')[0];
-  if (failure) throw new Error(`Exchange: ${failure.ResponseCode}`);
+  if (failure) throw Object.assign(new Error(`Exchange: ${failure.ResponseCode}`), { code: failure.ResponseCode });
   if (json?.Body?.ErrorCode || json?.error) throw new Error('OWA returned an application error');
   if (!json || typeof json !== 'object' || (!json.Body && !json.findFolders)) throw new Error('Unexpected OWA response');
   return json;
