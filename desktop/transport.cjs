@@ -17,7 +17,7 @@ function createTransport(net, credentials, accountSession, signal) {
       const cancel = () => { finish(new Error(tr('Сессия аккаунта завершена. Результат начатой операции неизвестен; проверьте OWA перед повтором.'))); req.abort(); };
       signal.addEventListener('abort', cancel, { once: true });
       const interrupted = () => finish(Object.assign(new Error(tr('Соединение прервано. Результат операции неизвестен; проверьте OWA перед повтором.')), { connectionError: true }));
-      req.on('close', () => { if (!settled) interrupted(); });
+      // Electron can emit request close before response; use response errors and the deadline.
       req.on('login', (info, callback) => {
         if (settled || signal.aborted || info.isProxy || info.host !== new URL(origin).hostname || attempts++ > 0) return callback();
         callback(credentials.username, credentials.password);

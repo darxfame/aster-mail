@@ -78,6 +78,7 @@ was identified. Do not reintroduce diagnostic controls or probes unless requeste
 - `npm run preview`: serve the UI on localhost:4173; browser preview supports demo only.
 - `npm run check`: validate JavaScript syntax.
 - `npm test`: run the built-in Node.js test runner.
+- `npm run test:connection`: test form login and the first read through real Electron networking against a fictional loopback server. Run after transport/authentication changes; mocked event emitters alone do not verify Electron event order.
 - `npm run pack:mac`: package an Apple Silicon `.app`.
 - `npm run dist:mac`: produce a macOS arm64 DMG.
 - `npm run dist:win -- --x64`: produce a Windows x64 EXE installer.

@@ -72,16 +72,13 @@ test('network failures are marked for the compact indicator without exposing tra
     return true;
   });
 });
-test('premature close, aborted bodies and short responses fail promptly and do not replay requests', async () => {
-  for (const failure of ['close', 'aborted', 'short']) {
+test('aborted bodies and short responses fail promptly and do not replay requests', async () => {
+  for (const failure of ['aborted', 'short']) {
     const { calls, transport } = setup();
     const pending = transport('https://mail.example.com/owa/');
-    if (failure === 'close') calls[0].req.emit('close');
-    else {
-      const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-length': '100' } });
-      calls[0].req.emit('response', response); response.emit('data', Buffer.from('partial'));
-      response.emit(failure === 'short' ? 'end' : 'aborted');
-    }
+    const partial = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-length': '100' } });
+    calls[0].req.emit('response', partial); partial.emit('data', Buffer.from('partial'));
+    partial.emit(failure === 'short' ? 'end' : 'aborted');
     await assert.rejects(pending, { connectionError: true }); assert.equal(calls.length, 1);
     calls[0].req.emit('login', { host: 'mail.example.com' }, (...credentials) => assert.deepEqual(credentials, []));
     const recovered = transport('https://mail.example.com/owa/');
@@ -89,4 +86,15 @@ test('premature close, aborted bodies and short responses fail promptly and do n
     calls[1].req.emit('response', response); response.emit('data', Buffer.from('OK')); response.emit('end'); calls[1].req.emit('close');
     assert.equal((await recovered).text, 'OK');
   }
+});
+test('Electron request close before response does not reject login or discard the response', async () => {
+  const { calls, transport } = setup();
+  const pending = transport('https://mail.example.com/owa/');
+  const request = calls[0].req;
+  request.emit('finish'); request.emit('close');
+  await Promise.resolve();
+  request.emit('login', { host: 'mail.example.com' }, (...credentials) => assert.deepEqual(credentials, ['alice', 'fictional']));
+  const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-length': '2' } });
+  request.emit('response', response); response.emit('data', Buffer.from('OK')); response.emit('end');
+  assert.equal((await pending).text, 'OK'); assert.equal(calls.length, 1);
 });
