@@ -95,6 +95,17 @@ or linter is configured; avoid introducing tooling without a concrete need.
 
 ## Testing Guidelines
 
+Before modifying any existing algorithm, inspect its callers, current contracts,
+normal success paths, error handling and recovery behavior. Explicitly check
+whether the proposed fix could introduce a new defect in previously working
+logic. Reproduce the reported failure and establish the existing behavior before
+editing; after editing, verify both the fix and the affected existing scenarios,
+including edge cases. Add a focused regression check where behavior changes.
+For platform-dependent APIs, validate against the actual runtime: mocks alone
+are insufficient evidence of event ordering or API behavior. Do not consider a
+fix complete merely because the new scenario passes while old paths remain
+unchecked. Report any verification that could not be performed.
+
 Name tests `test/*.test.cjs`. Exercise request shapes, normalization, credential
 boundaries, and failure behavior using fictional data and injected transport.
 Never run sending or invitation tests against a real mailbox. No coverage
