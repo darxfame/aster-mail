@@ -250,7 +250,15 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .icon-button { min-width:36px; min-height:36px; }
 .primary,.secondary { min-height:36px; font-size:13px; line-height:1.4; }
 .sidebar .folder { font-size:13px; }
-.bottom-dock .view-tab,.navigation-sidebar .bottom-dock .view-tab { font-size:12px; min-height:44px; }
+.bottom-dock .view-tab { font-size:12px; min-height:44px; }
+/* Keep section navigation compact independently of text scaling elsewhere. */
+.navigation-sidebar .bottom-dock .view-switcher { display:flex; width:100%; padding:0; gap:4px; background:none; border:0; }
+.navigation-sidebar .bottom-dock .view-tab { flex:1; width:auto; min-width:0; height:32px; min-height:32px; padding:6px; justify-content:center; border-radius:7px; }
+.navigation-sidebar .bottom-dock .view-tab span { display:none; }
+.navigation-sidebar .bottom-dock .view-tab svg { width:18px; height:18px; }
+.navigation-sidebar #sidebar-dock { padding:8px 0; }
+.navigation-sidebar.sidebar-collapsed .bottom-dock .view-switcher { flex-direction:column; }
+.navigation-sidebar.sidebar-collapsed .bottom-dock .view-tab { flex:none; width:44px; height:32px; min-height:32px; padding:6px; }
 .bottom-dock .view-tab svg { width:20px; height:20px; }
 .field>span,.form-note,.meeting-properties,.meeting-person small,.meeting-person span,.meeting-status { font-size:12px; line-height:1.55; }
 .field input,.field select,.field textarea { font-size:14px; min-height:36px; }

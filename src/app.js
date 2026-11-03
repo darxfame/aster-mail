@@ -223,6 +223,7 @@ function renderSidebar() {
   document.body.classList.toggle('navigation-sidebar', navigationPlacement === 'sidebar');
   if (navigationPlacement === 'sidebar') $('#sidebar-dock').append(dock);
   else $('.statusbar').prepend(dock);
+  document.querySelectorAll('.view-tab').forEach(button => button.title = button.getAttribute('aria-label') || button.textContent.trim());
   document.querySelectorAll('.view-tab[data-view]').forEach(button => {
     button.classList.toggle('active', button.dataset.view === state.view);
     button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
