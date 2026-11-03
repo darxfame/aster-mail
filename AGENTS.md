@@ -107,6 +107,18 @@ as `Handle expired OWA sessions`. Explain behavior changes and verification in
 pull requests. Include screenshots for UI changes and compatibility limitations
 for protocol changes.
 
+### Version Tags on Main-Branch Pushes
+
+Every push to `main` or `master` must include a new version tag on the final
+commit being pushed. Before pushing, check remote tags, increment the package
+version (patch by default unless another version is requested), synchronize
+`package.json`, `package-lock.json` and displayed fallback versions, and update
+the Russian release notes. Run the required checks, commit the version changes,
+create an annotated `v<version>` tag, then push the branch and that specific tag
+atomically. Verify both remote refs. Never reuse, move or overwrite an existing
+release tag. A request to push to either main branch includes authorization for
+this version/tag workflow and the existing tag-triggered release build.
+
 ### Release Notes
 
 Write release notes in Russian. Include only changes in that release, necessary
