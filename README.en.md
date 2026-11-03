@@ -84,7 +84,7 @@ your operating system may show installation warnings.
   are blocked; permitted image requests use no account cookies or password.
 - Notification text previews are opt-in. Sends and other writes are not retried
   automatically after an uncertain response.
-- Release installers are checked for size and SHA-256 before opening.
+- Release installers are checked for size and SHA-256 before opening. Downloads retry temporary network failures and resume partial files while the app remains running. Pause keeps the partial file; Cancel download deletes it. A slow download has no overall time limit, but two minutes without new data interrupts it. Servers without range support and downloads after an app restart begin from zero.
 
 No Aster intermediary cloud or application usage telemetry. An independent
 security audit is not claimed. See [SECURITY.md (Russian)](SECURITY.md) for
@@ -150,3 +150,36 @@ need an Exchange client.
 
 Release asset downloads are not unique or active users. Application usage
 statistics are not collected.
+
+
+### Attachment previews, conflicts and notification privacy
+
+Compose attachment cards preview validated raster images (5 MB / 16 million pixels),
+plain text (first 100 KB) and PDF. PDF uses an isolated memory-only session with
+outside network requests, navigation and downloads blocked. Other documents open
+in the system application on explicit request. New files, server drafts and forwarded
+attachments work in both main and detached editors; browser demo previews text only.
+
+Invitations and calendar cards check the account's primary calendar using EWS.
+Only a complete result may report a free slot. Tentative conflicts remain separate;
+WorkingElsewhere is treated as available. Checks cover a concrete occurrence,
+not an entire recurring series, and do not change RSVP. Unlinked invitations,
+unknown status, intervals beyond 31 days and incomplete responses remain unknown.
+Private conflicting events do not expose their subjects.
+
+Interface scale supports 80–200%, including detached editors and the tray widget.
+Navigation defaults to the left. Settings → General → Navigation placement also
+offers a bottom bar and saves an explicit choice. Legacy bottom placement resets
+to the left. Narrow calendars automatically show one day; week view remains
+available manually, and the time grid scrolls within the remaining height.
+Reads recover through the existing 15-second background poll after an outage.
+Truncated responses and temporary gateway errors do not permanently reject the
+account; successful polls refresh connection health. Server writes are never replayed.
+Compact tray cards keep Open and Dismiss actions; excess cards expand into a list.
+Presentation mode clears existing alerts, tray tooltips and calendar previews without
+replaying notifications or sounds on exit. Automatic privacy is enabled by default:
+it conservatively hides content while known calling/recording apps or popular browsers
+are running, even when they are not sharing. It checks every two seconds and before
+alerts, and hides on check failure. This checks running applications, not actual capture;
+universal capture detection is not guaranteed. Use manual presentation mode for other
+apps. System notification appearance and stacking remain controlled by the OS.

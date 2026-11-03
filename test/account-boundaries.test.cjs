@@ -7,7 +7,7 @@ const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 test('logout clears renderer corporate data, signatures, drafts, meetings and local preference copies', () => {
   const nodes = { '#search': { value: 'private query' }, '#people-search-suggestions': { replaceChildren() { this.cleared = true; } } };
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
-    applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
+    closeAttachmentPreview() {}, applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
     state: { account: { sessionId: 'old' }, generation: 1, selected: { html: 'private mail' }, messages: ['private'], contacts: ['private'], events: ['private'], signature: 'private' },
     localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },
@@ -58,12 +58,12 @@ test('a superseded login cannot publish a client or credentials after another ac
   }
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
     composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
-    attachmentFiles: { clear: async () => {} },
+    attachmentPreviews: undefined, attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },
     createTransport: (_net, account, session, signal) => Object.assign(() => {}, { account, session, signal }), net: {}, fetchContentImage() {},
     localStore: { saveLoginHint: async (account, guard) => { guard(); hints.push(account.username); }, requireEncryption() {}, load: async (_owner, guard) => { guard(); return {}; }, saveCredentials: async (account, guard) => { guard(); saved.push(account.username); }, removeCredentials: async guard => guard() },
-    mailAlerts: [], publishMailAlerts() {}, NotificationTracker: class {}, preferences: () => ({ preview: false }), refreshWidget() {}, activeNotifications: new Set(), pollNotifications() {},
+    dismissedMeetings: new Set(), refreshPrivacy: async () => {}, mailAlerts: [], publishMailAlerts() {}, NotificationTracker: class {}, preferences: () => ({ preview: false }), refreshWidget() {}, activeNotifications: new Set(), pollNotifications() {},
   });
   vm.runInContext(mainSource.slice(mainSource.indexOf('function retireAccount('), mainSource.indexOf('\nconst methods')), context);
   const first = context.connect({ server: 'https://mail.example.com', username: 'alice', password: 'fictional-A' }, true);

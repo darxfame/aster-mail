@@ -23,7 +23,8 @@ function restoreCalendarScroll(start, mode, previousScroll) {
   const scroll = document.querySelector('.timeline-scroll'); if (!scroll) { calendarScrollKey = null; return; }
   const key = `${start.toISOString()}|${mode}|${timeZone}`;
   const today = [...document.querySelectorAll('.timeline-track')].find(track => Date.now() >= Date.parse(track.dataset.start) && Date.now() < Date.parse(track.dataset.end));
-  scroll.scrollTop = calendarScrollKey === key && previousScroll !== undefined ? previousScroll : today ? Math.max(0, (Date.now() - Date.parse(today.dataset.start)) / 60000 - 90) : 8 * 60;
+  const lookbackMinutes = Math.min(90, scroll.clientHeight / 3);
+  scroll.scrollTop = calendarScrollKey === key && previousScroll !== undefined ? previousScroll : today ? Math.max(0, (Date.now() - Date.parse(today.dataset.start)) / 60000 - lookbackMinutes) : 8 * 60;
   calendarScrollKey = key; updateCurrentTime();
 }
 setInterval(updateCurrentTime, 15000);

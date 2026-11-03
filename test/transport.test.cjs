@@ -72,3 +72,21 @@ test('network failures are marked for the compact indicator without exposing tra
     return true;
   });
 });
+test('premature close, aborted bodies and short responses fail promptly and do not replay requests', async () => {
+  for (const failure of ['close', 'aborted', 'short']) {
+    const { calls, transport } = setup();
+    const pending = transport('https://mail.example.com/owa/');
+    if (failure === 'close') calls[0].req.emit('close');
+    else {
+      const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-length': '100' } });
+      calls[0].req.emit('response', response); response.emit('data', Buffer.from('partial'));
+      response.emit(failure === 'short' ? 'end' : 'aborted');
+    }
+    await assert.rejects(pending, { connectionError: true }); assert.equal(calls.length, 1);
+    calls[0].req.emit('login', { host: 'mail.example.com' }, (...credentials) => assert.deepEqual(credentials, []));
+    const recovered = transport('https://mail.example.com/owa/');
+    const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-length': '2' } });
+    calls[1].req.emit('response', response); response.emit('data', Buffer.from('OK')); response.emit('end'); calls[1].req.emit('close');
+    assert.equal((await recovered).text, 'OK');
+  }
+});

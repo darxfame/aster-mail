@@ -241,3 +241,93 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 }
 
 .meeting-reminder-times{border:1px solid var(--line);border-radius:9px;margin:16px 0;padding:12px 16px;color:var(--text);min-width:0}.meeting-reminder-times legend{font-size:12px;color:var(--muted);padding:0 6px}.meeting-reminder-times>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meeting-reminder-times .checkbox{margin:0;font-size:12px}.meeting-reminder-times:disabled{opacity:.5}
+
+/* Readability follows logical viewport size; never multiply zoom by monitor DPI. */
+:root { font-size:14px; }
+.app-shell { min-height:0; height:100dvh; }
+.workspace,.main-panel,.main { min-width:0; min-height:0; }
+.desktop .sidebar,.desktop.sidebar-collapsed .sidebar { padding-top:20px; }
+.icon-button { min-width:36px; min-height:36px; }
+.primary,.secondary { min-height:36px; font-size:13px; line-height:1.4; }
+.sidebar .folder { font-size:13px; }
+.bottom-dock .view-tab,.navigation-sidebar .bottom-dock .view-tab { font-size:12px; min-height:44px; }
+.bottom-dock .view-tab svg { width:20px; height:20px; }
+.field>span,.form-note,.meeting-properties,.meeting-person small,.meeting-person span,.meeting-status { font-size:12px; line-height:1.55; }
+.field input,.field select,.field textarea { font-size:14px; min-height:36px; }
+.reader-replies .secondary,.reader-toolbar .back-to-list { font-size:12px; }
+.meeting-when span,.meeting-person strong,.meeting-toolbar .secondary { font-size:13px; }
+.meeting-toolbar { gap:10px; }
+.modal-header,.modal-footer,.update-actions { flex-wrap:wrap; gap:10px; }
+#modal { max-width:calc(var(--viewport-width, 100vw) - 24px); max-height:calc(var(--viewport-height, 100dvh) - 24px); min-width:0; }
+.settings-dialog { width:min(740px,calc(var(--viewport-width, 100vw) - 24px)); height:min(760px,calc(var(--viewport-height, 100dvh) - 24px)); }
+.settings-tabs { flex-wrap:wrap; }
+.settings-tabs [role="tab"] { font-size:13px; min-height:40px; }
+.compose-window #modal { max-height:100dvh; }
+.mail-alerts { bottom:40px; max-height:calc(var(--viewport-height, 100dvh) - 100px); width:min(380px,calc(var(--viewport-width, 100vw) - 32px)); }
+.mail-alert-open { padding:12px; gap:5px; }
+.mail-alert-open strong { font-size:14px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.mail-alert-open time { font-size:12px; color:#64448e; }
+.dark .mail-alert-open time { color:#c9a5f4; }
+.mail-alert-heading button { min-width:32px; min-height:32px; }
+@media(max-width:800px) {
+  .topbar,.desktop.sidebar-collapsed .topbar { padding:8px; height:auto; min-height:56px; gap:6px; }
+  .reader-toolbar { gap:6px; }
+  .reader-replies { flex-wrap:wrap; }
+  .modal-header { padding:16px; }
+  .settings-dialog .modal-body { padding:12px; }
+  .settings-tabs [role="tab"] { flex:1 1 110px; white-space:normal; padding:9px 6px; }
+}
+@media(max-height:500px) {
+  .mail-alerts { max-height:50dvh; }
+  .settings-dialog .modal-header { padding:10px 14px; }
+  .settings-footer { padding-bottom:8px; }
+  .sidebar .wordmark { padding-bottom:10px; }
+}
+
+.compose-dialog.compose-expanded { width:calc(var(--viewport-width, 100vw) - 24px) !important; height:calc(var(--viewport-height, 100dvh) - 24px) !important; }
+.settings-dialog { container-type:size; }
+@container(max-height:420px) {
+  .settings-dialog .modal-header { padding:8px 12px; }
+  .settings-dialog .modal-header h2 { font-size:20px; margin:0; }
+  .settings-dialog .modal-header p { display:none; }
+  .settings-dialog .modal-body { padding:4px 10px 0; }
+  .settings-tabs [role="tab"] { flex:1 1 70px; padding:6px 3px; min-height:32px; font-size:12px; }
+  .settings-footer { padding-bottom:8px; }
+  .settings-footer .modal-footer { padding-top:8px; }
+  .settings-section-title { margin-top:12px; }
+}
+
+/* Keep the time grid in view even in a short window with enlarged controls. */
+.calendar-view { height:100%; display:flex; flex-direction:column; gap:10px; padding:12px 16px; overflow:hidden; container-type:size; }
+.calendar-heading { flex:none; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; }
+.calendar-heading h1 { margin:0; font-size:24px; line-height:1.3; overflow-wrap:anywhere; }
+.calendar-toolbar { display:flex; align-items:center; flex-wrap:nowrap; gap:8px; min-width:0; }
+.calendar-toolbar select { min-width:0; max-width:180px; padding:7px 9px; font-size:13px; }
+.calendar-toolbar .calendar-arrows { display:flex; flex:none; }
+.calendar-toolbar .secondary { padding:7px 10px; white-space:nowrap; }
+.calendar-timeline { flex:1; min-height:0; display:flex; flex-direction:column; }
+.timeline-headers,.timeline-all-day { flex:none; }
+.calendar-timeline .timeline-scroll { flex:1; min-height:0; height:auto; }
+.calendar-view>.quarter { flex:1; min-height:0; overflow:auto; align-content:start; }
+.calendar-view .calendar-legend,.calendar-view .calendar-caption { flex:none; margin:0; font-size:11px; }
+.demo-banner { display:flex; align-items:center; flex-wrap:nowrap; gap:8px; padding:5px 12px; min-height:0; font-size:11px; line-height:1.4; }
+.demo-banner .demo-label { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.demo-banner button { flex:none; white-space:nowrap; font-size:11px; }
+.navigation-sidebar .statusbar { height:24px; min-height:24px; font-size:10px; }
+.navigation-sidebar .statusbar>span { min-width:0; white-space:nowrap; }
+.navigation-sidebar .statusbar>span:first-child { flex:1; overflow:hidden; text-overflow:ellipsis; }
+.navigation-sidebar .statusbar>span:last-child { flex:none; }
+.toast { left:auto; right:16px; bottom:30px; transform:none; max-width:calc(var(--viewport-width,100vw) - 32px); padding:8px 12px; font-size:13px; pointer-events:none; }
+@container(max-width:700px) {
+  .calendar-heading h1 { font-size:20px; }
+  .calendar-toolbar { flex:1 1 100%; }
+  .calendar-toolbar select { flex:1; max-width:none; }
+}
+@container(max-height:420px) {
+  .calendar-heading h1 { font-size:18px; }
+  .calendar-view .calendar-legend,.calendar-view .calendar-caption { display:none; }
+  .timeline-heading { padding:5px; }
+  .timeline-heading strong { font-size:18px; }
+  .timeline-single .timeline-heading { display:flex; align-items:center; justify-content:center; gap:8px; }
+  .timeline-single .timeline-heading strong { margin:0; }
+}

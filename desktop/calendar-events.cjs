@@ -20,7 +20,7 @@ function normalize(o) {
     attendees: [...attendees(o.RequiredAttendees, 'required'), ...attendees(o.OptionalAttendees, 'optional'), ...attendees(o.Resources, 'resource')],
     attachments: rawAttachments.filter(a => id(a.AttachmentId)).map(a => ({ id: id(a.AttachmentId), name: a.Name || tr('Вложение'), size: Number(a.Size) || 0, type: a.ContentType || '', contentId: a.ContentId || '', inline: flag(a.IsInline) })),
     hasReminderSettings: o.ReminderIsSet !== undefined || o.IsReminderSet !== undefined || o.ReminderMinutesBeforeStart !== undefined,
-    showAs: o.LegacyFreeBusyStatus || 'Busy', sensitivity: o.Sensitivity || 'Normal', reminder: Number(o.ReminderMinutesBeforeStart ?? 15), reminderSet: flag(o.ReminderIsSet ?? o.IsReminderSet ?? true),
+    showAs: o.LegacyFreeBusyStatus || 'Busy', showAsKnown: ['Free', 'Tentative', 'Busy', 'OOF', 'WorkingElsewhere'].includes(o.LegacyFreeBusyStatus), sensitivity: o.Sensitivity || 'Normal', reminder: Number(o.ReminderMinutesBeforeStart ?? 15), reminderSet: flag(o.ReminderIsSet ?? o.IsReminderSet ?? true),
     canModify: o.EffectiveRights?.Modify === undefined ? null : flag(o.EffectiveRights.Modify),
     forwardingAllowed: o.IsForwardingAllowed === undefined ? o.ResponseObjects !== undefined ? Object.hasOwn(Object(o.ResponseObjects), 'ForwardItem') : null : flag(o.IsForwardingAllowed),
     canReply: o.ResponseObjects !== undefined ? Object.hasOwn(Object(o.ResponseObjects), 'ReplyToItem') : null,

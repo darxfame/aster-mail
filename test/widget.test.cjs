@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const E = require('../src/events.js');
 const now = Date.parse('2026-10-30T08:52:00Z');
-test('widget renders simultaneous meetings beyond the preview limit with their own actions', async () => {
+test('widget keeps three readable cards and expands remaining simultaneous meetings with open and dismiss actions', async () => {
   const nodes = Object.fromEntries(['#connection', '#updated', '#error', '#meetings', '.day-scroll'].map(key => [key, { scrollTop: 100 }]));
   const handlers = {}, calls = [];
   const context = vm.createContext({ tr: value => value, Date: class extends Date { static now() { return now; } },
@@ -15,17 +15,20 @@ test('widget renders simultaneous meetings beyond the preview limit with their o
   vm.runInContext(fs.readFileSync(require.resolve('../src/widget.js'), 'utf8'), context);
   const events = Array.from({ length: 7 }, (_, index) => ({ id: `event-${index}`, title: `Meeting ${index}`, start: '2026-10-30T09:00:00Z', end: `2026-10-30T${index % 2 ? '10' : '09'}:30:00Z`, joinUrl: `https://calls.example.com/${index}` }));
   context.render({ connected: true, timeZone: 'UTC', events: events.slice(0, 5), calendarEvents: [...events, { ...events[0], id: 'declined', response: 'Decline' }], lastPoll: new Date(now).toISOString() });
-  const featured = nodes['#meetings'].innerHTML.split('<section class="day-grid">')[0];
+  let featured = nodes['#meetings'].innerHTML.split('<section class="day-grid">')[0];
+  assert.equal((featured.match(/class="featured"/g) || []).length, 3);
+  assert.match(featured, /Ещё уведомлений: 4/);
+  await handlers.click({ target: { closest: () => ({ dataset: { action: 'more-alerts' } }) } });
+  featured = nodes['#meetings'].innerHTML.split('<section class="day-grid">')[0];
   assert.equal((featured.match(/class="featured"/g) || []).length, 7);
-  assert.match(featured, /Встречи · 7/);
   assert.doesNotMatch(featured, /data-id="declined"/);
   for (const event of events) {
-    assert.ok(featured.includes(`data-action="join" data-id="${event.id}"`));
+    assert.ok(featured.includes(`data-action="dismiss" data-id="${event.id}"`));
     assert.ok(featured.includes(`data-action="open" data-id="${event.id}"`));
   }
-  const button = { dataset: { action: 'join', id: 'event-1' }, disabled: false };
+  const button = { dataset: { action: 'open', id: 'event-1' }, disabled: false };
   await handlers.click({ target: { closest: () => button } });
-  assert.deepEqual(calls, [['join', 'event-1']]);
+  assert.deepEqual(calls, [['open', 'event-1']]);
   assert.equal(button.disabled, false);
 });
 test('menu bar identifies all concurrent meetings instead of choosing one ending time', () => {

@@ -1,7 +1,7 @@
 const tr = require('../src/i18n.js').text;
 // Pure notification policy, independent of Electron and real mailboxes.
 const T = require('../src/time.js');
-const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, debugErrors: false, timeZone: 'system', theme: 'light', language: 'ru' };
+const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, autoPrivacy: true, mailTextPreview: false, debugErrors: false, timeZone: 'system', theme: 'light', language: 'ru', interfaceScale: 1 };
 function reminderMinutes(value) {
   if (!Array.isArray(value) || value.length > 16 || value.some(n => !Number.isInteger(n) || n < 0 || n > 1440)) return null;
   return [...new Set(value)].sort((a, b) => b - a);
@@ -13,7 +13,8 @@ function meetingReminders(value) {
 }
 function preferences(value = {}) {
   const result = { ...defaults };
-  for (const key of ['mail', 'meetings', 'sounds', 'preview', 'debugErrors']) if (typeof value[key] === 'boolean') result[key] = value[key];
+  for (const key of ['mail', 'meetings', 'sounds', 'preview', 'autoPrivacy', 'mailTextPreview', 'debugErrors']) if (typeof value[key] === 'boolean') result[key] = value[key];
+  if (typeof value.interfaceScale === 'number' && Number.isFinite(value.interfaceScale) && value.interfaceScale >= 0.8 && value.interfaceScale <= 2) result.interfaceScale = value.interfaceScale;
   if ([0, 5, 10, 15, 30].includes(Number(value.minutes))) result.minutes = Number(value.minutes);
   try { if (typeof value.timeZone === 'string') { T.zone(value.timeZone); result.timeZone = value.timeZone || 'system'; } } catch { /* Invalid saved zone falls back to the computer. */ }
   if (['light', 'dark'].includes(value.theme)) result.theme = value.theme;
@@ -61,6 +62,6 @@ class NotificationTracker {
 function mailAlert(message, preview = false) {
   const text = value => String(value || '').replace(/\s+/g, ' ').trim();
   return { id: message.id, title: preview ? text(message.from?.name || message.from?.email) || tr('Новое письмо') : tr('Новое письмо'),
-    body: preview ? [text(message.subject) || tr('(Без темы)'), text(message.preview).slice(0, 240)].filter(Boolean).join('\n') : tr('В Exchange получено новое письмо.'), navigation: { view: 'mail', id: message.id } };
+    body: preview ? [text(message.subject) || tr('(Без темы)'), text(message.preview).slice(0, 240)].filter(Boolean).join('\n') : tr('В Exchange получено новое письмо.'), subject: preview ? text(message.subject).slice(0, 240) || tr('(Без темы)') : tr('Новое письмо'), date: message.date || '', navigation: { view: 'mail', id: message.id } };
 }
 module.exports = { defaults, preferences, meetingReminders, NotificationTracker, mailAlert };

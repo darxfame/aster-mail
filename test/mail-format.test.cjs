@@ -54,12 +54,15 @@ test('attachment batches share a size limit, preserve earlier files and support 
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   const error = {}, picked = { replaceChildren(...rows) { this.rows = rows; } };
-  const context = vm.createContext({ tr: value => value, composeData: { attachments: [] }, modalBusy: false, markModalDirty() {}, bytes: n => String(n), $: selector => selector === '#picked-files' ? picked : error, document: { createElement() { return { setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }, append(child) { this.child = child; } }; } } });
+  const context = vm.createContext({ tr: value => value, closeAttachmentPreview() {}, composeData: { attachments: [] }, modalBusy: false, markModalDirty() {}, bytes: n => String(n), $: selector => selector === '#picked-files' ? picked : error, document: { createElement() { return { setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }, append(...children) { (this.children ||= []).push(...children); this.child = children.at(-1); } }; } } });
+  const previewSource = fs.readFileSync(require.resolve('../src/compose-ui.js'), 'utf8');
+  vm.runInContext(previewSource.slice(previewSource.indexOf('function composeAttachmentCard('), previewSource.indexOf('async function composeAttachmentPayload(')), context);
   vm.runInContext(source.slice(source.indexOf('function addComposeFiles('), source.indexOf("document.addEventListener('change'", source.indexOf('function addComposeFiles('))), context);
   const first = { name: '<b>file.txt', size: 10 }, second = { name: 'next.txt', size: 20 };
   context.addComposeFiles([first]); context.addComposeFiles([second]);
   assert.deepEqual(Array.from(context.composeData.attachments), [first, second]);
-  assert.equal(picked.rows[0].textContent, '<b>file.txt · 10 ');
+  assert.equal(picked.rows[0].children[0].textContent, '<b>file.txt · 10');
+  assert.equal(picked.rows[0].children[1].textContent, 'Предпросмотр');
   context.addComposeFiles([{ name: 'large', size: 20 * 1024 * 1024 }]);
   assert.match(error.textContent, /превышает 20 МБ/);
   assert.equal(context.composeData.attachments.length, 2);

@@ -43,10 +43,12 @@ const isComposeWindow = window.location.hash === '#compose';
 let interfaceScale = 1;
 async function applyInterfaceScale(value, save = true) {
   const scale = Number(value);
-  if (!Number.isFinite(scale) || scale < 0.8 || scale > 1.5) throw new Error(tr('Выберите масштаб от 80% до 150%'));
+  if (!Number.isFinite(scale) || scale < 0.8 || scale > 2) throw new Error(tr('Выберите масштаб от 80% до 200%'));
   if (window.aster) await api('setInterfaceScale', { scale });
   else {
     document.documentElement.style.zoom = String(scale);
+    document.documentElement.style.setProperty('--viewport-width', `${100 / scale}vw`);
+    document.documentElement.style.setProperty('--viewport-height', `${100 / scale}dvh`);
     document.querySelector('.app-shell').style.height = `${100 / scale}vh`;
   }
   interfaceScale = scale;
@@ -58,7 +60,8 @@ let composeSequence = 0, modalSequence = 0;
 const readingMessages = new Map();
 let calendarPreference = localPreferences.getItem('aster-calendar-view') || 'auto';
 let renderedCalendarMode;
-let navigationPlacement = localPreferences.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
+// Only an explicit choice in the current settings restores bottom navigation.
+let navigationPlacement = localPreferences.getItem('aster-navigation-placement-v2') === 'bottom' ? 'bottom' : 'sidebar';
 const calendarMode = () => window.asterCalendar.mode(calendarPreference, $('#workspace').clientWidth);
 const calendarRange = () => window.asterCalendar.range(state.week, calendarMode(), timeZone);
 let syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
@@ -124,15 +127,18 @@ async function api(operation, data = {}) {
   } finally { if (writing) mailWrites--; }
 
 }
-let pendingMailAlerts = [];
+let pendingMailAlerts = [], expandedMailAlerts = false;
 function renderMailAlerts(alerts) {
   pendingMailAlerts = alerts;
   let panel = $('#mail-alerts');
   if (!panel) { panel = document.createElement('section'); panel.id = 'mail-alerts'; panel.className = 'mail-alerts'; panel.setAttribute('aria-label', tr('Новые письма')); document.body.append(panel); }
   panel.hidden = !alerts.length;
-  panel.innerHTML = alerts.map(alert => `<article class="mail-alert"><div class="mail-alert-heading">${icon('mail')}<span>${tr("Новое письмо")}</span><button type="button" data-dismiss="${esc(alert.id)}" aria-label="${tr("Закрыть уведомление")}">×</button></div><button type="button" class="mail-alert-open" data-open="${esc(alert.id)}"><strong>${esc(alert.title)}</strong><span>${esc(alert.body)}</span><small>${tr("Открыть письмо ↗")}</small></button></article>`).join('');
+  const focused = panel.contains?.(document.activeElement) ? { ...document.activeElement.dataset } : null;
+  panel.innerHTML = (expandedMailAlerts ? alerts : alerts.slice(0, 3)).map(alert => `<article class="mail-alert"><div class="mail-alert-heading">${icon('mail')}<span>${tr("Новое письмо")}</span><button type="button" data-dismiss="${esc(alert.id)}" aria-label="${tr("Закрыть уведомление")}">×</button></div><button type="button" class="mail-alert-open" data-open="${esc(alert.id)}"><strong>${esc(alert.subject || alert.title)}</strong>${alert.date ? `<time>${esc(time(alert.date))}</time>` : ''}<small>${tr("Открыть письмо ↗")}</small></button></article>`).join('') + (alerts.length > 3 ? `<button type="button" class="secondary" data-alert-more>${expandedMailAlerts ? tr('Свернуть уведомления') : `${tr('Ещё уведомлений:')} ${alerts.length - 3}`}</button>` : '');
+  if (focused) [...panel.querySelectorAll('button')].find(button => Object.entries(focused).every(([key, value]) => button.dataset[key] === value))?.focus({ preventScroll: true });
   panel.onclick = async event => {
     const button = event.target.closest('button'); if (!button) return;
+    if (button.hasAttribute('data-alert-more')) { expandedMailAlerts = !expandedMailAlerts; renderMailAlerts(pendingMailAlerts); return; }
     const id = button.dataset.open || button.dataset.dismiss;
     try {
       if (button.dataset.open) {
@@ -188,6 +194,7 @@ function receiveConnection(snapshot) {
 }
 function modal(title, description, body) {
   if (modalBusy) return;
+  if (typeof closeAttachmentPreview === 'function') closeAttachmentPreview();
   modalSequence++;
   $('#modal').setAttribute('aria-label', title);
   $('#modal').ondragover = null; $('#modal').ondragleave = null; $('#modal').ondrop = null;
@@ -208,7 +215,6 @@ function ready() { return state.demo || state.account; }
 function renderSidebar() {
   const restoreFocus = preserveListFocus($('#sidebar'));
   const dock = $('.bottom-dock');
-  $('.statusbar').prepend(dock);
   const isMail = state.view === 'mail';
   const folderButtons = renderFolderTree();
   $('#sidebar').innerHTML = `<div class="wordmark"><span class="brand-star" aria-hidden="true">✳</span><span class="brand-text">aster<span> mail</span></span></div><button class="primary sidebar-compose" data-action="${state.view === 'calendar' ? 'new-event' : 'compose'}" aria-label="${state.view === 'calendar' ? tr('Создать встречу') : tr('Написать письмо')}" title="${state.view === 'calendar' ? tr('Создать встречу') : tr('Написать письмо')}">${icon('plus')}<span>${state.view === 'calendar' ? tr('Новая встреча') : tr('Написать письмо')}</span></button>
@@ -216,6 +222,7 @@ function renderSidebar() {
     </div><div id="sidebar-dock"></div><button class="account-card" data-action="settings" title="${tr("Настройки аккаунта")}" aria-label="${tr("Настройки аккаунта")}"><div class="account-avatar">${esc(initials(state.account?.username || 'Aster'))}</div><div class="account-info"><strong>${esc(state.account?.username || (state.demo ? tr('Демоаккаунт') : tr('Ваш аккаунт')))}</strong><small>${state.account ? esc(new URL(state.account.server).hostname) : state.demo ? tr('Вымышленные данные') : tr('Подключить Exchange')}</small></div></button>`;
   document.body.classList.toggle('navigation-sidebar', navigationPlacement === 'sidebar');
   if (navigationPlacement === 'sidebar') $('#sidebar-dock').append(dock);
+  else $('.statusbar').prepend(dock);
   document.querySelectorAll('.view-tab[data-view]').forEach(button => {
     button.classList.toggle('active', button.dataset.view === state.view);
     button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
@@ -373,9 +380,16 @@ async function openMessage(id, generation = state.generation, { markRead = true 
     if (selected.meeting?.id && !selected.meeting.cancelled) {
       try {
         const meeting = state.demo ? window.asterDemo.events.find(e => e.id === selected.meeting.id) : await api('event', ref(selected.meeting));
-        if (meeting) Object.assign(selected.meeting, { ...meeting, statusLoaded: true });
+        if (meeting) {
+          const originalStart = selected.meeting.start, originalEnd = selected.meeting.end;
+          Object.assign(selected.meeting, { ...meeting, statusLoaded: true, invitationUpdated: originalStart !== meeting.start || originalEnd !== meeting.end });
+        }
       } catch (error) { selected.meeting.statusError = errorText(error); }
-      if (state.selected === selected && generation === state.generation) renderReader();
+      if (state.selected === selected && generation === state.generation) {
+        renderReader();
+        const result = await loadMeetingConflicts(selected.meeting);
+        if (state.selected === selected && generation === state.generation && sequence === messageOpenSequence) { selected.meeting.conflicts = result; renderReader(); }
+      }
     }
   } catch (error) {
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
@@ -415,7 +429,7 @@ async function demoContentImages(html) {
 function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
-  $('#reader').innerHTML = `<div class="reader-toolbar"><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}${tr("К письмам")}</button><details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${tr("Избранное")}" aria-label="${tr("Избранное")}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${tr("Важность")}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button><button class="icon-button" data-action="unread" title="${tr("Отметить непрочитанным")}" aria-label="${tr("Отметить непрочитанным")}">${icon('mail')}</button></div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? tr('<button class="primary" data-action="edit-draft">Продолжить черновик</button>') : `<button class="secondary" data-action="reply">${icon('reply')}${tr("Ответить")}</button><button class="secondary" data-action="reply-all">${tr("Ответить всем")}</button><button class="secondary" data-action="forward">${tr("Переслать")} ${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting?.id ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}</p>${rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError)}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}${tr("Картинки: встроенные и с сервера OWA · активное содержимое отключено")}</div><div id="message-body"></div></div></div>`;
+  $('#reader').innerHTML = `<div class="reader-toolbar"><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}${tr("К письмам")}</button><details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${tr("Избранное")}" aria-label="${tr("Избранное")}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${tr("Важность")}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button><button class="icon-button" data-action="unread" title="${tr("Отметить непрочитанным")}" aria-label="${tr("Отметить непрочитанным")}">${icon('mail')}</button></div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? tr('<button class="primary" data-action="edit-draft">Продолжить черновик</button>') : `<button class="secondary" data-action="reply">${icon('reply')}${tr("Ответить")}</button><button class="secondary" data-action="reply-all">${tr("Ответить всем")}</button><button class="secondary" data-action="forward">${tr("Переслать")} ${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${Number.isFinite(Date.parse(m.meeting.start)) && Number.isFinite(Date.parse(m.meeting.end)) ? `${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}` : tr('Время встречи недоступно')}</p>${meetingConflictMarkup(m.meeting.id ? m.meeting.conflicts : { kind: 'unknown', complete: false })}${m.meeting.invitationUpdated ? `<p class="form-note">${tr("Приглашение обновлено. Показано актуальное время.")}</p>` : ''}${m.meeting.id ? rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError) : ''}</div>` : ''}${mailAttachments(m)}<div class="privacy-note">${icon('shield')}${tr("Картинки: встроенные и с сервера OWA · активное содержимое отключено")}</div><div id="message-body"></div></div></div>`;
   applyReaderDensity();
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
@@ -451,7 +465,7 @@ function renderCalendar() {
   const title = mode === 'day' ? dateFormat(start, { day: 'numeric', month: 'long', year: 'numeric' }) : mode === 'quarter' ? `${Math.floor(civil(start).getUTCMonth() / 3) + 1}${tr("-й квартал ·")} ${civil(start).getUTCFullYear()}` : dateFormat(start, { month: 'long', year: 'numeric' });
   const period = mode === 'day' ? tr('день') : mode === 'quarter' ? tr('квартал') : tr('неделю');
   const grid = mode === 'quarter' ? quarterMarkup(start, events) : timelineMarkup(start, mode, events);
-  $('#workspace').innerHTML = `<div class="calendar-view"><div class="page-header"><div><h1>${esc(title)}</h1><p>${mode === 'day' ? tr('Встречи выбранного дня.') : tr('Ваши встречи в удобном масштабе.')}</p></div><div class="calendar-controls"><select id="calendar-mode" aria-label="${tr("Вид календаря")}">${[['auto', `${tr("Авто ·")} ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? tr('день') : tr('неделя')}`], ['day', tr('День')], ['week', tr('Неделя')], ['quarter', tr('Квартал')]].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">${tr("Сегодня")}</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? tr('Предыдущая неделя') : `${tr("Предыдущий")} ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? tr('Следующая неделя') : `${tr("Следующий")} ${period}`}">${icon('chevron')}</button></div><button class="primary" data-action="new-event">${icon('plus')}${tr("Встреча")}</button></div></div>${grid}<div class="calendar-legend" aria-label="${tr("Цвета встреч")}"><span class="pending">${tr("Без ответа / под вопросом")}</span><span class="accepted">${tr("Принято")}</span><span class="organized">${tr("Вы организатор")}</span><span class="declined">${tr("Отклонено")}</span></div><div class="calendar-caption"><span>${icon('clock')} ${esc(T.zone(timeZone))}</span><span>${events.length} ${tr("встреч за")} ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
+  $('#workspace').innerHTML = `<div class="calendar-view"><header class="calendar-heading"><h1>${esc(title)}</h1><div class="calendar-toolbar"><select id="calendar-mode" aria-label="${tr("Вид календаря")}">${[['auto', `${tr("Авто ·")} ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? tr('день') : tr('неделя')}`], ['day', tr('День')], ['week', tr('Неделя')], ['quarter', tr('Квартал')]].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">${tr("Сегодня")}</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? tr('Предыдущая неделя') : `${tr("Предыдущий")} ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? tr('Следующая неделя') : `${tr("Следующий")} ${period}`}">${icon('chevron')}</button></div></div></header>${grid}<div class="calendar-legend" aria-label="${tr("Цвета встреч")}"><span class="pending">${tr("Без ответа / под вопросом")}</span><span class="accepted">${tr("Принято")}</span><span class="organized">${tr("Вы организатор")}</span><span class="declined">${tr("Отклонено")}</span></div><div class="calendar-caption"><span>${icon('clock')} ${esc(T.zone(timeZone))}</span><span>${events.length} ${tr("встреч за")} ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
   restoreCalendarScroll(start, mode, previousScroll);
 }
 function colleaguesKey() { return `aster-colleagues:${state.demo ? 'demo' : `${state.account?.server || ''}|${state.account?.username || ''}`}`; }
@@ -627,11 +641,9 @@ async function compose(mode = 'new', contact = null, snapshot = null) {
     const note = document.createElement('p'); note.className = 'form-note';
     note.textContent = tr('Изменяется тот же серверный черновик. Подпись повторно не добавляется.');
     $('#picked-files').before(note);
-    for (const attachment of m.attachments || []) {
-      const row = document.createElement('p'); row.className = 'form-note';
-      row.textContent = `${attachment.name} · ${bytes(attachment.size)} ${tr("· уже в черновике, сохранится при отправке")}`;
-      $('#picked-files').before(row);
-    }
+  }
+  if ((draftMode || mode === 'forward') && m) {
+    for (const attachment of m.attachments || []) $('#picked-files').before(composeAttachmentCard(attachment, ref(m)));
   }
   if (useServer) renderSignaturePreview($('#compose-signature-preview'), source);
   if (!draftMode && mode !== 'new' && m) {
@@ -697,13 +709,13 @@ async function settingsModal() {
     <h3 class="settings-section-title">${tr("Оформление и навигация")}</h3>
     <label class="field"><span>${tr('Язык интерфейса')}</span><select name="language"><option value="ru" ${window.asterI18n.language === 'ru' ? 'selected' : ''}>Русский</option><option value="en" ${window.asterI18n.language === 'en' ? 'selected' : ''}>English</option></select></label>
     <label class="field"><span>${tr("Оформление")}</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>${tr("Светлое")}</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${tr("Тёмное")}</option></select></label>
-    <label class="field"><span>${tr('Масштаб интерфейса и текста')}</span><select name="interfaceScale">${[0.8, 0.9, 1, 1.1, 1.25, 1.5].map(scale => `<option value="${scale}" ${interfaceScale === scale ? 'selected' : ''}>${Math.round(scale * 100)}%</option>`).join('')}</select></label>
+    <label class="field"><span>${tr('Масштаб интерфейса и текста')}</span><select name="interfaceScale">${[0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2].map(scale => `<option value="${scale}" ${interfaceScale === scale ? 'selected' : ''}>${Math.round(scale * 100)}%</option>`).join('')}</select></label>
     <p class="form-note">${tr('Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка.')}</p>
     <h3 class="settings-heading">${tr("Дата и время")}</h3>
     <label class="field"><span>${tr("Часовой пояс")}</span><select name="timeZone"><option value="system" ${timeZone === 'system' ? 'selected' : ''}>${tr("Как на компьютере ·")} ${esc(T.zone())}</option>${zones.map(zone => `<option value="${esc(zone)}" ${timeZone === zone ? 'selected' : ''}>${esc(zone.replaceAll('_', ' '))}</option>`).join('')}</select></label>
     <p class="form-note">${tr("Пояс применяется к календарю, письмам, виджету и времени создания встреч. Отсчёт до встречи не зависит от пояса отображения. «Как на компьютере» следует системным настройкам.")}</p>
     <h3 class="settings-heading">${tr("Навигация")}</h3>
-    <label class="field"><span>${tr("Размещение карточек разделов")}</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>${tr("Слева · под папками, над аккаунтом")}</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>${tr("Внизу окна · горизонтальная панель")}</option></select></label>
+    <label class="field"><span>${tr("Расположение меню")}</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>${tr("Слева · под папками, над аккаунтом")}</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>${tr("Внизу окна · горизонтальная панель")}</option></select></label>
     </section>
     <section id="settings-panel-signature" role="tabpanel" aria-labelledby="settings-tab-signature" tabindex="0" hidden>
     <h3 class="settings-section-title">${tr("Подпись в письмах")}</h3>
@@ -723,6 +735,10 @@ async function settingsModal() {
     <p class="form-note">${tr('Можно выбрать несколько интервалов. Индивидуальные напоминания встречи заменяют общие. Пустой выбор отключает общие напоминания. Без общей настройки используется напоминание Exchange или интервал по умолчанию.')}</p>
     ${checkbox('notifySounds', tr('Звук нового письма и отдельный звук встречи'), p.sounds)}
     ${checkbox('notifyPreview', tr('Показывать отправителя, тему и текст в уведомлениях'), p.preview)}
+    ${checkbox('mailTextPreview', tr('Короткий текст письма в карточках трея'), p.mailTextPreview)}
+    ${checkbox('autoPrivacy', tr('Автоматически скрывать уведомления при работающих приложениях звонков и браузерах'), p.autoPrivacy !== false)}
+    <p class="form-note">${tr('Защита включается при запущенных Teams, Zoom, Webex, Slack, Discord, OBS и популярных браузерах, даже без шаринга. Это консервативная проверка приложений, а не точное определение демонстрации экрана. Для других программ включите режим презентации в трее.')}</p>
+    <button type="button" class="secondary" data-action="presentation-mode">${tr('Переключить режим презентации')}</button>
     <div class="sound-tests"><button type="button" class="secondary" data-action="test-notification" data-kind="mail">${icon('mail')}${tr("Проверить письмо")}</button><button type="button" class="secondary" data-action="test-notification" data-kind="meeting">${icon('calendar')}${tr("Проверить встречу")}</button></div>
     <p class="form-note">${tr("Оригинальные звуки Aster — CC0: можно свободно использовать и изменять.")} ${window.aster ? tr('Проверка показывает баннер и воспроизводит звук. На macOS Aster играет звук напрямую, с обычной громкостью аудиовыхода.') : tr('В браузере проверяются звук и плашка с вымышленным письмом. Системные уведомления доступны в приложении.')}</p>
     <p class="form-note">${tr("Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. Плашка в клиенте остаётся до открытия или закрытия. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.")}</p>
@@ -846,6 +862,11 @@ async function handleAction(button) {
     localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed));
     renderSidebar(); return;
   }
+  if (action === 'presentation-mode') {
+    if (window.aster) { const enabled = await api('togglePresentation'); toast(enabled ? tr('Уведомления скрыты') : tr('Ручной режим презентации выключен')); }
+    else toast(tr('Режим презентации доступен в настольном приложении.'));
+    return;
+  }
   if (action === 'close') { if (!modalBusy) { if (!confirmDiscardChanges()) return; $('#modal').close(); } return; }
   if (action === 'view') { state.view = button.dataset.view; state.query = ''; $('#search').value = ''; return loadView(); }
   if (action === 'connect') return connectModal();
@@ -900,7 +921,7 @@ async function handleAction(button) {
   if (action === 'today' || ['calendar-prev', 'calendar-next'].includes(action)) {
     if (action === 'today') {
       state.week = new Date();
-      if ($('#workspace').clientWidth < 700) { calendarPreference = 'auto'; localPreferences.setItem('aster-calendar-view', calendarPreference); }
+      if (window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day') { calendarPreference = 'auto'; localPreferences.setItem('aster-calendar-view', calendarPreference); }
     } else state.week = window.asterCalendar.move(state.week, calendarMode(), action === 'calendar-next' ? 1 : -1, timeZone);
     return loadView();
   }
@@ -1082,11 +1103,10 @@ function addComposeFiles(files) {
   if (files.length) markModalDirty();
   $('#compose-form .form-error[role="alert"]').textContent = '';
   $('#picked-files').replaceChildren(...combined.map((file, index) => {
-    const row = document.createElement('div'), remove = document.createElement('button');
-    row.textContent = `${file.name} · ${bytes(file.size)} `;
+    const row = composeAttachmentCard(file), remove = document.createElement('button');
     remove.type = 'button'; remove.textContent = tr('Удалить'); remove.className = 'secondary';
     remove.setAttribute('aria-label', `${tr("Удалить вложение")} ${file.name}`);
-    remove.addEventListener('click', () => { if (!modalBusy) { composeData.attachments.splice(index, 1); markModalDirty(); addComposeFiles([]); } });
+    remove.addEventListener('click', () => { if (!modalBusy) { closeAttachmentPreview(); composeData.attachments.splice(index, 1); markModalDirty(); addComposeFiles([]); } });
     row.append(remove); return row;
   }));
 }
@@ -1107,11 +1127,13 @@ document.addEventListener('submit', event => {
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
     submitForm(form, async data => {
-      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
+      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       T.zone(next.timeZone);
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
       clearError();
       applyLanguage(next.language);
+      navigationPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
+      localPreferences.setItem('aster-navigation-placement-v2', navigationPlacement);
       await applyInterfaceScale(data.interfaceScale);
       timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);
       miniMonthCursor = null;
@@ -1119,8 +1141,6 @@ document.addEventListener('submit', event => {
       syncSignature = Boolean(data.syncSignature); localPreferences.setItem('aster-signature-sync', String(syncSignature));
       if (!syncSignature) state.signature = data.signature;
       state.theme = data.theme;
-      navigationPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
-      localPreferences.setItem('aster-navigation-placement', navigationPlacement);
       renderSidebar();
       localPreferences.setItem('aster-signature', state.signature); localPreferences.setItem('aster-theme', state.theme);
       await localSave;
@@ -1165,14 +1185,15 @@ function applyAccount(value) {
   notificationPreferences = notifications || { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
   timeZone = notificationPreferences.timeZone || 'system';
   calendarPreference = localPreferences.getItem('aster-calendar-view') || 'auto';
-  navigationPlacement = localPreferences.getItem('aster-navigation-placement') === 'bottom' ? 'bottom' : 'sidebar';
+  navigationPlacement = localPreferences.getItem('aster-navigation-placement-v2') === 'bottom' ? 'bottom' : 'sidebar';
   syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
   sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
+  closeAttachmentPreview();
   serverSignature = null; composeData = null; activeMeeting = null; meetingEdit = null; meetingRequest++;
   moveRuleContext = null; mailDrag = null; mailPeopleChoices = []; contactCardContext = null; state.searchObjects = null;
   restoreMailListWidth();
   const savedScale = Number(localPreferences.getItem('aster-interface-scale')) || 1;
-  void applyInterfaceScale(savedScale >= 0.8 && savedScale <= 1.5 ? savedScale : 1, false).catch(showError);
+  void applyInterfaceScale(savedScale >= 0.8 && savedScale <= 2 ? savedScale : 1, false).catch(showError);
   colleagueData = []; directoryResults = []; directoryRequest++; colleagueRequest++;
   state.query = ''; $('#search').value = ''; renderMailAlerts([]);
   $('#people-search-suggestions')?.replaceChildren();
@@ -1207,14 +1228,21 @@ async function boot() {
       state.view = data.view; state.folder = 'inbox'; state.query = ''; $('#search').value = '';
       if (data.date) state.week = new Date(data.date);
       if (data.eventId) calendarPreference = 'day';
-      await loadView();
+      const loading = loadView(), generation = state.generation;
+      await loading;
+      if (generation !== state.generation || state.view !== data.view || $('#modal').open) return;
       if (data.id) {
-        if (!state.messages.some(m => m.id === data.id)) state.messages.push(await api('message', { id: data.id }));
-        await openMessage(data.id); await api('dismissMailAlert', { id: data.id });
+        if (!state.messages.some(m => m.id === data.id)) {
+          const message = await api('message', { id: data.id });
+          if (generation !== state.generation || $('#modal').open) return;
+          state.messages.push(message);
+        }
+        await openMessage(data.id, generation);
+        if (generation === state.generation) await api('dismissMailAlert', { id: data.id });
       }
       if (data.eventId && state.view === 'calendar') {
-        const button = [...document.querySelectorAll('[data-action="event"]')].find(button => button.dataset.id === data.eventId);
-        if (button) await handleAction(button).catch(showError);
+        const event = state.events.find(item => item.id === data.eventId) || await api('event', { id: data.eventId });
+        if (generation === state.generation && !$('#modal').open) await openMeeting(event);
       }
       } catch (error) { showError(error); }
     });
@@ -1247,7 +1275,7 @@ function confirmDiscardChanges() {
 for (const name of ['input', 'change']) document.addEventListener(name, event => {
   if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form, #meeting-local-reminders-form')) setModalDirty(true);
 });
-$('#modal').addEventListener('close', () => { if ($('#modal').open) return; setModalDirty(false); resumeConnectionReads(); });
+$('#modal').addEventListener('close', () => { if ($('#modal').open) return; closeAttachmentPreview(); setModalDirty(false); resumeConnectionReads(); });
 document.addEventListener('click', event => {
   if (event.target.closest('[data-action="planner-slot"]') && $('#event-form')) setModalDirty(true);
   if (!event.target.closest('[data-action="meeting-return"]') || !modalDirty) return;

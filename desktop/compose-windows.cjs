@@ -1,6 +1,6 @@
 // Compose windows share the active transport, never credentials or account switching.
 const path = require('node:path');
-const allowed = new Set(['composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'openLink', 'send', 'draft', 'editDraft']);
+const allowed = new Set(['composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft']);
 class ComposeWindows {
   constructor({ BrowserWindow, dialog, page, tr }) {
     Object.assign(this, { BrowserWindow, dialog, page, tr });
@@ -26,7 +26,7 @@ class ComposeWindows {
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     const sender = child.webContents;
-    const entry = { window: child, sessionId: context.account?.sessionId, context, demo: context.demo, draftId, dirty: context.snapshot.dirty, busy: false };
+    const entry = { window: child, sessionId: context.account?.sessionId, context, attachmentSources: new Set([context.snapshot.data.reference?.id, context.snapshot.data.draftReference?.id, context.snapshot.selected?.id].filter(Boolean)), demo: context.demo, draftId, dirty: context.snapshot.dirty, busy: false };
     this.entries.set(child.webContents, entry);
     child.webContents.setZoomFactor(zoom);
     child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

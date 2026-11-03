@@ -10,7 +10,8 @@ const { ComposeWindows } = require('./compose-windows.cjs');
 let composeWindows;
 const { Updates } = require('./updates.cjs');
 const { AttachmentFiles, safeName } = require('./attachment-files.cjs');
-let attachmentFiles;
+let attachmentFiles, attachmentPreviews;
+const { AttachmentPreviews } = require('./attachment-previews.cjs');
 const { writeAttachment } = require('./attachment-trust.cjs');
 let attachmentCleanupError = '';
 let updates;
@@ -28,15 +29,42 @@ let unsavedChanges = false, resettingLocalData = false;
 let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false, mailPolling = false;
 let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
+const { SharingPrivacy } = require('./sharing-privacy.cjs');
+let presentationMode = false, lastPrivacyHidden = true;
+const sharingPrivacy = new SharingPrivacy({ changed: syncNotificationPrivacy });
+function privacyHidden() { return presentationMode || notificationSettings.autoPrivacy && sharingPrivacy.active !== false; }
+async function refreshPrivacy() { if (notificationSettings.autoPrivacy) await sharingPrivacy.check(); syncNotificationPrivacy(); }
+function syncNotificationPrivacy() {
+  const hidden = privacyHidden();
+  if (hidden !== lastPrivacyHidden) {
+    lastPrivacyHidden = hidden;
+    // Clearing is intentional: restoring privacy never replays old notifications.
+    mailAlerts = []; publishMailAlerts();
+    for (const n of activeNotifications) n.close(); activeNotifications.clear();
+    refreshWidget(); updateTrayMenu();
+  }
+}
+function togglePresentation() { presentationMode = !presentationMode; syncNotificationPrivacy(); refreshWidget(); updateTrayMenu(); }
+let dismissedMeetings = new Set();
 let mailAlerts = [];
 function publishMailAlerts() {
-  if (window && !window.isDestroyed()) window.webContents.send('aster-mail-alerts', mailAlerts);
+  if (window && !window.isDestroyed()) window.webContents.send('aster-mail-alerts', privacyHidden() ? [] : mailAlerts);
 }
 function queueMailAlert(message) {
-  const alert = mailAlert(message, notificationSettings.preview);
+  const alert = mailAlert(message, notificationSettings.preview && !privacyHidden());
+  if (privacyHidden()) return alert;
   mailAlerts = [alert, ...mailAlerts.filter(item => item.id !== alert.id)].slice(0, 20);
-  publishMailAlerts();
+  publishMailAlerts(); refreshWidget();
   return alert;
+}
+function dismissMailAlert(id) {
+  mailAlerts = mailAlerts.filter(item => item.id !== id);
+  for (const notification of activeNotifications) if (notification.asterNavigation?.view === 'mail' && notification.asterNavigation.id === id) { notification.close(); activeNotifications.delete(notification); }
+  publishMailAlerts(); refreshWidget();
+}
+function publishConnectionHealth(active) {
+  if (client !== active || connection?.client !== active || !active.syncId || !connection.health) return;
+  if (window && !window.isDestroyed()) window.webContents.send('aster-connection', { sessionId: active.syncId, status: connection.health });
 }
 async function pollMail() {
   if (!client || mailPolling) return;
@@ -52,13 +80,15 @@ async function pollMail() {
     lastMailPoll = new Date().toISOString(); lastMailError = '';
     const fresh = tracker.newMail(page.items);
     if (!notificationSettings.mail) return;
+    await refreshPrivacy();
+    if (active !== client || revision !== active.mailCache.generation) return;
     for (const message of [...fresh].reverse()) queueMailAlert(message);
     if (fresh.length) {
       const alert = mailAlert(fresh[0], notificationSettings.preview);
       notify('mail', fresh.length > 1 ? `${alert.title} ${tr("· ещё")} ${fresh.length - 1}` : alert.title, alert.body, alert.navigation);
     }
   } catch (error) { if (active === client) lastMailError = error.message; }
-  finally { mailPolling = false; }
+  finally { mailPolling = false; publishConnectionHealth(active); }
 }
 const page = path.join(__dirname, '../src/index.html');
 const settingsFile = () => path.join(app.getPath('userData'), 'notifications.json');
@@ -97,39 +127,46 @@ function reveal(navigation) {
 let trayMenuCurrent;
 function updateTrayMenu() {
   if (!tray) return;
-  const trayMenu = Menu.buildFromTemplate([{ label: tr('Открыть Aster Mail'), click: () => reveal() }, { label: tr('Проверить почту и встречи'), click: () => { void pollNotifications(); } }, { type: 'separator' }, { label: tr('Завершить Aster Mail'), click: () => app.quit() }]);
+  const trayMenu = Menu.buildFromTemplate([{ label: tr('Открыть Aster Mail'), click: () => reveal() }, { label: tr('Проверить почту и встречи'), click: () => { void pollNotifications(); } }, { label: tr('Режим презентации: скрыть уведомления'), type: 'checkbox', checked: presentationMode, click: togglePresentation }, { type: 'separator' }, { label: tr('Завершить Aster Mail'), click: () => app.quit() }]);
   if (process.platform === 'darwin') trayMenuCurrent = trayMenu;
   else tray.setContextMenu(trayMenu);
 }
 function widgetState() {
-  const events = upcomingMeetings(widgetEvents).slice(0, 5).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(event => ({ ...event, joinUrl: meetingLink(event) }));
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, range: pollingRange(), countdown: countdown(events[0]), timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
+  const hidden = privacyHidden();
+  const project = event => ({ id: event.id, title: notificationSettings.preview ? event.title : tr('Встреча'), start: event.start, end: event.end, allDay: event.allDay, cancelled: event.cancelled, response: event.response, isOrganizer: event.isOrganizer, joinUrl: Boolean(meetingLink(event)) });
+  const calendarEvents = hidden ? [] : widgetEvents.filter(event => !event.cancelled).map(project);
+  const events = upcomingMeetings(calendarEvents).slice(0, 5);
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, mailAlerts: hidden ? [] : mailAlerts.map(alert => ({ id: alert.id, title: alert.title, subject: alert.subject, date: alert.date, text: notificationSettings.mailTextPreview ? alert.body.split('\n').slice(1).join(' ') : '' })), dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), privacyActive: hidden, presentationMode, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
 }
 function refreshWidget() {
   const state = widgetState();
   if (tray) {
     const nearest = nearestMeetings(state.calendarEvents);
     const multiple = nearest.length > 1;
-    if (process.platform === 'darwin') tray.setTitle(client ? multiple && state.countdown.active ? `${tr('Встречи')} · ${nearest.length}` : state.countdown.label : '');
-    tray.setToolTip(multiple ? `${tr('Встречи')} · ${nearest.length}\n${nearest.slice(0, 5).map(event => event.title).join('\n')}` : state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
+    if (process.platform === 'darwin') tray.setTitle(client && !state.privacyActive ? multiple && state.countdown.active ? `${tr('Встречи')} · ${nearest.length}` : state.countdown.label : '');
+    tray.setToolTip(state.privacyActive ? tr('Aster Mail · уведомления скрыты') : multiple ? `${tr('Встречи')} · ${nearest.length}\n${nearest.slice(0, 5).map(event => event.title).join('\n')}` : state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.send('aster-widget-update', state);
 }
-function toggleWidget() {
+function toggleWidget() { void showWidget(); }
+async function showWidget() {
   if (widgetWindow?.isVisible()) { widgetWindow.hide(); return; }
+  await refreshPrivacy();
   const bounds = tray.getBounds(), area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea;
-  const width = Math.min(360, area.width - 16), height = Math.min(520, area.height - 16);
+  const scale = notificationSettings.interfaceScale;
+  const width = Math.min(Math.round(380 * scale), area.width - 16), height = Math.min(Math.round(560 * scale), area.height - 16);
   if (!widgetWindow || widgetWindow.isDestroyed()) {
     widgetWindow = new BrowserWindow({ width, height, show: false, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, title: tr('Aster · ближайшие встречи'), backgroundColor: '#f8f6fc',
       webPreferences: { preload: path.join(__dirname, 'widget-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
+    widgetWindow.setContentProtection(true);
     widgetWindow.loadFile(path.join(__dirname, '../src/widget.html'));
     widgetWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     widgetWindow.webContents.on('will-navigate', event => event.preventDefault());
     widgetWindow.on('blur', () => widgetWindow.hide());
     widgetWindow.once('ready-to-show', () => { widgetWindow.show(); widgetWindow.focus(); });
   }
+  widgetWindow.webContents.setZoomFactor(scale);
   widgetWindow.setSize(width, height);
   const x = Math.max(area.x, Math.min(bounds.x + bounds.width / 2 - width / 2, area.x + area.width - width));
   const y = bounds.y + bounds.height + height + 8 < area.y + area.height ? bounds.y + bounds.height + 8 : Math.max(area.y, bounds.y - height - 8);
@@ -137,12 +174,15 @@ function toggleWidget() {
   if (!widgetWindow.webContents.isLoading()) { refreshWidget(); widgetWindow.show(); widgetWindow.focus(); }
 }
 function notify(kind, title, body, navigation) {
+  if (privacyHidden()) return;
   if (!Notification.isSupported()) { lastPollError = tr('Системные уведомления недоступны'); return; }
   // Play our sound explicitly; system notification audio can be suppressed independently.
   const notification = new Notification({ title, body, silent: true,
     timeoutType: kind === 'mail' ? 'never' : 'default', groupId: `aster-${kind}`, icon: path.join(__dirname, '../assets/icon.png'),
   });
+  if (activeNotifications.size >= 20) { const oldest = activeNotifications.values().next().value; oldest.close(); activeNotifications.delete(oldest); }
   activeNotifications.add(notification);
+  notification.asterNavigation = navigation;
   notification.on('click', () => reveal(navigation));
   notification.on('close', () => activeNotifications.delete(notification));
   notification.on('failed', () => { activeNotifications.delete(notification); lastPollError = tr('macOS не показала уведомление. Проверьте разрешение для Aster Mail в настройках системы.'); });
@@ -181,9 +221,14 @@ async function pollNotifications() {
           if (widgetDetail?.key === key) Object.assign(next, { body: widgetDetail.data.body, joinUrl: widgetDetail.data.joinUrl || next.joinUrl, cancelled: widgetDetail.data.cancelled });
         }
         widgetEvents = events;
+        const keys = new Set(events.map(event => `${event.id}:${event.start}`));
+        dismissedMeetings = new Set([...dismissedMeetings].filter(key => keys.has(key)));
+        await refreshPrivacy();
+        if (active !== client) return;
         for (const event of notificationSettings.meetings ? tracker.reminders(events, notificationSettings.minutes, Date.now(), notificationSettings.meetingReminders, notificationSettings.meetingMinutes) : []) {
+          if (!privacyHidden()) dismissedMeetings.delete(`${event.id}:${event.start}`);
           const minutes = Math.max(0, Math.ceil((new Date(event.start) - Date.now()) / 60000));
-          notify('meeting', minutes ? `${tr("Встреча через")} ${minutes} ${tr("мин.")}` : tr('Встреча начинается'), notificationSettings.preview ? event.title : tr('Откройте рабочий календарь.'), { view: 'calendar', date: event.start });
+          notify('meeting', minutes ? `${tr("Встреча через")} ${minutes} ${tr("мин.")}` : tr('Встреча начинается'), notificationSettings.preview ? event.title : tr('Откройте рабочий календарь.'), { view: 'calendar', date: event.start, eventId: event.id });
         }
       } catch (e) { error ||= e.message; }
     }
@@ -193,6 +238,7 @@ async function pollNotifications() {
 
 
 function retireAccount() {
+  attachmentPreviews?.closeAll();
   composeWindows?.destroyAll();
   const previous = connection;
   connection = null; client = null; account = null;
@@ -202,7 +248,7 @@ function retireAccount() {
   }
   mailAlerts = []; publishMailAlerts();
   tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
-  notificationSettings = preferences(); widgetEvents = []; widgetDetail = null; refreshWidget();
+  notificationSettings = preferences(); dismissedMeetings.clear(); widgetEvents = []; widgetDetail = null; refreshWidget();
   for (const n of activeNotifications) n.close(); activeNotifications.clear();
   return Promise.all([attachmentFiles?.clear(), ...(previous ? [previous.session.clearStorageData(), previous.images.clearStorageData()] : [])]);
 }
@@ -242,7 +288,7 @@ async function connect(data, remember, restoring = false) {
     notificationSettings = preferences({ ...saved.notifications, language: saved.notifications?.language || i18n.language });
     i18n.setLanguage(notificationSettings.language);
     updateTrayMenu();
-    refreshWidget(); void pollNotifications();
+    await refreshPrivacy(); refreshWidget(); void pollNotifications();
     return { server: credentials.server, username: credentials.username, sessionId: candidate.syncId, localData: saved.values || {}, notifications: notificationSettings };
   } catch (error) {
     if (connection === current) { ++accountEpoch; await retireAccount(); }
@@ -250,18 +296,19 @@ async function connect(data, remember, restoring = false) {
   }
 }
 
-const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
   if (['change', 'move', 'respond'].includes(operation) && typeof data.ref?.id !== 'string') throw new Error('Invalid item reference');
-  if (['editDraft', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
+  if (['editDraft', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
   if (data.scope !== undefined && !['single', 'series'].includes(data.scope)) throw new Error('Invalid meeting scope');
   if (operation === 'change' && (data.field === 'Importance' ? !['High', 'Normal'].includes(data.value) : typeof data.value !== 'boolean')) throw new Error('Invalid value');
   if (operation === 'messages' && (typeof data.folder !== 'string' || !Number.isInteger(data.offset || 0) || (data.offset || 0) < 0)) throw new Error('Invalid folder or offset');
 }
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.astermail.desktop');
+  attachmentPreviews = new AttachmentPreviews({ BrowserWindow, session });
   attachmentFiles = new AttachmentFiles(path.join(app.getPath('userData'), 'opened-attachments'), file => shell.openPath(file));
   try { await attachmentFiles.clear(); } catch (error) { attachmentCleanupError = error.message; }
   updates = new Updates({ directory: path.join(app.getPath('userData'), 'updates'), installed: app.getVersion(),
@@ -280,7 +327,7 @@ app.whenReady().then(async () => {
   createWindow = () => {
     const { width, height } = screen.getPrimaryDisplay().workArea;
     window = new BrowserWindow({ width: Math.min(1440, width), height: Math.min(940, height), minWidth: Math.min(760, width), minHeight: Math.min(540, height), title: 'Aster Mail',
-      backgroundColor: '#f7f8fb', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 20 },
+      backgroundColor: '#f7f8fb',
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
     window.loadFile(page);
@@ -320,8 +367,12 @@ app.whenReady().then(async () => {
         return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences: data.preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
       }
       if (operation === 'setInterfaceScale') {
-        if (typeof data.scale !== 'number' || !Number.isFinite(data.scale) || data.scale < 0.8 || data.scale > 1.5) throw new Error('Invalid interface scale');
+        if (typeof data.scale !== 'number' || !Number.isFinite(data.scale) || data.scale < 0.8 || data.scale > 2) throw new Error('Invalid interface scale');
         window.webContents.setZoomFactor(data.scale);
+        for (const entry of composeWindows.entries.values()) entry.window.webContents.setZoomFactor(data.scale);
+        notificationSettings.interfaceScale = data.scale;
+        if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.setZoomFactor(data.scale);
+        refreshWidget();
         return { ok: true, value: data.scale };
       }
       if (operation === 'setLanguage') {
@@ -333,15 +384,18 @@ app.whenReady().then(async () => {
       if (operation === 'updateState') return { ok: true, value: updates.snapshot() };
       if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
       if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
+      if (operation === 'pauseUpdateDownload') return { ok: true, value: await updates.pauseDownload() };
+      if (operation === 'cancelUpdateDownload') return { ok: true, value: await updates.cancelDownload() };
       if (operation === 'openUpdateInstaller') return { ok: true, value: await updates.openInstaller() };
       if (operation === 'saveUpdatePreferences') {
         const value = await updates.preferences(data.autoCheck);
         if (app.isPackaged && data.autoCheck) void updates.checkAutomatically();
         return { ok: true, value };
       }
-      if (operation === 'mailAlerts') return { ok: true, value: mailAlerts };
-      if (operation === 'dismissMailAlert') { mailAlerts = mailAlerts.filter(item => item.id !== data.id); publishMailAlerts(); return { ok: true, value: true }; }
-      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported() } };
+      if (operation === 'mailAlerts') return { ok: true, value: privacyHidden() ? [] : mailAlerts };
+      if (operation === 'dismissMailAlert') { dismissMailAlert(data.id); return { ok: true, value: true }; }
+      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported(), privacyActive: privacyHidden(), presentationMode } };
+      if (operation === 'togglePresentation') { togglePresentation(); return { ok: true, value: presentationMode }; }
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings, next = preferences({ ...data, meetingReminders: notificationSettings.meetingReminders });
@@ -352,13 +406,14 @@ app.whenReady().then(async () => {
           if (connection !== active) throw new Error(tr('Сессия аккаунта завершена'));
         }
         notificationSettings = next;
+        if (!before.autoPrivacy && next.autoPrivacy) { sharingPrivacy.active = null; syncNotificationPrivacy(); }
         i18n.setLanguage(next.language); updateTrayMenu();
         if (!before.mail && notificationSettings.mail) { tracker.mailSeen.clear(); tracker.baseline = null; }
         if (!notificationSettings.preview || !notificationSettings.mail) {
           mailAlerts = []; publishMailAlerts();
           for (const n of activeNotifications) n.close(); activeNotifications.clear();
         }
-        refreshWidget(); void pollNotifications(); return { ok: true, value: notificationSettings };
+        await refreshPrivacy(); refreshWidget(); void pollNotifications(); return { ok: true, value: notificationSettings };
       }
       if (operation === 'testNotification') {
         if (!['mail', 'meeting'].includes(data.kind)) throw new Error('Invalid sound');
@@ -396,6 +451,30 @@ app.whenReady().then(async () => {
         const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Открыть ссылку в браузере?'), detail: url.href.slice(0, 1500), buttons: [tr('Отмена'), tr('Открыть')], defaultId: 0, cancelId: 0 });
         if (answer.response === 1) await shell.openExternal(url.href);
         return { ok: true, value: true };
+      }
+      if (operation === 'composeAttachment') {
+        if (!['preview', 'open', 'close'].includes(data.action)) throw new Error('Invalid attachment action');
+        const active = client, epoch = accountEpoch;
+        const sender = event.sender;
+        let previewRevision;
+        const assertActive = () => {
+          if (epoch !== accountEpoch || client !== active || sender.isDestroyed() || composeEntry && !composeWindows.entries.has(sender)) throw new Error(tr('Сессия аккаунта завершена'));
+          if (active ? data.sessionId !== active.syncId : data.source || composeEntry && !composeEntry.demo) throw new Error(tr('Сессия аккаунта завершена'));
+          if (previewRevision !== undefined) attachmentPreviews.assertCurrent(sender, previewRevision);
+        };
+        assertActive();
+        if (data.action === 'close') { attachmentPreviews.close(sender); return { ok: true, value: true }; }
+        const revision = previewRevision = attachmentPreviews.begin(sender);
+        const C = require('./compose-attachments.cjs');
+        const sources = composeEntry ? composeEntry.attachmentSources : new Set([data.source?.id].filter(Boolean));
+        const file = await C.resolve(data, { client: active, sources, assertActive }); assertActive();
+        if (data.action === 'preview') {
+          attachmentPreviews.assertCurrent(sender, revision);
+          const result = C.preview(file);
+          if (result.kind === 'pdf') return { ok: true, value: await attachmentPreviews.open(file, { owner: sender, revision, assertActive, parent: composeEntry?.window || window }) };
+          return { ok: true, value: result };
+        }
+        return { ok: true, value: await attachmentFiles.open({ name: file.name, load: async () => file.bytes, assertActive }) };
       }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
       const activeClient = client;
@@ -459,9 +538,22 @@ app.whenReady().then(async () => {
       if (!widgetWindow || event.sender !== widgetWindow.webContents || event.senderFrame !== widgetWindow.webContents.mainFrame) throw new Error('Untrusted widget sender');
       if (operation === 'state') return { ok: true, value: widgetState() };
       if (operation === 'app') { widgetWindow.hide(); reveal(); return { ok: true }; }
+      if (operation === 'presentation') { togglePresentation(); return { ok: true }; }
+      if (operation === 'dismiss-mail') { dismissMailAlert(data?.id); return { ok: true }; }
+      if (operation === 'open-mail') {
+        const alert = mailAlerts.find(item => item.id === data?.id);
+        if (!alert || privacyHidden()) throw new Error(tr('Уведомление больше не доступно'));
+        widgetWindow.hide(); reveal(alert.navigation); return { ok: true };
+      }
+      if (privacyHidden()) throw new Error(tr('Уведомления скрыты'));
       const meeting = widgetEvents.find(item => item.id === data?.id && !item.cancelled);
       if (!meeting) throw new Error(tr('Встреча больше не доступна. Дождитесь обновления календаря.'));
-      if (operation === 'open') {
+      if (operation === 'dismiss') {
+        for (const notification of activeNotifications) if (notification.asterNavigation?.eventId === meeting.id) { notification.close(); activeNotifications.delete(notification); }
+        dismissedMeetings.add(`${meeting.id}:${meeting.start}`);
+        if (dismissedMeetings.size > 200) dismissedMeetings.delete(dismissedMeetings.values().next().value);
+        refreshWidget();
+      } else if (operation === 'open') {
         widgetWindow.hide(); reveal({ view: 'calendar', date: meeting.start, eventId: meeting.id });
       } else if (operation === 'join') {
         if (['Decline', 'Declined'].includes(meeting.response)) throw new Error(tr('Встреча отклонена. Измените ответ в карточке встречи.'));
@@ -479,9 +571,11 @@ app.whenReady().then(async () => {
   tray.on('click', toggleWidget);
   refreshWidget();
   const attachmentTimer = setInterval(() => { attachmentFiles.cleanupExpired().then(() => { attachmentCleanupError = ''; }, error => { attachmentCleanupError = error.message; }); }, 60000); attachmentTimer.unref();
+  const privacyTimer = setInterval(() => { void refreshPrivacy(); }, 2000); privacyTimer.unref();
+  void refreshPrivacy();
   const widgetTimer = setInterval(refreshWidget, 15000); widgetTimer.unref();
   const mailTimer = setInterval(() => { void pollMail(); }, 15000); mailTimer.unref();
-  powerMonitor.on('resume', () => { void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
+  powerMonitor.on('resume', () => { sharingPrivacy.active = null; syncNotificationPrivacy(); void refreshPrivacy(); void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
   const timer = setInterval(() => { void pollNotifications(); }, 60000); timer.unref();
   if (app.isPackaged) {
     void updates.checkAutomatically();
@@ -495,7 +589,7 @@ app.on('before-quit', event => {
     const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Временные вложения не удалены'), detail: tr('Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.'), buttons: [tr('Остаться'), tr('Выйти')], defaultId: 0, cancelId: 0 });
     if (answer !== 1) { event.preventDefault(); return; }
   }
-  quitting = true; composeWindows?.destroyAll(); connection?.controller.abort();
+  quitting = true; attachmentPreviews?.closeAll(); composeWindows?.destroyAll(); connection?.controller.abort();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => { try { attachmentFiles?.clearSync(); } catch { /* The user has acknowledged locked copies before quitting; retry at startup. */ } });

@@ -1,6 +1,7 @@
 let updateSnapshot = { installed: '0.1.25', status: 'idle', autoCheck: true, available: null, error: '' };
 const promptedUpdateVersions = new Set();
 let updatePromptsReady = false;
+let updateInstallAttempt = 0;
 function maybePromptUpdate() {
   const value = updateSnapshot;
   if (!updatePromptsReady || !window.aster || !value.autoCheck || !value.available || value.error || !['available', 'ready'].includes(value.status) || promptedUpdateVersions.has(value.available.version)) return;
@@ -13,7 +14,9 @@ function maybePromptUpdate() {
 function enableUpdatePrompts() { updatePromptsReady = true; maybePromptUpdate(); }
 function updateStatus(value) {
   if (value.status === 'checking') return tr('Проверяем GitHub…');
-  if (value.status === 'downloading') return `${tr("Загрузка установщика ·")} ${value.progress}%`;
+  if (value.status === 'downloading' && value.retryAt) return tr('Соединение прервалось. Повторяем загрузку…');
+  if (value.status === 'downloading') return `${tr("Загрузка установщика ·")} ${value.progress}% · ${bytes(value.received || 0)} / ${bytes(value.available?.size || 0)}${value.speed ? ` · ${bytes(value.speed)}${tr('/с')}` : ''}`;
+  if (value.status === 'paused') return `${tr('Загрузка приостановлена')} · ${value.progress}% · ${bytes(value.received || 0)} / ${bytes(value.available?.size || 0)}`;
   if (value.status === 'ready') return tr('Установщик загружен, SHA-256 проверен');
   if (value.available) return `${tr("Доступна версия")} ${value.available.version}`;
   if (value.status === 'current') return tr('У вас актуальная версия');
@@ -32,6 +35,7 @@ function receiveUpdate(value) {
 }
 function renderUpdates() {
   const panel = document.querySelector('#updates-panel'); if (!panel) return;
+  const focused = panel.contains?.(document.activeElement) ? document.activeElement.dataset.update : null;
   const value = updateSnapshot, busy = ['checking', 'downloading'].includes(value.status);
   panel.innerHTML = `<p class="update-status" role="status">${esc(updateStatus(value))}</p>
     ${value.lastChecked ? `<p class="form-note">${tr("Последняя проверка:")} ${esc(new Date(value.lastChecked).toLocaleString(window.asterI18n.locale))}</p>` : ''}
@@ -39,7 +43,10 @@ function renderUpdates() {
     ${value.available?.notes ? `<details class="update-notes"><summary>${tr("Что нового в")} ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
     ${value.error ? `<p class="form-error" role="alert">${esc(errorText(value.error))}</p>` : ''}
     <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
-    ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}</div>`;
+    ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'paused' ? tr('Продолжить загрузку') : panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}
+    ${value.status === 'downloading' ? `<button class="secondary" data-update="pauseUpdateDownload">${tr('Пауза')}</button>` : ''}
+    ${['downloading', 'paused'].includes(value.status) ? `<button class="secondary" data-update="cancelUpdateDownload">${tr('Отменить загрузку')}</button>` : ''}</div>`;
+  if (focused) (panel.querySelector(`[data-update="${focused}"]:not(:disabled)`) || panel.querySelector('[data-update="downloadUpdate"]:not(:disabled),[data-update="installUpdate"]:not(:disabled)'))?.focus({ preventScroll: true });
 }
 async function updatesModal() {
   const previousModal = modalSequence;
@@ -56,11 +63,13 @@ async function updatesModal() {
 document.addEventListener('click', async event => {
   const button = event.target.closest('[data-update]'); if (!button || button.disabled) return;
   button.disabled = true;
+  if (['pauseUpdateDownload', 'cancelUpdateDownload'].includes(button.dataset.update)) updateInstallAttempt++;
   const version = modalSequence, dialog = document.querySelector('#modal');
   try {
     if (button.dataset.update === 'installUpdate') {
+      const attempt = ++updateInstallAttempt;
       if (updateSnapshot.status !== 'ready') receiveUpdate(await api('downloadUpdate'));
-      if (updateSnapshot.status === 'ready' && !updateSnapshot.error && dialog.open && version === modalSequence) receiveUpdate(await api('openUpdateInstaller'));
+      if (attempt === updateInstallAttempt && updateSnapshot.status === 'ready' && !updateSnapshot.error && dialog.open && version === modalSequence) receiveUpdate(await api('openUpdateInstaller'));
     } else receiveUpdate(await api(button.dataset.update));
   }
   catch (error) { toast(errorText(error)); renderUpdates(); }

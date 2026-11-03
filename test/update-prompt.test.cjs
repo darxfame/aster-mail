@@ -10,7 +10,7 @@ function fixture(api = async () => assert.fail('Unexpected request')) {
   const document = { visibilityState: 'visible', querySelector: selector => selector === '#modal' ? dialog : selector === '#updates-panel' ? dialog.open ? panel : null : version,
     addEventListener(name, callback) { listeners[name] = callback; } };
   const context = vm.createContext({ errorText: require('../src/errors.js').message, document, window: { aster: {}, asterI18n: { locale: 'en-GB' }, addEventListener() {} },
-    tr: value => value, esc: value => String(value).replaceAll('<', '&lt;'), modalBusy: false, modalDirty: false, modalSequence: 0, api,
+    tr: value => value, bytes: value => `${value} B`, esc: value => String(value).replaceAll('<', '&lt;'), modalBusy: false, modalDirty: false, modalSequence: 0, api,
     modal(title, description, body) { context.modalSequence++; dialog.open = true; shown.push({ title, description, body }); }, toast() {}, setTimeout: callback => callback() });
   vm.runInContext(source, context);
   return { context, dialog, panel, listeners, shown };
@@ -23,6 +23,34 @@ test('startup snapshot prompts once after boot and waits for an open form or hid
   f.context.document.visibilityState = 'visible'; f.context.maybePromptUpdate(); assert.equal(f.shown.length, 1);
   assert.match(f.panel.innerHTML, /installUpdate/); assert.match(f.panel.innerHTML, /&lt;b>Fictional notes/);
   f.dialog.open = false; f.context.receiveUpdate(available); assert.equal(f.shown.length, 1);
+});
+test('paused and retrying downloads expose resume, pause and cancel controls', () => {
+  const f = fixture(); f.context.enableUpdatePrompts(); f.context.receiveUpdate(available);
+  f.context.receiveUpdate({ ...available, status: 'downloading', progress: 25, received: 100, speed: 40, available: { ...available.available, size: 400 } });
+  assert.match(f.panel.innerHTML, /100 B \/ 400 B/);
+  assert.match(f.panel.innerHTML, /pauseUpdateDownload/);
+  assert.match(f.panel.innerHTML, /cancelUpdateDownload/);
+  f.context.receiveUpdate({ ...available, status: 'downloading', progress: 25, retryAt: Date.now() + 1000 });
+  assert.match(f.panel.innerHTML, /Повторяем загрузку/);
+  f.context.receiveUpdate({ ...available, status: 'paused', progress: 25, received: 100 });
+  assert.match(f.panel.innerHTML, /Продолжить загрузку/);
+  assert.doesNotMatch(f.panel.innerHTML, /pauseUpdateDownload/);
+});
+test('pause or cancel invalidates a pending install action even if a late result says ready', async () => {
+  for (const operation of ['pauseUpdateDownload', 'cancelUpdateDownload']) {
+    const calls = [];
+    let finish;
+    const f = fixture(async name => {
+      calls.push(name);
+      if (name === 'downloadUpdate') return new Promise(resolve => { finish = resolve; });
+      return { ...available, status: 'paused' };
+    });
+    f.context.receiveUpdate(available); f.context.enableUpdatePrompts();
+    const installing = f.listeners.click({ target: { closest: () => ({ dataset: { update: 'installUpdate' } }) } });
+    await f.listeners.click({ target: { closest: () => ({ dataset: { update: operation } }) } });
+    finish({ ...available, status: 'ready' }); await installing;
+    assert.deepEqual(calls, ['downloadUpdate', operation]);
+  }
 });
 test('disabled automatic checks and failed checks never show an unsolicited prompt', () => {
   const f = fixture(); f.context.enableUpdatePrompts();

@@ -6,6 +6,9 @@ const availability = require('./availability.cjs');
 function attributes(tag) {
   return Object.fromEntries([...tag.matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map(m => [m[1].toLowerCase(), (m[2] ?? m[3] ?? m[4]).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")]));
 }
+function checkConnectionStatus(status) {
+  if ([408, 425, 429, 500, 502, 503, 504].includes(status)) throw Object.assign(new Error(tr('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.')), { connectionError: true, status });
+}
 function loginForm(html, origin) {
   const action = attributes(html.match(/<form\b[^>]*>/i)?.[0] || '').action || '/owa/auth.owa';
   const url = new URL(action, `${origin}/owa/`);
@@ -43,6 +46,7 @@ class OWAClient {
     this.canary = null;
     await this.clearCookies();
     const page = await this.transport(`${this.origin}/owa/`, {});
+    checkConnectionStatus(page.status);
     if (page.status === 401) { this.authRejected = true; throw new Error(tr('Сервер отклонил логин или пароль. Проверьте также домен: DOMAIN\\login.')); }
     if (page.status >= 400) throw new Error(`${tr("Страница OWA недоступна (HTTP")} ${page.status}${tr("). Проверьте адрес и VPN.")}`);
     this.canary = await this.token(page.text);
@@ -56,9 +60,18 @@ class OWAClient {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: this.origin, Referer: `${this.origin}/owa/` },
       body: form.fields.toString(),
     });
+    checkConnectionStatus(auth.status);
     if (auth.status >= 400) { if ([401, 440].includes(auth.status)) this.authRejected = true; throw new Error(`${tr("Вход не выполнен (HTTP")} ${auth.status}${tr("). Проверьте логин, пароль и VPN.")}`); }
     this.canary = await this.token(auth.text);
-    if (!this.canary) this.canary = await this.token((await this.transport(`${this.origin}/owa/`, {})).text);
+    if (!this.canary) {
+      const resumed = await this.transport(`${this.origin}/owa/`, {});
+      checkConnectionStatus(resumed.status);
+      if (resumed.status >= 400) {
+        if ([401, 440].includes(resumed.status)) this.authRejected = true;
+        throw new Error(`${tr('Вход не выполнен (HTTP')} ${resumed.status}${tr('). Проверьте логин, пароль и VPN.')}`);
+      }
+      this.canary = await this.token(resumed.text);
+    }
     if (!this.canary) { this.authRejected = true; throw new Error(tr('Сервер не выдал OWA CANARY. Возможны неверный пароль, MFA или неподдерживаемая форма входа.')); }
   }
   async call(action, payload, options) {
@@ -92,7 +105,7 @@ class OWAClient {
       if (retry) { await this.authenticate(); return this.call(action, payload, { retry: false, headerBody }); }
       throw Object.assign(new Error(tr('Сессия истекла. Соединение восстанавливается; операция не повторялась.')), { connectionError: true });
     }
-    if ([408, 429, 502, 503, 504].includes(response.status)) throw Object.assign(new Error(tr('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.')), { connectionError: true });
+    checkConnectionStatus(response.status);
     if (response.status >= 400) throw Object.assign(new Error(`OWA ${action}: HTTP ${response.status}`), { status: response.status });
     let json;
     try { json = JSON.parse(response.text.replace(/^\uFEFF/, '')); } catch {
@@ -100,7 +113,7 @@ class OWAClient {
         this.canary = null; this.onConnectionState?.('reconnecting');
         if (retry) { await this.authenticate(); return this.call(action, payload, { retry: false, headerBody }); }
       }
-      throw Object.assign(new Error(`OWA ${action}${tr(": вместо JSON получена страница входа или неподдерживаемый ответ.")}`), { connectionError: /^\s*(?:<!doctype|<html|<form)/i.test(response.text) });
+      throw Object.assign(new Error(`OWA ${action}${tr(": вместо JSON получена страница входа или неподдерживаемый ответ.")}`), { connectionError: true });
     }
     if (action === 'GetUserAvailabilityInternal' && availability.rows(json, payload.request.Body.MailboxDataArray.length)) return json;
     if (action === 'GetOwaUserConfiguration' && !json.Body && (json.UserSessionSettings || json.SessionSettings)) return P.checkJSON({ Body: json });
@@ -318,6 +331,13 @@ class OWAClient {
     const detail = calendarEvents.normalize(o);
     if (!detail.changeKey) throw new Error(tr('Exchange не вернул версию встречи'));
     return { ...detail, ref: { id: detail.id, changeKey: detail.changeKey } };
+  }
+  async eventConflicts(data) {
+    const C = require('./meeting-conflicts.cjs');
+    const meeting = await this.eventDetails(data.ref);
+    const payload = meeting.cancelled ? null : C.query(meeting);
+    const result = payload ? C.normalize(await this.ews('FindItem', payload), meeting) : require('../src/meeting-conflicts.js').analyze(meeting, [], false);
+    return { ...result, id: meeting.id, changeKey: meeting.changeKey, cancelled: meeting.cancelled };
   }
   async updateEvent(data) {
     const current = await this.eventDetails({ ...data.ref, scope: data.scope || 'single' });

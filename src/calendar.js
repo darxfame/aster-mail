@@ -13,7 +13,7 @@
   function move(date, view, direction, timeZone = 'system') {
     return T.add(date, ['quarter', 'month'].includes(view) ? { months: direction * (view === 'quarter' ? 3 : 1) } : { days: direction * (view === 'day' ? 1 : 7) }, timeZone);
   }
-  function mode(preference, width) { return ['day', 'week', 'quarter'].includes(preference) ? preference : width < 700 ? 'day' : 'week'; }
+  function mode(preference, width) { return ['day', 'week', 'quarter'].includes(preference) ? preference : width < 900 ? 'day' : 'week'; }
   const calendar = { range, move, mode };
   if (typeof module !== 'undefined') module.exports = calendar;
   else root.asterCalendar = calendar;

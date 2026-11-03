@@ -91,7 +91,7 @@ function message(o) {
     importance: o.Importance || 'Normal', flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),
     html: body.BodyType === 'Text' ? null : body.Value || '', text: body.BodyType === 'Text' ? body.Value : '',
     attachments: (o.Attachments || []).filter(a => a.AttachmentId).map(a => ({ id: a.AttachmentId.Id, name: a.Name, size: a.Size, type: a.ContentType || '', contentId: a.ContentId || '', inline: Boolean(a.IsInline) })),
-    meeting: o.AssociatedCalendarItemId?.Id ? { id: o.AssociatedCalendarItemId.Id, changeKey: o.AssociatedCalendarItemId.ChangeKey, start: T.exchange(o.Start), end: T.exchange(o.End), location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName, cancelled: o.IsCancelled === true || o.ItemClass === 'IPM.Schedule.Meeting.Canceled' } : null,
+    meeting: o.AssociatedCalendarItemId?.Id || /^IPM\.Schedule\.Meeting\./.test(o.ItemClass || '') ? { id: o.AssociatedCalendarItemId?.Id || '', changeKey: o.AssociatedCalendarItemId?.ChangeKey || '', start: T.exchange(o.Start), end: T.exchange(o.End), location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName, cancelled: o.IsCancelled === true || o.ItemClass === 'IPM.Schedule.Meeting.Canceled' } : null,
   };
 }
 const escapeXML = value => String(value ?? '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);

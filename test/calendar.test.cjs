@@ -11,6 +11,7 @@ test('calendar views respect local days, Monday weeks and year-boundary quarters
   assert.deepEqual(local(move(date, 'quarter', 1)).slice(0, 3), [2027, 3, 1]);
   assert.equal(move(new Date(2024, 1, 28), 'day', 1).getDate(), 29);
   assert.equal(mode('auto', 240), 'day');
+  assert.equal(mode('auto', 800), 'day');
   assert.equal(mode('auto', 1000), 'week');
   assert.equal(mode('quarter', 240), 'quarter');
 });
