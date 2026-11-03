@@ -194,6 +194,10 @@ Install from a package folder or a public GitHub repository under Settings →
 Modules. GitHub refs resolve to a pinned commit; only declared files are fetched.
 Installation and per-account permission grants require separate confirmations.
 
+[Aster Mail Modules](https://github.com/darxfame/aster-mail-modules) is the
+repository for modules from the Aster Mail author. Contribute your own module via
+a pull request or discuss an idea in Issues. Package requirements are in the guide below.
+
 See [architecture](docs/modules/architecture.md),
 [development guide](docs/modules/development.md) and the
 [synthetic SDK example](examples/modules/sandbox-demo).

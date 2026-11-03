@@ -1,6 +1,8 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Модули автора и предложения сообщества — в репозитории Aster Mail Modules.": "Author modules and community contributions are available in the Aster Mail Modules repository.",
+    "Модули автора · предложить свой модуль": "Author modules · contribute a module",
     "Подключить с GitHub": "Connect from GitHub",
     "Модуль с GitHub": "Module from GitHub",
     "Будут загружены только файлы пакета. Скрипты установки и сборки не запускаются.": "Only package files will be downloaded. Install and build scripts are not executed.",

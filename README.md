@@ -268,6 +268,10 @@ Aster. Постоянная подпись не включает Touch ID: пр�
 GitHub-репозитория: ветка/тег разрешается в точный commit, загружаются только
 объявленные ресурсы, установка и включение требуют отдельных подтверждений.
 
+[Aster Mail Modules](https://github.com/darxfame/aster-mail-modules) — репозиторий
+модулей от автора Aster Mail. Здесь же можно предложить собственный модуль через
+Pull Request или обсудить идею в Issues. Требования к пакетам описаны в руководстве ниже.
+
 [Архитектура и план](docs/modules/architecture.md) ·
 [Разработка и внедрение](docs/modules/development.md) ·
 [Учебный пакет](examples/modules/sandbox-demo).
