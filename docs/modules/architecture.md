@@ -101,3 +101,13 @@ RPC принимает сообщения только от зарегистри
 По прямому запросу пользователя изучены образцы [Xerj pack verification](https://github.com/xerj-org/xerj/blob/v1.0.0-rc.100/engine/crates/xerj-hub/src/pack.rs), [Xerj lockfile](https://github.com/xerj-org/xerj/blob/v1.0.0-rc.100/engine/crates/xerj-hub/src/lockfile.rs) и [agent plugin](https://github.com/xerj-org/xerj/blob/v1.0.0-rc.100/plugins/xerj/README.md). Полезны принципы фиксирования источника, проверки целостности и ограничения пакета. Код не копировался. У Xerj Corpus Hub есть отдельная проверка подписи; Aster API 1 НЕ заявляет аналогичной подписи издателя.
 
 Xerj подключается только как необязательный инструмент разработки. Его использование не является условием разработки модулей или сборки Aster; каждое применение требует отдельного согласия пользователя.
+
+## Проверка реализации (macOS arm64)
+
+`npm run check` прошёл; Node: 326 успешных проверок, одна пропущена.
+`npm run test:modules` проверил фактический Chromium sandbox, запрет Node/file/direct HTTP/WebRTC UDP, отдельный процесс встроенного UI, состояние и границы аккаунта.
+`npm run test:connection` проверил обычный form login, gzip и первое чтение в реальном Electron на вымышленном сервере.
+
+`npm run test:modules -- --github c62cd1a334e0e0cfe864765fbc8c11d10960573a` загрузил учебный пакет непосредственно с GitHub, подтвердил совпадение digest с локальным пакетом и выполнил sandbox-проверки скачанного кода. В интерфейсе Aster проверено отображение repo/commit/digest/разрешений до установки и отмена без изменения списка. Снимок: [GitHub confirmation](github-confirmation.jpg). Собственная панель и часть формы встречи проверены в изолированном UI fixture без реальной отправки.
+
+Windows, реальная корпоративная OWA и полная матрица масштабов модулей пока не проверены; это условия приёмки перед слиянием в main.
