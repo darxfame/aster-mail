@@ -194,6 +194,7 @@ function receiveConnection(snapshot) {
 }
 function modal(title, description, body) {
   if (modalBusy) return;
+  if (typeof unmountModuleViews === 'function') unmountModuleViews();
   if (typeof closeAttachmentPreview === 'function') closeAttachmentPreview();
   modalSequence++;
   $('#modal').setAttribute('aria-label', title);
@@ -468,6 +469,7 @@ function renderCalendar() {
   const grid = mode === 'quarter' ? quarterMarkup(start, events) : timelineMarkup(start, mode, events);
   $('#workspace').innerHTML = `<div class="calendar-view"><header class="calendar-heading"><h1>${esc(title)}</h1><div class="calendar-toolbar"><select id="calendar-mode" aria-label="${tr("Вид календаря")}">${[['auto', `${tr("Авто ·")} ${window.asterCalendar.mode('auto', $('#workspace').clientWidth) === 'day' ? tr('день') : tr('неделя')}`], ['day', tr('День')], ['week', tr('Неделя')], ['quarter', tr('Квартал')]].map(([value, label]) => `<option value="${value}" ${calendarPreference === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="secondary" data-action="today">${tr("Сегодня")}</button><div class="calendar-arrows"><button class="icon-button flip" data-action="calendar-prev" aria-label="${mode === 'week' ? tr('Предыдущая неделя') : `${tr("Предыдущий")} ${period}`}">${icon('chevron')}</button><button class="icon-button" data-action="calendar-next" aria-label="${mode === 'week' ? tr('Следующая неделя') : `${tr("Следующий")} ${period}`}">${icon('chevron')}</button></div></div></header>${grid}<div class="calendar-legend" aria-label="${tr("Цвета встреч")}"><span class="pending">${tr("Без ответа / под вопросом")}</span><span class="accepted">${tr("Принято")}</span><span class="organized">${tr("Вы организатор")}</span><span class="declined">${tr("Отклонено")}</span></div><div class="calendar-caption"><span>${icon('clock')} ${esc(T.zone(timeZone))}</span><span>${events.length} ${tr("встреч за")} ${period}</span><span>${esc(dateFormat(start, { day: 'numeric', month: 'short' }))} — ${esc(dateFormat(new Date(end - 1), { day: 'numeric', month: 'short' }))}</span></div></div>`;
   restoreCalendarScroll(start, mode, previousScroll);
+  renderModuleContributions();
 }
 function colleaguesKey() { return `aster-colleagues:${state.demo ? 'demo' : `${state.account?.server || ''}|${state.account?.username || ''}`}`; }
 function colleagues() {
@@ -681,7 +683,8 @@ function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
 function eventModal(requestedStart) {
   if (!ready()) return connectModal();
   const start = requestedStart instanceof Date ? requestedStart : new Date(Math.ceil(Date.now() / 1800000) * 1800000), end = new Date(+start + 1800000);
-  modal(tr('Новая встреча'), tr('Участники получат приглашения от вашего аккаунта Exchange.'), `<form id="event-form">${field('title', tr('Название встречи'), '', 'text', true)}<div class="form-row">${field('start', tr('Начало'), localDate(start), 'datetime-local', true)}${field('end', tr('Окончание'), localDate(end), 'datetime-local', true)}</div>${field('location', tr('Место или ссылка на встречу'))}${field('attendees', tr('Участники · email через запятую'))}${textField('body', tr('Описание и повестка'))}<section class="planner"><h3>${icon('clock')}${tr("Помощник планирования")}</h3>${colleagues().length ? `<details><summary>${tr("Добавить избранных коллег")}</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}${tr("Проверить занятость и найти время")}</button><div id="planner-results" aria-live="polite"></div></section><p class="form-note">${tr("Часовой пояс:")} ${esc(T.zone(timeZone))}${tr(". Без участников событие сохранится только в вашем календаре.")}</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}${tr("Создать и отправить приглашения")}</button></div></form>`);
+  modal(tr('Новая встреча'), tr('Участники получат приглашения от вашего аккаунта Exchange.'), `<form id="event-form">${field('title', tr('Название встречи'), '', 'text', true)}<div class="form-row">${field('start', tr('Начало'), localDate(start), 'datetime-local', true)}${field('end', tr('Окончание'), localDate(end), 'datetime-local', true)}</div>${field('location', tr('Место или ссылка на встречу'))}${moduleMeetingControls()}${field('attendees', tr('Участники · email через запятую'))}${textField('body', tr('Описание и повестка'))}<section class="planner"><h3>${icon('clock')}${tr("Помощник планирования")}</h3>${colleagues().length ? `<details><summary>${tr("Добавить избранных коллег")}</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}${tr("Проверить занятость и найти время")}</button><div id="planner-results" aria-live="polite"></div></section><p class="form-note">${tr("Часовой пояс:")} ${esc(T.zone(timeZone))}${tr(". Без участников событие сохранится только в вашем календаре.")}</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}${tr("Создать и отправить приглашения")}</button></div></form>`);
+  renderModuleContributions();
 }
 function contactModal() {
   if (!ready()) return connectModal();
@@ -703,7 +706,7 @@ async function settingsModal() {
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal(tr('Настройки Aster'), tr('Спокойное пространство, настроенное под вас.'), `<form id="settings-form">
     <div class="settings-tabs" role="tablist" aria-label="${tr("Разделы настроек")}">
-      ${[['general', tr('Общие')], ['signature', tr('Подпись')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
+      ${[['general', tr('Общие')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
     </div>
     <div class="settings-panels">
     <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
@@ -718,6 +721,7 @@ async function settingsModal() {
     <h3 class="settings-heading">${tr("Навигация")}</h3>
     <label class="field"><span>${tr("Расположение меню")}</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>${tr("Слева · под папками, над аккаунтом")}</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>${tr("Внизу окна · горизонтальная панель")}</option></select></label>
     </section>
+    <section id="settings-panel-modules" role="tabpanel" aria-labelledby="settings-tab-modules" tabindex="0" hidden>${moduleSettingsMarkup()}</section>
     <section id="settings-panel-signature" role="tabpanel" aria-labelledby="settings-tab-signature" tabindex="0" hidden>
     <h3 class="settings-section-title">${tr("Подпись в письмах")}</h3>
     ${checkbox('syncSignature', tr('Использовать подпись из OWA'), syncSignature)}
@@ -759,6 +763,7 @@ async function settingsModal() {
     </div>
     <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
+  void refreshModuleList().catch(showError);
   $('#settings-form').addEventListener('keydown', event => {
     if (!event.target.matches('[role="tab"]')) return;
     const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
@@ -848,6 +853,7 @@ async function sendCompose(save) {
   });
 }
 async function handleAction(button) {
+  if (button.dataset.action.startsWith('module-')) return handleModuleAction(button);
   if (button.dataset.action === 'connection') {
     if (modalBusy) return;
     if ($('#modal').open && !confirmDiscardChanges()) return;
@@ -1125,6 +1131,7 @@ document.addEventListener('submit', event => {
   if (form.id === 'meeting-message-form') { submitMeetingMessage(form); return; }
   if (form.id === 'event-form' && form.dataset.editing === 'true') { submitMeetingEdit(form); return; }
   if (form.id === 'directory-form') { searchDirectory(form); return; }
+  if (form.id === 'module-github-form') { void installModuleFromGitHub(form).catch(showError); return; }
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
     submitForm(form, async data => {
@@ -1174,6 +1181,7 @@ function applyAccount(value) {
   state.recoverView = null; state.recoverMessage = null;
   window.asterMailFind?.reset();
   state.generation++; messageOpenSequence++; readingMessages.clear();
+  connectedModules = [];
   localValues = value?.localData || {}; localSave = Promise.resolve();
   const { localData, notifications, ...identity } = value || {};
   state.account = value ? identity : null; state.demo = false;
@@ -1199,6 +1207,7 @@ function applyAccount(value) {
   state.query = ''; $('#search').value = ''; renderMailAlerts([]);
   $('#people-search-suggestions')?.replaceChildren();
   document.body.classList.toggle('dark', state.theme === 'dark'); renderSidebar();
+  void loadModuleContributions().catch(showError);
 }
 async function boot() {
   if (isComposeWindow && window.aster) return bootComposeWindow();
@@ -1220,6 +1229,7 @@ async function boot() {
     window.aster.onMailAlerts(renderMailAlerts);
     window.aster.onInbox(snapshot => { void receiveInbox(snapshot); });
     window.aster.onConnection?.(receiveConnection);
+    window.aster.onModuleAction?.(receiveModuleAction);
     renderMailAlerts(await api('mailAlerts'));
     window.aster.onNavigate(async data => {
       try {
@@ -1276,7 +1286,7 @@ function confirmDiscardChanges() {
 for (const name of ['input', 'change']) document.addEventListener(name, event => {
   if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form, #meeting-local-reminders-form')) setModalDirty(true);
 });
-$('#modal').addEventListener('close', () => { if ($('#modal').open) return; closeAttachmentPreview(); setModalDirty(false); resumeConnectionReads(); });
+$('#modal').addEventListener('close', () => { if ($('#modal').open) return; if (typeof unmountModuleViews === 'function') unmountModuleViews(); closeAttachmentPreview(); setModalDirty(false); resumeConnectionReads(); });
 document.addEventListener('click', event => {
   if (event.target.closest('[data-action="planner-slot"]') && $('#event-form')) setModalDirty(true);
   if (!event.target.closest('[data-action="meeting-return"]') || !modalDirty) return;

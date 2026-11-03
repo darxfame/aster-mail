@@ -339,3 +339,12 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
   .timeline-single .timeline-heading { display:flex; align-items:center; justify-content:center; gap:8px; }
   .timeline-single .timeline-heading strong { margin:0; }
 }
+
+.module-card { margin-top:14px; padding:12px; border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
+.module-actions,#meeting-module-contributions { display:flex; flex-wrap:wrap; gap:8px; }
+.module-view-part { width:100%; min-width:0; margin:8px 0; }
+.module-view-slot { width:100%; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--surface); }
+.module-command-menu { position:relative; flex:none; }
+.module-command-menu summary { cursor:pointer; padding:6px 12px; border-radius:8px; font-size:20px; list-style:none; }
+.module-command-menu>div { position:absolute; top:100%; right:0; width:240px; max-height:300px; overflow:auto; padding:8px; background:var(--surface); border:1px solid var(--line); border-radius:8px; z-index:30; }
+.module-command-menu>div button { display:block; width:100%; margin:4px 0; white-space:normal; }

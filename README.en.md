@@ -183,3 +183,21 @@ are running, even when they are not sharing. It checks every two seconds and bef
 alerts, and hides on check failure. This checks running applications, not actual capture;
 universal capture detection is not guaranteed. Use manual presentation mode for other
 apps. System notification appearance and stacking remain controlled by the OS.
+
+### Modules (development branch)
+
+`codex/modules` adds self-contained browser JavaScript packages with commands,
+embedded views, private encrypted state and events. Untrusted code runs inside a
+Chromium sandbox with no Node.js, filesystem, Exchange session or direct network
+access. The host SDK checks permissions, account identity and destinations.
+Install from a package folder or a public GitHub repository under Settings →
+Modules. GitHub refs resolve to a pinned commit; only declared files are fetched.
+Installation and per-account permission grants require separate confirmations.
+
+See [architecture](docs/modules/architecture.md),
+[development guide](docs/modules/development.md) and the
+[synthetic SDK example](examples/modules/sandbox-demo).
+Run `node scripts/check-module.cjs examples/modules/sandbox-demo` and
+`npm run test:modules`. These development changes are not merged into main.
+
+[Optional Xerj reference tool](docs/xerj.md): each reference operation requires user consent.

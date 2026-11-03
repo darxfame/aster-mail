@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('aster', {
   },
   invoke: (operation, data = {}) => ipcRenderer.invoke('aster', operation, data),
   onComposeSaved: callback => ipcRenderer.on('aster-compose-saved', () => callback()),
+  onModuleAction: callback => ipcRenderer.on('aster-module-action', (_event, data) => callback(data)),
   onNavigate: callback => ipcRenderer.on('aster-navigate', (_event, data) => callback(data)),
   onUpdate: callback => ipcRenderer.on('aster-update', (_event, data) => callback(data)),
   onInbox: callback => ipcRenderer.on('aster-inbox', (_event, data) => callback(data)),
