@@ -8,7 +8,22 @@ const M = require('../desktop/modules.cjs');
 async function main() {
   const bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
   await M.installPackage(path.join(profile, 'modules'), bundle);
-  const modules = [{ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: true, data: {} }];
+  const modules = process.argv.includes('--catalog-fixture') ? [] : [{ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: true, data: {} }];
+  if (process.argv.includes('--catalog-fixture')) {
+    const Github = require('../desktop/module-github.cjs');
+    const revision = 'a'.repeat(40), commit = 'b'.repeat(40);
+    const catalog = { catalogVersion: 1, modules: [{ manifest: bundle.manifest, description: 'Fictional SDK module for catalog testing only.', commit, directory: 'examples/sandbox-demo', digest: bundle.digest }] };
+    Github.getBytes = async (_net, _session, url, limit, signal) => {
+      if (signal.aborted) throw new Error('Fixture cancelled');
+      let bytes;
+      if (url.endsWith('/commits/main')) bytes = Buffer.from(JSON.stringify({ sha: revision }));
+      else if (url.endsWith('/catalog.json')) bytes = Buffer.from(JSON.stringify(catalog));
+      else if (url.endsWith(`/commits/${commit}`)) bytes = Buffer.from(JSON.stringify({ sha: commit }));
+      else bytes = bundle.files.get(url.split('/examples/sandbox-demo/')[1]);
+      if (!bytes || bytes.length > limit) throw new Error('Unexpected fixture download');
+      return bytes;
+    };
+  }
   class FixtureStore {
     constructor() { this.data = { modules, values: {} }; }
     requireEncryption() {}

@@ -41,13 +41,35 @@ class ModuleHost {
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     return result;
   }
-  async install(bundle) {
+  // Called only by trusted user-initiated join handlers, never exposed through module RPC.
+  async openMeeting(value) {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid meeting link');
+    const sessionId = this.current().sessionId;
+    const catalog = await this.catalog();
+    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+    const route = catalog.find(item => item.enabled && !item.error && M.meetingTarget(item, value));
+    if (catalog.filter(item => item.enabled && !item.error && M.meetingTarget(item, value)).length > 1) throw new Error(tr('Для ссылки настроено несколько приложений. Отключите лишний модуль.'));
+    const target = route ? M.meetingTarget(route, value) : value;
+    // Check registration before launching; do not silently open a second target on failure.
+    if (route && !await this.electron.app.getApplicationNameForProtocol(target)) throw new Error(tr('Приложение встречи не установлено. Откройте ссылку в браузере.'));
+    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+    if (route) {
+      const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Открыть приложение встречи?'), detail: `${route.name}\n${target}\n${await this.electron.app.getApplicationNameForProtocol(target)}`, buttons: [tr('Отмена'), tr('Открыть')], defaultId: 0, cancelId: 0 });
+      if (answer.response !== 1) return;
+      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+    }
+    if (route && !this.records().some(item => item.id === route.id && item.enabled && item.digest === route.digest)) throw new Error(tr('Модуль выключен или не настроен'));
+    await this.electron.shell.openExternal(target);
+  }
+  async install(bundle, enabled = false) {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
     if (this.records().some(record => record.id === bundle.manifest.id)) throw new Error(tr('Модуль уже подключён. Сначала удалите прежнюю версию.'));
     if (this.records().length >= 8) throw new Error(tr('Достигнут лимит подключённых модулей'));
     const sessionId = this.current().sessionId;
     await M.installPackage(this.directory, bundle);
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    await this.update(records => records.push({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled: false, data: {} }));
+    await this.update(records => records.push({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled, data: {} }));
   }
   async configure(id, enabled) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
@@ -67,6 +89,7 @@ class ModuleHost {
   stop(id) {
     const entry = this.entries.get(id); if (!entry) return;
     entry.retired = true; entry.controller.abort(); this.entries.delete(id);
+    require('./module-auth.cjs').closeAuthentication(entry);
     entry.readyReject?.(new Error(tr('Модуль остановлен')));
     for (const pending of this.pending.values()) if (pending.entry === entry) pending.reject(new Error(tr('Модуль остановлен')));
     for (const [key, view] of this.views) if (view.entry === entry) this.closeView(key);
@@ -155,9 +178,24 @@ class ModuleHost {
       if (method === 'ready' && role === 'runtime') { entry.readyResolve(); return true; }
       if (method === 'command' && role !== 'runtime') return this.invoke(entry.id, input.command, input.input, this.senders.get(event.sender).context);
       const definition = entry.bundle.manifest;
-      const permission = { 'ui.context': 'ui', 'ui.openView': 'ui', 'network.request': 'network', 'storage.get': 'storage', 'storage.set': 'storage', 'calendar.list': 'calendar.read', 'meeting.getDraft': 'meeting.draft', 'meeting.openDraft': 'meeting.draft', 'meeting.patchDraft': 'meeting.draft', 'events.publish': 'events' }[method];
+      const permission = { 'ui.context': 'ui', 'ui.openView': 'ui', 'network.request': 'network', 'storage.get': 'storage', 'storage.set': 'storage', 'calendar.list': 'calendar.read', 'meeting.getDraft': 'meeting.draft', 'meeting.openDraft': 'meeting.draft', 'meeting.patchDraft': 'meeting.draft', 'events.publish': 'events', 'auth.signIn': 'auth.session', 'auth.status': 'auth.session', 'auth.signOut': 'auth.session' }[method];
       if (!permission || !definition.permissions.includes(permission)) throw Object.assign(new Error(tr('Недостаточно разрешений модуля')), { code: 'permission-denied' });
-      if (method === 'network.request') return await M.requestJSON(this.electron.net, entry.network, definition, input, entry.controller.signal);
+      if (method === 'auth.status') return require('./module-auth.cjs').authenticationStatus(this, entry);
+      if (method === 'auth.signIn') return await require('./module-auth.cjs').signIn(this, entry, input);
+      if (method === 'auth.signOut') {
+        if (!entry.context) throw new Error('User action required');
+        require('./module-auth.cjs').closeAuthentication(entry);
+        await this.update(records => { this.current(entry); const record = records.find(record => record.id === entry.id); if (record) delete record.auth; }); return true;
+      }
+      if (method === 'network.request') {
+        let token = null;
+        if (input.auth !== undefined) {
+          const auth = this.records().find(record => record.id === entry.id)?.auth;
+          if (input.auth !== 'session' || !definition.permissions.includes('auth.session') || !definition.authentication?.origins.includes(new URL(input.url).origin) || !auth || auth.origin !== new URL(input.url).origin || Date.parse(auth.expiresAt) <= Date.now() || input.bearer !== undefined || Object.keys(input.headers || {}).length) throw Object.assign(new Error('Service sign-in required'), { code: 'permission-denied' });
+          token = auth.token;
+        }
+        return await M.requestJSON(this.electron.net, entry.network, definition, input, entry.controller.signal, token);
+      }
       if (method === 'storage.get') { const record = this.records().find(record => record.id === entry.id); return M.bounded(record ? record.data : {}, 16000); }
       if (method === 'storage.set') { const value = M.bounded(input, 16000); await this.update(records => { this.current(entry); const record = records.find(record => record.id === entry.id); if (!record || !record.enabled) throw new Error(tr('Модуль остановлен')); record.data = value; }); this.current(entry); return true; }
       if (method === 'events.publish') { if (!/^[a-z][a-z0-9.-]{0,60}$/.test(input.topic)) throw new Error('Invalid module topic'); this.publish(`${entry.id}.${input.topic}`, input.data ?? null); return true; }

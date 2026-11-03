@@ -196,7 +196,9 @@ Installation and per-account permission grants require separate confirmations.
 
 [Aster Mail Modules](https://github.com/darxfame/aster-mail-modules) is the
 repository for modules from the Aster Mail author. Contribute your own module via
-a pull request or discuss an idea in Issues. Package requirements are in the guide below.
+a pull request or discuss an idea in Issues. The in-app approved catalog provides a Connect button that installs and enables
+the selected version with its disclosed permissions. Package requirements are in
+the guide below.
 
 See [architecture](docs/modules/architecture.md),
 [development guide](docs/modules/development.md) and the

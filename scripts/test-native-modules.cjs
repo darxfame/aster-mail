@@ -24,6 +24,12 @@ app.whenReady().then(async () => {
   host = new ModuleHost({ electron, directory: path.join(directory, 'modules'),
     scope: () => ({ sessionId, signal: controller.signal, records }),
     save: async value => { records = value; }, sdk: async () => { throw new Error('No external host actions in this fixture'); } });
+  if (process.argv.includes('--catalog-live')) {
+    const isolated = electron.session.fromPartition(`catalog-live-${Date.now()}`, { cache: false });
+    const result = await require('../desktop/module-catalog.cjs').list((url, limit, signal) => G.getBytes(electron.net, isolated, url, limit, signal), controller.signal);
+    assert.match(result.revision, /^[a-f0-9]{40}$/); assert.ok(Array.isArray(result.modules));
+    await isolated.closeAllConnections(); console.log(`PASS: live author catalog (${result.modules.length} approved modules)`);
+  }
   let bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
   const githubIndex = process.argv.indexOf('--github');
   if (githubIndex !== -1) {

@@ -2,15 +2,15 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const tr = require('../src/i18n.js').text;
-const permissions = ['ui', 'network', 'storage', 'calendar.read', 'meeting.draft', 'events'];
+const permissions = ['ui', 'network', 'storage', 'calendar.read', 'meeting.draft', 'meeting.launch', 'auth.session', 'events'];
 function invalid() { throw new Error(tr('Некорректный модуль или неподдерживаемая версия API')); }
 function text(value, maximum = 80) { if (typeof value !== 'string' || !value.trim() || value.length > maximum || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(value)) invalid(); return value; }
 function relative(value) { text(value, 200); if (!/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/.test(value) || value.split('/').some(part => !part || part === '.' || part === '..')) invalid(); return value; }
-function origin(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.href !== `${url.origin}/`) invalid(); return url.origin; }
+function origin(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.username || url.password || url.hostname.includes('*') || url.hash || url.href !== `${url.origin}/`) invalid(); return url.origin; }
 function bounded(value, maximum = 65536) { const encoded = JSON.stringify(value); if (!encoded || Buffer.byteLength(encoded) > maximum) invalid(); return JSON.parse(encoded); }
 function manifest(input) {
   const m = bounded(input, 16000);
-  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'commands', 'views'].includes(key))) invalid();
+  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
   if (m.apiVersion !== 1 || !/^[a-z][a-z0-9.-]{2,79}$/.test(m.id) || typeof m.version !== 'string' || m.version.length > 40 || !/^\d+\.\d+\.\d+$/.test(m.version) || !['integration', 'workflow', 'panel', 'hybrid'].includes(m.type)) invalid();
   text(m.name); relative(m.main); if (!/\.m?js$/.test(m.main)) invalid();
   if (!Array.isArray(m.files) || !m.files.length || m.files.length > 199 || new Set(m.files.map(value => String(value).toLowerCase())).size !== m.files.length) invalid();
@@ -21,6 +21,31 @@ function manifest(input) {
   if (m.networkOrigins.length > 8 || m.networkOrigins.length && !m.permissions.includes('network')) invalid();
   m.networkHeaders = (m.networkHeaders || []).map(value => { if (typeof value !== 'string' || !/^x-[a-z][a-z0-9-]{0,63}$/i.test(value)) invalid(); return value.toLowerCase(); });
   if (m.networkHeaders.length > 8 || m.networkHeaders.length && !m.permissions.includes('network')) invalid();
+  if (m.meetingLinks !== undefined) {
+    const links = m.meetingLinks;
+    // No arbitrary external protocols or executable paths. Add schemes only after runtime review.
+    if (!links || typeof links !== 'object' || Array.isArray(links) || Object.keys(links).some(key => !['scheme', 'origins'].includes(key)) || !validApplicationScheme(links.scheme) || !m.permissions.includes('meeting.launch') || !Array.isArray(links.origins) || !links.origins.length || links.origins.length > 8) invalid();
+    links.origins = links.origins.map(origin);
+    if (new Set(links.origins).size !== links.origins.length) invalid();
+  }
+  if (m.permissions.includes('meeting.launch') && !m.meetingLinks) invalid();
+  if (m.authentication !== undefined) {
+    const auth = m.authentication;
+    if (!auth || typeof auth !== 'object' || Array.isArray(auth) || Object.keys(auth).some(key => !['type', 'origins', 'identityOrigins', 'capture', 'authorization', 'path'].includes(key)) || auth.type !== 'browser-token' || !m.permissions.includes('auth.session') || !m.permissions.includes('network') || !Array.isArray(auth.origins) || !auth.origins.length || auth.origins.length > 8 || !Array.isArray(auth.identityOrigins) || auth.identityOrigins.length > 8) invalid();
+    auth.origins = auth.origins.map(origin); auth.identityOrigins = auth.identityOrigins.map(origin);
+    auth.path ??= '/';
+    if (typeof auth.path !== 'string' || !/^\/(?:[a-zA-Z0-9_/-]*)$/.test(auth.path) || auth.path.length > 200 || auth.path.startsWith('//') || auth.path.includes('..')) invalid();
+    const capture = auth.capture;
+    if (!capture || Object.keys(capture).some(key => !['storage', 'key', 'tokenPath', 'expiresAtPath', 'rejectPath'].includes(key)) || !['localStorage', 'sessionStorage'].includes(capture.storage)) invalid();
+    text(capture.key, 80);
+    for (const key of ['tokenPath', 'expiresAtPath', ...(capture.rejectPath ? ['rejectPath'] : [])]) {
+      if (!Array.isArray(capture[key]) || !capture[key].length || capture[key].length > 8 || capture[key].some(part => typeof part !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(part) || ['__proto__', 'constructor', 'prototype'].includes(part))) invalid();
+    }
+    if (!auth.authorization || Object.keys(auth.authorization).some(key => !['scheme'].includes(key)) || !/^[A-Za-z][A-Za-z0-9-]{0,31}$/.test(auth.authorization.scheme)) invalid();
+
+    if (auth.origins.some(value => !m.networkOrigins.includes(value)) || new Set(auth.origins).size !== auth.origins.length || new Set(auth.identityOrigins).size !== auth.identityOrigins.length) invalid();
+  }
+  if (m.permissions.includes('auth.session') && !m.authentication) invalid();
   const ids = new Set();
   for (const key of ['commands', 'views']) {
     m[key] ||= []; if (!Array.isArray(m[key]) || m[key].length > 12) invalid();
@@ -85,11 +110,12 @@ function records(input) {
     recordDirectory('', record); ids.add(record.id);
     if (record.source && (record.source.type !== 'github' || !/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(record.source.repository) || !/^[a-f0-9]{40}$/.test(record.source.commit))) invalid();
     if (record.source?.directory) relative(record.source.directory);
-    return { ...(record.source ? { source: bounded(record.source, 1000) } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
+    if (record.auth && (typeof record.auth.origin !== 'string' || origin(record.auth.origin) !== record.auth.origin || typeof record.auth.token !== 'string' || !record.auth.token || record.auth.token.length > 4096 || /\s/.test(record.auth.token) || typeof record.auth.expiresAt !== 'string' || !Number.isFinite(Date.parse(record.auth.expiresAt)))) invalid();
+    return { ...(record.source ? { source: bounded(record.source, 1000) } : {}), ...(record.auth ? { auth: { origin: record.auth.origin, token: record.auth.token, expiresAt: record.auth.expiresAt } } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
   });
 }
 // The sandbox's only network path. No account transport, cookies, redirects or retries.
-function requestJSON(net, isolatedSession, definition, data, signal) {
+function requestJSON(net, isolatedSession, definition, data, signal, sessionToken = null) {
   bounded(data); const url = new URL(data.url);
   if (!definition.permissions.includes('network') || !definition.networkOrigins.includes(url.origin) || url.protocol !== 'https:' || url.username || url.password || url.hash || !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(data.method || 'GET')) invalid();
   const headers = data.headers || {};
@@ -111,12 +137,31 @@ function requestJSON(net, isolatedSession, definition, data, signal) {
     });
     request.setHeader('Content-Type', 'application/json'); request.setHeader('Accept', 'application/json');
     for (const [name, value] of Object.entries(headers)) request.setHeader(name, value);
+    if (sessionToken !== null) {
+      if (typeof sessionToken !== 'string' || !sessionToken || sessionToken.length > 4096 || /\s/.test(sessionToken) || data.bearer !== undefined) { cancel(); return; }
+      const scheme = definition.authentication?.authorization.scheme;
+      if (!/^[A-Za-z][A-Za-z0-9-]{0,31}$/.test(scheme)) { cancel(); return; }
+      request.setHeader('Authorization', `${scheme} ${sessionToken}`);
+    }
     if (data.bearer !== undefined) { if (typeof data.bearer !== 'string' || data.bearer.length > 4096 || /[\r\n]/.test(data.bearer)) { cancel(); return; } request.setHeader('Authorization', `Bearer ${data.bearer}`); }
     request.end(data.body === undefined ? undefined : JSON.stringify(data.body));
   });
 }
 function permissionSummary(values) {
-  const labels = { ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), events: tr('События приложения и модулей') };
+  const labels = { ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), 'meeting.launch': tr('Запуск приложения встречи по нажатию «Подключиться»'), 'auth.session': tr('Корпоративный вход в отдельное пространство сервиса'), events: tr('События приложения и модулей') };
   return values.map(value => labels[value]).join(', ');
 }
-module.exports = { fromFiles, relative, records, permissionSummary, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+function validApplicationScheme(value) {
+  return typeof value === 'string' && /^[a-z][a-z0-9+.-]{1,31}$/.test(value) && !/^(?:https?|file|javascript|data|blob|about|chrome.*|devtools|electron|shell|cmd|powershell|pwsh|bash|sh|vbscript|wscript|cscript|ms-.*|vscode.*|smb|ftp|mailto|tel|ssh|sftp|intent)$/.test(value);
+}
+function meetingTarget(definition, value) {
+  if (!definition.permissions.includes('meeting.launch') || !definition.meetingLinks || !validApplicationScheme(definition.meetingLinks.scheme)) return null;
+  if (typeof value !== 'string' || value.length > 2000 || /[\s\\]/.test(value)) return null;
+  let url; try { url = new URL(value); } catch { return null; }
+  if (url.href !== value || url.protocol !== 'https:' || url.username || url.password || !definition.meetingLinks.origins.includes(url.origin) || !/^\/(?:[a-zA-Z0-9_-]{1,200}\/){0,7}[a-zA-Z0-9_-]{1,200}\/?$/.test(url.pathname) || url.hash) return null;
+  return url.href.replace(/^https:/, `${definition.meetingLinks.scheme}:`);
+}
+function meetingLaunchSummary(definition) {
+  return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
+}
+module.exports = { fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };

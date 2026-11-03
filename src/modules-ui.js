@@ -1,7 +1,7 @@
-const modulePermissionNames = () => ({ ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), events: tr('События приложения и модулей') });
+const modulePermissionNames = () => ({ ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), 'meeting.launch': tr('Запуск приложения встречи по нажатию «Подключиться»'), 'auth.session': tr('Корпоративный вход в отдельное пространство сервиса'), events: tr('События приложения и модулей') });
 let connectedModules = [], moduleMountState = '', moduleMountBusy = false;
 function moduleSettingsMarkup() {
-  return `<p class="form-note">${tr('Модули работают в песочнице. Разрешения включаются отдельно для каждого аккаунта.')}</p><p class="form-note">${tr('Модули автора и предложения сообщества — в репозитории Aster Mail Modules.')}</p><p><button type="button" class="secondary" data-action="link" data-url="https://github.com/darxfame/aster-mail-modules">${tr('Модули автора · предложить свой модуль')}</button></p><button type="button" class="secondary" data-action="module-import" ${!window.aster || !state.account ? 'disabled' : ''}>${tr('Подключить модуль')}</button> <button type="button" class="secondary" data-action="module-github" ${!window.aster || !state.account ? 'disabled' : ''}>${tr('Подключить с GitHub')}</button><div id="module-list" aria-live="polite"></div>`;
+  return `<p class="form-note">${tr('Модули работают в песочнице. Разрешения включаются отдельно для каждого аккаунта.')}</p><p class="form-note">${tr('Модули автора и предложения сообщества — в репозитории Aster Mail Modules.')}</p><p><button type="button" class="secondary" data-action="link" data-url="https://github.com/darxfame/aster-mail-modules">${tr('Модули автора · предложить свой модуль')}</button></p><button type="button" class="primary" data-action="module-approved-list">${tr('Каталог одобренных модулей')}</button> <button type="button" class="secondary" data-action="module-import" ${!window.aster || !state.account ? 'disabled' : ''}>${tr('Подключить модуль')}</button> <button type="button" class="secondary" data-action="module-github" ${!window.aster || !state.account ? 'disabled' : ''}>${tr('Подключить с GitHub')}</button><div id="module-list" aria-live="polite"></div>`;
 }
 async function refreshModuleList() {
   const container = document.querySelector('#module-list');
@@ -12,6 +12,8 @@ async function refreshModuleList() {
 async function handleModuleAction(button) {
   if (button.disabled) return;
   const action = button.dataset.action, row = button.closest('[data-module]'), id = row?.dataset.module || button.dataset.module;
+  if (action === 'module-approved-list') return moduleAuthorCatalog();
+  if (action === 'module-approved-connect') return connectApprovedModule(button);
   if (action === 'module-github') return moduleGitHubDialog();
   if (action === 'module-panel') return openModulePanel(id, button.dataset.view);
   button.disabled = true;
@@ -111,4 +113,29 @@ async function installModuleFromGitHub(form) {
   catch (error) { if (form.isConnected) form.querySelector('[role="alert"]').textContent = errorText(error); }
   finally { modalBusy = false; form.inert = false; form.classList.remove('busy'); }
   if (success && form.isConnected) { await settingsModal(); const tab = document.querySelector('#settings-tab-modules'); if (tab) selectSettingsTab(tab); }
+}
+
+async function moduleAuthorCatalog() {
+  if (modalBusy || !confirmDiscardChanges()) return;
+  modal(tr('Каталог одобренных модулей'), tr('Источник: darxfame/aster-mail-modules'), `<div id="module-author-catalog" aria-live="polite"><p class="form-note">${tr('Загружаем каталог…')}</p></div><div class="modal-footer"><button type="button" class="secondary" data-action="module-approved-list">${tr('Обновить список')}</button><button type="button" class="secondary" data-action="close">${tr('Закрыть')}</button></div>`);
+  const container = document.querySelector('#module-author-catalog'), account = state.account;
+  if (!window.aster || !account) { container.textContent = tr('Каталог доступен в настольном клиенте после подключения аккаунта.'); return; }
+  try {
+    const [catalog, installed] = await Promise.all([api('moduleAuthorCatalog'), api('moduleCatalog')]);
+    if (!container.isConnected || state.account !== account) return;
+    container.innerHTML = `<p class="form-note">${tr('«Подключить» устанавливает модуль и разрешает перечисленные возможности для текущего аккаунта.')}</p>` + (catalog.modules.map(item => {
+      const m = item.manifest, existing = installed.some(value => value.id === m.id);
+      return `<article class="module-card"><strong>${esc(m.name)} · ${esc(m.version)}</strong><p>${esc(item.description)}</p><p class="form-note">${tr('Разрешения:')} ${esc(m.permissions.map(value => modulePermissionNames()[value]).join(', '))}<br>${tr('Сетевые адреса:')} ${esc(m.networkOrigins.join(', '))}<br>${tr('Приложение встречи:')} ${esc(m.meetingLinks ? m.meetingLinks.scheme + ' → ' + m.meetingLinks.origins.join(', ') : '')}<br>${tr('Серверы входа:')} ${esc([...(m.authentication?.origins || []), ...(m.authentication?.identityOrigins || [])].join(', '))}</p><details><summary>${tr('Источник и версия пакета')}</summary><p class="form-note">${esc(item.directory || '/')}<br>commit: ${esc(item.commit)}<br>SHA-256: ${esc(item.digest)}</p></details><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(m.id)}" data-digest="${esc(item.digest)}" data-revision="${esc(catalog.revision)}" ${existing ? 'disabled' : ''}>${existing ? tr('Уже подключён') : tr('Подключить')}</button></article>`;
+    }).join('') || `<p class="form-note">${tr(catalog.published === false ? 'Каталог ещё не опубликован автором.' : 'Одобренных модулей пока нет.')}</p>`);
+  } catch (error) { if (container.isConnected && state.account === account) container.textContent = errorText(error); }
+}
+async function connectApprovedModule(button) {
+  if (modalBusy || !window.aster || !state.account) return;
+  const container = document.querySelector('#module-author-catalog'), account = state.account;
+  modalBusy = true; container.inert = true; container.setAttribute('aria-busy', 'true');
+  let success = false;
+  try { await api('moduleInstallApproved', { id: button.dataset.id, digest: button.dataset.digest, revision: button.dataset.revision }); success = true; }
+  catch (error) { if (container.isConnected && state.account === account) { const message = document.createElement('p'); message.setAttribute('role', 'alert'); message.textContent = errorText(error); container.append(message); } }
+  finally { modalBusy = false; container.inert = false; container.removeAttribute('aria-busy'); }
+  if (success && container.isConnected && state.account === account) { await loadModuleContributions(); await moduleAuthorCatalog(); }
 }

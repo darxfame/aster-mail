@@ -300,7 +300,7 @@ async function connect(data, remember, restoring = false) {
 async function installModuleBundle(bundle, guard) {
   guard();
   const source = bundle.source ? `${bundle.source.repository}\ncommit: ${bundle.source.commit}\n${bundle.source.directory}` : tr('Локальный пакет');
-  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
+  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(bundle.manifest)}\n${tr('Серверы входа:')} ${[...(bundle.manifest.authentication?.origins || []), ...(bundle.manifest.authentication?.identityOrigins || [])].join(', ')}\n${tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
   guard(); if (answer.response === 1) await moduleHost.install(bundle);
 }
 
@@ -524,8 +524,17 @@ app.whenReady().then(async () => {
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
       const activeClient = client;
       if (data.sessionId !== activeClient.syncId) throw new Error(tr('Сессия аккаунта завершена'));
-      if (['moduleCatalog', 'moduleImport', 'moduleImportGitHub', 'moduleConfigure', 'moduleRemove', 'moduleInvoke', 'moduleMounts'].includes(operation)) {
+      if (['moduleAuthorCatalog', 'moduleInstallApproved', 'moduleCatalog', 'moduleImport', 'moduleImportGitHub', 'moduleConfigure', 'moduleRemove', 'moduleInvoke', 'moduleMounts'].includes(operation)) {
         const epoch = accountEpoch, guard = () => { if (client !== activeClient || epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); };
+        if (['moduleAuthorCatalog', 'moduleInstallApproved'].includes(operation)) {
+          const Github = require('./module-github.cjs'), Catalog = require('./module-catalog.cjs');
+          const isolated = session.fromPartition(`aster-module-catalog-${crypto.randomUUID()}`, { cache: false });
+          try {
+            const read = (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal);
+            if (operation === 'moduleAuthorCatalog') { const catalog = await Catalog.list(read, connection.controller.signal); guard(); return { ok: true, value: catalog }; }
+            await Catalog.install(data, read, connection.controller.signal, moduleHost, guard);
+          } finally { await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]); }
+        }
         if (operation === 'moduleImport') {
           const selected = await dialog.showOpenDialog(window, { title: tr('Подключить модуль'), properties: ['openDirectory'] }); guard();
           if (!selected.canceled && selected.filePaths.length === 1) {
@@ -545,7 +554,7 @@ app.whenReady().then(async () => {
           if (data.enabled === true) {
             const module = (await moduleHost.catalog()).find(item => item.id === data.id); guard();
             if (!module || module.error) throw new Error(tr('Модуль не найден'));
-            const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Разрешить возможности модуля?'), detail: `${module.name}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(module.permissions)}\n${tr('Сетевые адреса:')} ${module.networkOrigins.join(', ')}`, buttons: [tr('Отмена'), tr('Включить')], defaultId: 0, cancelId: 0 }); guard();
+            const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Разрешить возможности модуля?'), detail: `${module.name}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(module.permissions)}\n${tr('Сетевые адреса:')} ${module.networkOrigins.join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(module)}\n${tr('Серверы входа:')} ${[...(module.authentication?.origins || []), ...(module.authentication?.identityOrigins || [])].join(', ')}`, buttons: [tr('Отмена'), tr('Включить')], defaultId: 0, cancelId: 0 }); guard();
             if (answer.response !== 1) return { ok: true, value: await moduleHost.catalog() };
           }
           await moduleHost.configure(data.id, data.enabled);
@@ -580,7 +589,7 @@ app.whenReady().then(async () => {
         if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
         const url = meetingLink(event);
         if (!url || event.cancelled) throw new Error(tr('Ссылка на созвон недоступна'));
-        await shell.openExternal(url); return { ok: true, value: true };
+        await moduleHost.openMeeting(url); return { ok: true, value: true };
       }
       if (operation === 'openAttachment') {
         if (typeof data.id !== 'string' || data.id.length > 16000 || typeof data.ref?.id !== 'string' || data.ref.id.length > 16000) throw new Error('Invalid attachment');
@@ -640,7 +649,7 @@ app.whenReady().then(async () => {
         if (['Decline', 'Declined'].includes(meeting.response)) throw new Error(tr('Встреча отклонена. Измените ответ в карточке встречи.'));
         const url = httpsURL(meetingLink(meeting));
         if (!url) throw new Error(tr('Ссылка на созвон не найдена. Откройте карточку встречи.'));
-        widgetWindow.hide(); await shell.openExternal(url);
+        widgetWindow.hide(); await moduleHost.openMeeting(url);
       } else throw new Error('Unknown widget operation');
       return { ok: true };
     } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: notificationSettings.debugErrors }), userFacing: true }; }

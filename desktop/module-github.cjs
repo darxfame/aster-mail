@@ -29,7 +29,7 @@ function getBytes(net, isolated, url, limit, signal) {
       response.on('error', cancel); response.on('aborted', cancel);
       response.on('end', () => {
         if (settled) return;
-        if (response.statusCode !== 200) return finish(new Error(`${tr('GitHub вернул HTTP')} ${response.statusCode}`));
+        if (response.statusCode !== 200) return finish(Object.assign(new Error(`${tr('GitHub вернул HTTP')} ${response.statusCode}`), { status: response.statusCode }));
         finish(null, Buffer.concat(chunks));
       });
       response.on('data', chunk => { if (settled) return; size += chunk.length; if (size > limit) { finish(new Error(tr('Пакет модуля превышает допустимый размер'))); request.abort(); } else chunks.push(chunk); });
