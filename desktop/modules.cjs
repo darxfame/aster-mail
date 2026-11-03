@@ -10,7 +10,7 @@ function origin(value) { const url = new URL(value); if (url.protocol !== 'https
 function bounded(value, maximum = 65536) { const encoded = JSON.stringify(value); if (!encoded || Buffer.byteLength(encoded) > maximum) invalid(); return JSON.parse(encoded); }
 function manifest(input) {
   const m = bounded(input, 16000);
-  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
+  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
   if (m.apiVersion !== 1 || !/^[a-z][a-z0-9.-]{2,79}$/.test(m.id) || typeof m.version !== 'string' || m.version.length > 40 || !/^\d+\.\d+\.\d+$/.test(m.version) || !['integration', 'workflow', 'panel', 'hybrid'].includes(m.type)) invalid();
   text(m.name); relative(m.main); if (!/\.m?js$/.test(m.main)) invalid();
   if (!Array.isArray(m.files) || !m.files.length || m.files.length > 199 || new Set(m.files.map(value => String(value).toLowerCase())).size !== m.files.length) invalid();
@@ -46,6 +46,14 @@ function manifest(input) {
     if (auth.origins.some(value => !m.networkOrigins.includes(value)) || new Set(auth.origins).size !== auth.origins.length || new Set(auth.identityOrigins).size !== auth.identityOrigins.length) invalid();
   }
   if (m.permissions.includes('auth.session') && !m.authentication) invalid();
+  if (m.optionalOrigins !== undefined) {
+    if (!m.permissions.includes('network') || !Array.isArray(m.optionalOrigins) || m.optionalOrigins.length > 8) invalid();
+    const domains = new Set();
+    for (const rule of m.optionalOrigins) {
+      if (!rule || Object.keys(rule).some(key => !['domain', 'includeSubdomains'].includes(key)) || typeof rule.domain !== 'string' || rule.domain.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/.test(rule.domain) || typeof rule.includeSubdomains !== 'boolean' || domains.has(rule.domain)) invalid();
+      domains.add(rule.domain);
+    }
+  }
   const ids = new Set();
   for (const key of ['commands', 'views']) {
     m[key] ||= []; if (!Array.isArray(m[key]) || m[key].length > 12) invalid();
@@ -110,8 +118,9 @@ function records(input) {
     recordDirectory('', record); ids.add(record.id);
     if (record.source && (record.source.type !== 'github' || !/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(record.source.repository) || !/^[a-f0-9]{40}$/.test(record.source.commit))) invalid();
     if (record.source?.directory) relative(record.source.directory);
+    if (record.originGrants && (!Array.isArray(record.originGrants) || record.originGrants.length > 8 || new Set(record.originGrants).size !== record.originGrants.length || record.originGrants.some(value => typeof value !== 'string' || origin(value) !== value))) invalid();
     if (record.auth && (typeof record.auth.origin !== 'string' || origin(record.auth.origin) !== record.auth.origin || typeof record.auth.token !== 'string' || !record.auth.token || record.auth.token.length > 4096 || /\s/.test(record.auth.token) || typeof record.auth.expiresAt !== 'string' || !Number.isFinite(Date.parse(record.auth.expiresAt)))) invalid();
-    return { ...(record.source ? { source: bounded(record.source, 1000) } : {}), ...(record.auth ? { auth: { origin: record.auth.origin, token: record.auth.token, expiresAt: record.auth.expiresAt } } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
+    return { ...(record.originGrants ? { originGrants: [...record.originGrants] } : {}), ...(record.source ? { source: bounded(record.source, 1000) } : {}), ...(record.auth ? { auth: { origin: record.auth.origin, token: record.auth.token, expiresAt: record.auth.expiresAt } } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
   });
 }
 // The sandbox's only network path. No account transport, cookies, redirects or retries.
@@ -154,6 +163,21 @@ function permissionSummary(values) {
 function validApplicationScheme(value) {
   return typeof value === 'string' && /^[a-z][a-z0-9+.-]{1,31}$/.test(value) && !/^(?:https?|file|javascript|data|blob|about|chrome.*|devtools|electron|shell|cmd|powershell|pwsh|bash|sh|vbscript|wscript|cscript|ms-.*|vscode.*|smb|ftp|mailto|tel|ssh|sftp|intent)$/.test(value);
 }
+function optionalOriginMatches(definition, value) {
+  try {
+    const url = new URL(value);
+    if (origin(value) !== value || url.port) return false;
+    return (definition.optionalOrigins || []).some(rule => url.hostname === rule.domain || rule.includeSubdomains && url.hostname.endsWith(`.${rule.domain}`));
+  } catch { return false; }
+}
+function effectiveManifest(definition, grants = []) {
+  if (!Array.isArray(grants) || grants.length > 8 || grants.some(value => !optionalOriginMatches(definition, value))) invalid();
+  const result = bounded(definition, 16000);
+  result.networkOrigins = [...new Set([...(result.networkOrigins || []), ...grants])];
+  if (result.authentication) result.authentication.origins = [...new Set([...result.authentication.origins, ...grants])];
+  if (result.meetingLinks) result.meetingLinks.origins = [...new Set([...result.meetingLinks.origins, ...grants])];
+  return result;
+}
 function meetingTarget(definition, value) {
   if (!definition.permissions.includes('meeting.launch') || !definition.meetingLinks || !validApplicationScheme(definition.meetingLinks.scheme)) return null;
   if (typeof value !== 'string' || value.length > 2000 || /[\s\\]/.test(value)) return null;
@@ -164,4 +188,4 @@ function meetingTarget(definition, value) {
 function meetingLaunchSummary(definition) {
   return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
 }
-module.exports = { fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+module.exports = { features: ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };

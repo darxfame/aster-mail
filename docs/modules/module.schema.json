@@ -291,6 +291,27 @@
           }
         }
       }
+    },
+    "optionalOrigins": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "domain",
+          "includeSubdomains"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 253
+          },
+          "includeSubdomains": {
+            "type": "boolean"
+          }
+        }
+      }
     }
   }
 }

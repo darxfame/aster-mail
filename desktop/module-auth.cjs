@@ -34,9 +34,10 @@ function closeAuthentication(entry) { entry.authFlow?.close(); }
 
 async function signIn(host, entry, input) {
   host.current(entry);
-  if (!entry.context || !entry.bundle.manifest.authentication?.origins.includes(input.origin)) throw new Error('Authentication not declared');
+  const definition = host.definition(entry);
+  if (!entry.context || !definition.authentication?.origins.includes(input.origin)) throw new Error('Authentication not declared');
   if (entry.authFlow) { entry.authFlow.window.focus(); return authenticationStatus(host, entry); }
-  const origin = input.origin, origins = [...entry.bundle.manifest.authentication.origins, ...entry.bundle.manifest.authentication.identityOrigins];
+  const origin = input.origin, origins = [...definition.authentication.origins, ...definition.authentication.identityOrigins];
   const isolated = host.electron.session.fromPartition(`aster-module-auth-${crypto.randomUUID()}`, { cache: false });
   isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   isolated.setPermissionCheckHandler(() => false); isolated.on('will-download', event => event.preventDefault());

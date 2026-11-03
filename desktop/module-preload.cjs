@@ -4,8 +4,7 @@ function bounded(value) { const json = JSON.stringify(value); if (!json || json.
 async function call(method, input = {}) {
   if (typeof method !== 'string' || method.length > 80) throw new Error('Invalid module method');
   const result = await ipcRenderer.invoke('aster-module-api', method, bounded(input));
-  if (!result?.ok) throw Object.assign(new Error(result?.error || 'Module request failed'), { code: result?.code || 'module-request-rejected', status: result?.status });
-  return result.value;
+  return bounded(result);
 }
 ipcRenderer.on('aster-module-command', async (_event, request) => {
   try {
@@ -14,7 +13,7 @@ ipcRenderer.on('aster-module-command', async (_event, request) => {
     ipcRenderer.send('aster-module-reply', { id: request.id, value: bounded(value === undefined ? null : value) });
   } catch { ipcRenderer.send('aster-module-reply', { id: request.id, error: true }); }
 });
-contextBridge.exposeInMainWorld('asterModule', {
+contextBridge.exposeInMainWorld('asterModuleTransport', {
   call,
   command: (command, input = {}) => call('command', { command, input }),
   onCommand: callback => { if (typeof callback === 'function') handler = callback; },

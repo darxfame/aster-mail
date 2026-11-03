@@ -56,3 +56,47 @@ test('missing catalog is unpublished, network failures are errors and changed ap
   await C.install({ id: f.item.manifest.id, digest: f.item.digest, revision }, f.read, new AbortController().signal, { async install() { installed = true; } }, () => {});
   assert.equal(installed, true);
 });
+
+test('public catalog IPC is available before login while install operations stay account-scoped', async () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
+  const start = source.indexOf("      if (operation === 'moduleAuthorCatalog')");
+  const end = source.indexOf("      const activeClient = client;", start);
+  const context = vm.createContext({ operation: 'moduleAuthorCatalog', event: { sender: {} }, net: {}, session: {}, tr: value => value,
+    require: name => { assert.equal(name, './module-catalog.cjs'); return { browse: async () => ({ modules: [] }) }; } });
+  Object.defineProperty(context, 'client', { get() { throw new Error('Account accessed'); } });
+  const value = await vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, context);
+  assert.equal(value.ok, true);
+  for (const operation of ['moduleInstallApproved', 'moduleImportGitHub', 'moduleConfigure']) {
+    const denied = vm.createContext({ operation, client: null, tr: value => value });
+    await assert.rejects(vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, denied), /OWA/);
+  }
+});
+
+test('desktop catalog displays package cards without an account and in demo, without reading account modules', async () => {
+  const fs = require('node:fs'), vm = require('node:vm'), f = await fixture();
+  const source = fs.readFileSync(require.resolve('../src/modules-ui.js'), 'utf8');
+  for (const demo of [false, true]) {
+    const calls = [], container = { isConnected: true };
+    const context = vm.createContext({ modalBusy: false, confirmDiscardChanges: () => true, modal() {}, tr: value => value, esc: value => String(value), modulePermissionNames: () => ({}),
+      state: { account: null, demo }, window: { aster: {} }, document: { querySelector: () => container }, api: async operation => { calls.push(operation); assert.equal(operation, 'moduleAuthorCatalog'); return { revision, modules: [f.item] }; } });
+    vm.runInContext(source.slice(source.indexOf('async function moduleAuthorCatalog()'), source.indexOf('async function connectApprovedModule(')), context);
+    await context.moduleAuthorCatalog();
+    assert.deepEqual(calls, ['moduleAuthorCatalog']);
+    assert.match(container.innerHTML, /Fictional approved module/);
+    assert.match(container.innerHTML, /data-action="module-approved-connect"[^>]*disabled/);
+  }
+});
+
+test('published flat catalog validates pinned manifests and cannot install unsupported features or permissions', async () => {
+  const f = await fixture(), definition = JSON.parse(f.bundle.files.get('module.json'));
+  const entry = { id: definition.id, name: definition.name, version: definition.version, permissions: definition.permissions, networkOrigins: definition.networkOrigins || [], networkHeaders: definition.networkHeaders || [], source: { repository: C.repository, commit, directory: 'example' }, sha256: f.bundle.digest, host: { apiVersion: 1, features: [] } };
+  const read = async (...args) => args[0].endsWith('/catalog.json') ? Buffer.from(JSON.stringify({ schemaVersion: 1, modules: [entry] })) : f.read(...args);
+  const catalog = await C.list(read, new AbortController().signal); assert.equal(catalog.modules[0].compatible, true);
+  let installed = 0;
+  await C.install({ id: entry.id, digest: entry.sha256, revision }, read, new AbortController().signal, { async install() { installed++; } }, () => {});
+  assert.equal(installed, 1);
+  entry.host.features = ['unsupported.provider-adapter'];
+  assert.equal((await C.list(read, new AbortController().signal)).modules[0].compatible, false);
+  await assert.rejects(C.install({ id: entry.id, digest: entry.sha256, revision }, read, new AbortController().signal, { async install() { assert.fail('Unsupported feature installed'); } }, () => {}));
+});

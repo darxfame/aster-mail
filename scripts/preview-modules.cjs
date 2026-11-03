@@ -8,7 +8,7 @@ const M = require('../desktop/modules.cjs');
 async function main() {
   const bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
   await M.installPackage(path.join(profile, 'modules'), bundle);
-  const modules = process.argv.includes('--catalog-fixture') ? [] : [{ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: true, data: {} }];
+  const modules = process.argv.includes('--catalog-fixture') || process.argv.includes('--author-catalog') ? [] : [{ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: true, data: {} }];
   if (process.argv.includes('--catalog-fixture')) {
     const Github = require('../desktop/module-github.cjs');
     const revision = 'a'.repeat(40), commit = 'b'.repeat(40);

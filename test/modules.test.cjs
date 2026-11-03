@@ -71,11 +71,12 @@ test('module event delivery cannot turn a successful Exchange write into an erro
 test('module preload bounds messages before IPC and never exposes generic IPC or host errors', async () => {
   const vm = require('node:vm'), listeners = {}, sent = [];
   let api;
-  const context = vm.createContext({ window: {}, require: () => ({ contextBridge: { exposeInMainWorld(_name, value) { api = value; } }, ipcRenderer: {
+  const context = vm.createContext({ window: {}, require: () => ({ contextBridge: { exposeInMainWorld(_name, value) { context.window.asterModuleTransport = value; } }, ipcRenderer: {
     on(name, callback) { listeners[name] = callback; }, removeListener() {},
     async invoke(...args) { sent.push(args); return { ok: false, error: 'Rejected', code: 'permission-denied' }; }, send(...args) { sent.push(args); },
   } }) });
   vm.runInContext(await fs.readFile(path.join(__dirname, '../desktop/module-preload.cjs'), 'utf8'), context);
+  vm.runInContext(await fs.readFile(path.join(__dirname, '../src/module-bridge.js'), 'utf8'), context); api = context.window.asterModule;
   await assert.rejects(api.call('storage.set', { text: 'x'.repeat(70000) }), /too large/); assert.equal(sent.length, 0);
   await assert.rejects(api.call('calendar.list'), { code: 'permission-denied' }); assert.equal(sent.length, 1);
   assert.equal(api.invoke, undefined); assert.equal(api.send, undefined);

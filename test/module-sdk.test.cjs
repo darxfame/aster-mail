@@ -48,3 +48,31 @@ test('app join preserves normal HTTPS, handles only matching enabled routes and 
   response = 1; records = []; await assert.rejects(ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room')); assert.equal(opened.length, 0);
   current = false; await assert.rejects(ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room'));
 });
+
+test('optional origin grants are exact, account-scoped and cannot widen domain or move credentials', async () => {
+  const d = definition(); d.optionalOrigins = [{ domain: 'example.test', includeSubdomains: true }];
+  assert.equal(M.optionalOriginMatches(d, 'https://diy.example.test'), true);
+  for (const url of ['http://diy.example.test', 'https://diy.example.test.evil.test', 'https://notexample.test', 'https://diy.example.test/path', 'https://diy.example.test:8443', 'https://user@diy.example.test']) assert.equal(M.optionalOriginMatches(d, url), false, url);
+  assert.equal(d.networkOrigins.includes('https://diy.example.test'), false);
+  const effective = M.effectiveManifest(d, ['https://diy.example.test']);
+  assert.ok(effective.networkOrigins.includes('https://diy.example.test'));
+  assert.ok(effective.authentication.origins.includes('https://diy.example.test'));
+  assert.ok(effective.meetingLinks.origins.includes('https://diy.example.test'));
+  assert.equal(d.networkOrigins.includes('https://diy.example.test'), false);
+  assert.throws(() => M.effectiveManifest(d, ['https://foreign.invalid']));
+  const active = { sessionId: 'one', signal: new AbortController().signal, records: [{ id: d.id, version: d.version, digest: 'a'.repeat(64), enabled: true, data: {} }] };
+  let response = 0, prompts = 0;
+  const host = new ModuleHost({ electron: { ipcMain: { handle() {}, on() {} }, dialog: { async showMessageBox(options) { prompts++; assert.match(options.detail, /https:\/\/diy.example.test/); return { response }; } } }, scope: () => active, save: async value => { active.records = value; } });
+  const sender = { mainFrame: {} }, entry = { id: d.id, sessionId: 'one', retired: false, context: {}, calls: 0, bundle: { manifest: d } };
+  host.senders.set(sender, { entry, role: 'view' });
+  const event = { sender, senderFrame: sender.mainFrame };
+  assert.equal((await host.receive(event, 'network.requestOrigin', { origin: 'https://diy.example.test' })).granted, false);
+  assert.equal(active.records[0].originGrants, undefined);
+  response = 1; await host.receive(event, 'network.requestOrigin', { origin: 'https://diy.example.test' });
+  assert.deepEqual(active.records[0].originGrants, ['https://diy.example.test']);
+  await host.receive(event, 'network.requestOrigin', { origin: 'https://diy.example.test' }); assert.equal(prompts, 2);
+  await assert.rejects(host.receive(event, 'network.requestOrigin', { origin: 'https://foreign.invalid' }));
+  active.records[0].auth = { origin: 'https://rooms.example.test', token: 'fictional', expiresAt: new Date(Date.now() + 3600000).toISOString() };
+  await assert.rejects(host.receive(event, 'network.request', { url: 'https://diy.example.test/room', auth: 'session' }));
+  active.sessionId = 'retired'; await assert.rejects(host.receive(event, 'network.requestOrigin', { origin: 'https://new.example.test' }));
+});

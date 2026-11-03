@@ -11,6 +11,7 @@ const { ModuleHost } = require('../desktop/module-host.cjs');
 let host, owner, server, udp;
 const profile = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'aster-native-modules-profile-'));
 app.setPath('userData', profile);
+app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'aster-native-modules-'));
   await fs.writeFile(path.join(directory, 'fictional-secret.txt'), 'fictional account data');
@@ -25,10 +26,24 @@ app.whenReady().then(async () => {
     scope: () => ({ sessionId, signal: controller.signal, records }),
     save: async value => { records = value; }, sdk: async () => { throw new Error('No external host actions in this fixture'); } });
   if (process.argv.includes('--catalog-live')) {
-    const isolated = electron.session.fromPartition(`catalog-live-${Date.now()}`, { cache: false });
-    const result = await require('../desktop/module-catalog.cjs').list((url, limit, signal) => G.getBytes(electron.net, isolated, url, limit, signal), controller.signal);
+    const publicWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
+    const result = await require('../desktop/module-catalog.cjs').browse(electron, publicWindow.webContents);
     assert.match(result.revision, /^[a-f0-9]{40}$/); assert.ok(Array.isArray(result.modules));
-    await isolated.closeAllConnections(); console.log(`PASS: live author catalog (${result.modules.length} approved modules)`);
+    publicWindow.destroy(); console.log(`PASS: account-independent live author catalog (${result.modules.length} approved modules)`);
+    const installIndex = process.argv.indexOf('--catalog-install');
+    if (installIndex !== -1) {
+      const selected = result.modules.find(item => item.manifest.id === process.argv[installIndex + 1]);
+      assert.ok(selected); assert.notEqual(selected.compatible, false);
+      const download = electron.session.fromPartition(`catalog-install-${Date.now()}`, { cache: false });
+      try {
+        await require('../desktop/module-catalog.cjs').install({ id: selected.manifest.id, digest: selected.digest, revision: result.revision }, (url, limit, signal) => G.getBytes(electron.net, download, url, limit, signal), controller.signal, host, () => host.current());
+        assert.equal(records.find(record => record.id === selected.manifest.id)?.enabled, true);
+        assert.equal((await host.catalog()).find(item => item.id === selected.manifest.id)?.error, false);
+        await host.remove(selected.manifest.id);
+        console.log('PASS: real approved GitHub package install, exact fingerprint, permissions and enabled account record');
+      } finally { await download.closeAllConnections(); }
+    }
+
   }
   let bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
   const githubIndex = process.argv.indexOf('--github');

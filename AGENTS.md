@@ -174,7 +174,7 @@ Run `npm run test:modules` against actual Electron in addition to Node checks;
 `npm run test:connection` remains mandatory after changes to connection behavior.
 The `examples/modules/sandbox-demo` package is a synthetic fixture, never enabled
 or installed automatically in production. Explicit isolated developer fixtures may
-install it with fictional accounts only. The ktalk.ru provider is deliberately not implemented.
+install it with fictional accounts only. Provider implementations are maintained in the separate aster-mail-modules repository.
 
 ## Optional Xerj Reference Tool
 
@@ -206,3 +206,8 @@ and enable an approved package. Revalidate catalog revision, package commit,
 manifest and digest before installation. Manual imports retain separate grants.
 Provider implementation, service-specific authentication, protocols and resources
 belong in `aster-mail-modules`, never in this repository. Keep the host SDK generic.
+
+Public catalog browsing must not depend on an Exchange account, including desktop
+demo mode. Installation stays account-scoped. Optional domain families authorize
+no traffic until a native prompt grants an exact HTTPS origin; isolate grants
+per module/account and never move service credentials between origins.

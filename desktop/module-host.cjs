@@ -35,12 +35,13 @@ class ModuleHost {
   async catalog() {
     const sessionId = this.current().sessionId, result = [];
     for (const record of this.records()) {
-      try { const bundle = await this.bundle(record); result.push({ ...bundle.manifest, source: record.source || null, digest: bundle.digest, enabled: record.enabled === true, error: false }); }
+      try { const bundle = await this.bundle(record); result.push({ ...M.effectiveManifest(bundle.manifest, record.originGrants), source: record.source || null, digest: bundle.digest, enabled: record.enabled === true, error: false }); }
       catch { if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена')); this.stop(record.id); result.push({ id: record.id, name: record.id, version: record.version, enabled: false, error: true, commands: [], views: [] }); }
     }
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     return result;
   }
+  definition(entry) { this.current(entry); const record = this.records().find(record => record.id === entry.id && record.enabled); if (!record) throw new Error(tr('Модуль выключен или не настроен')); return M.effectiveManifest(entry.bundle.manifest, record.originGrants); }
   // Called only by trusted user-initiated join handlers, never exposed through module RPC.
   async openMeeting(value) {
     const url = new URL(value);
@@ -144,8 +145,13 @@ class ModuleHost {
       if (entry.retired || url.origin !== 'https://aster-module.invalid' || !['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 403 });
       let bytes, type = 'text/html';
       if (url.pathname === '/host/runtime.html') bytes = Buffer.from('<!doctype html><meta charset="utf-8"><script type="module" src="/host/runtime.js"></script>');
+      else if (url.pathname === '/host/bridge.js') { bytes = await fs.readFile(path.join(__dirname, '../src/module-bridge.js')); type = 'text/javascript'; }
       else if (url.pathname === '/host/runtime.js') { bytes = await fs.readFile(path.join(__dirname, 'module-runtime.mjs')); type = 'text/javascript'; }
       else if (url.pathname.startsWith('/package/')) { const name = decodeURIComponent(url.pathname.slice(9)); bytes = bundle.files.get(name); type = mime[path.extname(name)] || 'application/octet-stream'; }
+      if (bytes && type === 'text/html') {
+        const html = bytes.toString('utf8'), bridge = '<script src="/host/bridge.js"></script>';
+        bytes = Buffer.from(/<head(?:\s[^>]*)?>/i.test(html) ? html.replace(/<head(?:\s[^>]*)?>/i, tag => tag + bridge) : /^\s*<!doctype[^>]*>/i.test(html) ? html.replace(/^(\s*<!doctype[^>]*>)/i, '$1' + bridge) : bridge + html);
+      }
       return new Response(request.method === 'HEAD' ? null : bytes || null, { status: bytes ? 200 : 404, headers: { 'Content-Type': type, 'Content-Security-Policy': csp, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' } });
     });
     isolated.webRequest.onBeforeRequest((request, callback) => callback({ cancel: !request.url.startsWith('https://aster-module.invalid/') }));
@@ -177,9 +183,24 @@ class ModuleHost {
     try {
       if (method === 'ready' && role === 'runtime') { entry.readyResolve(); return true; }
       if (method === 'command' && role !== 'runtime') return this.invoke(entry.id, input.command, input.input, this.senders.get(event.sender).context);
-      const definition = entry.bundle.manifest;
-      const permission = { 'ui.context': 'ui', 'ui.openView': 'ui', 'network.request': 'network', 'storage.get': 'storage', 'storage.set': 'storage', 'calendar.list': 'calendar.read', 'meeting.getDraft': 'meeting.draft', 'meeting.openDraft': 'meeting.draft', 'meeting.patchDraft': 'meeting.draft', 'events.publish': 'events', 'auth.signIn': 'auth.session', 'auth.status': 'auth.session', 'auth.signOut': 'auth.session' }[method];
+      let definition = entry.bundle.manifest;
+      const permission = { 'network.requestOrigin': 'network', 'ui.context': 'ui', 'ui.openView': 'ui', 'network.request': 'network', 'storage.get': 'storage', 'storage.set': 'storage', 'calendar.list': 'calendar.read', 'meeting.getDraft': 'meeting.draft', 'meeting.openDraft': 'meeting.draft', 'meeting.patchDraft': 'meeting.draft', 'events.publish': 'events', 'auth.signIn': 'auth.session', 'auth.status': 'auth.session', 'auth.signOut': 'auth.session' }[method];
       if (!permission || !definition.permissions.includes(permission)) throw Object.assign(new Error(tr('Недостаточно разрешений модуля')), { code: 'permission-denied' });
+      definition = this.definition(entry);
+      if (method === 'network.requestOrigin') {
+        if (!entry.context || typeof input.origin !== 'string') throw new Error('User action required');
+        if (definition.networkOrigins.includes(input.origin)) return { granted: true, origin: input.origin };
+        if (!M.optionalOriginMatches(entry.bundle.manifest, input.origin) || entry.originGrantPending) throw new Error(tr('Адрес сервиса не разрешён модулем'));
+        if ((this.records().find(item => item.id === entry.id)?.originGrants || []).length >= 8) throw new Error(tr('Достигнут лимит дополнительных серверов модуля'));
+        entry.originGrantPending = true;
+        try {
+          const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Разрешить модулю доступ к серверу?'), detail: `${definition.name}\n${input.origin}\n${M.permissionSummary(definition.permissions)}`, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 });
+          this.current(entry);
+          if (answer.response !== 1) return { granted: false, origin: input.origin };
+          await this.update(records => { this.current(entry); const record = records.find(item => item.id === entry.id && item.enabled); if (!record) throw new Error(tr('Модуль выключен или не настроен')); record.originGrants = [...new Set([...(record.originGrants || []), input.origin])]; });
+          return { granted: true, origin: input.origin };
+        } finally { entry.originGrantPending = false; }
+      }
       if (method === 'auth.status') return require('./module-auth.cjs').authenticationStatus(this, entry);
       if (method === 'auth.signIn') return await require('./module-auth.cjs').signIn(this, entry, input);
       if (method === 'auth.signOut') {

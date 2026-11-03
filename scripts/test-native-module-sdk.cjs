@@ -25,8 +25,8 @@ app.whenReady().then(async () => {
     constructor(options) { super({ ...options, show: false }); if (options.title?.includes(origin)) authWindow = this; }
   } };
   host = new ModuleHost({ electron: adaptedElectron, directory: path.join(profile, 'modules'), scope: () => ({ sessionId: currentSession, signal: controller.signal, records }), save: async value => { records = value; }, sdk: async () => { throw new Error('No host data in fixture'); } });
-  const manifest = { apiVersion: 1, id: 'example.auth-fixture', name: 'Fictional login fixture', version: '1.0.0', type: 'integration', main: 'main.js', files: ['main.js'], permissions: ['auth.session', 'network'], networkOrigins: [origin], authentication: { type: 'browser-token', origins: [origin], identityOrigins: [], capture: { storage: 'localStorage', key: 'fictional-login', tokenPath: ['credential', 'access'], expiresAtPath: ['credential', 'until'] }, authorization: { scheme: 'Bearer' } }, commands: [{ id: 'login', title: 'Fictional login', slot: 'internal' }, { id: 'status', title: 'Status', slot: 'internal' }, { id: 'logout', title: 'Logout', slot: 'internal' }] };
-  const source = `export async function activate(api) { return { commands: { login: () => api.call('auth.signIn',{origin:${JSON.stringify(origin)}}), status: () => api.call('auth.status'), logout: () => api.call('auth.signOut') } }; }`;
+  const manifest = { apiVersion: 1, id: 'example.auth-fixture', name: 'Fictional login fixture', version: '1.0.0', type: 'integration', main: 'main.js', files: ['main.js'], permissions: ['auth.session', 'network'], networkOrigins: [origin], authentication: { type: 'browser-token', origins: [origin], identityOrigins: [], capture: { storage: 'localStorage', key: 'fictional-login', tokenPath: ['credential', 'access'], expiresAtPath: ['credential', 'until'] }, authorization: { scheme: 'Bearer' } }, commands: [{ id: 'login', title: 'Fictional login', slot: 'internal' }, { id: 'status', title: 'Status', slot: 'internal' }, { id: 'logout', title: 'Logout', slot: 'internal' }, { id: 'http-status', title: 'HTTP status', slot: 'internal' }] };
+  const source = `export async function activate(api) { return { commands: { login: () => api.call('auth.signIn',{origin:${JSON.stringify(origin)}}), status: () => api.call('auth.status'), logout: () => api.call('auth.signOut'), 'http-status': async () => { try { await api.call('network.request',{url:${JSON.stringify(origin)}+'/room'}); } catch (error) { return {code:error.code,status:error.status}; } } } }; }`;
   const bundle = M.fromFiles(new Map([['module.json', Buffer.from(JSON.stringify(manifest))], ['main.js', Buffer.from(source)]]));
   await host.install(bundle, true);
   await host.invoke(manifest.id, 'login');
@@ -36,6 +36,11 @@ app.whenReady().then(async () => {
   const status = await host.invoke(manifest.id, 'status'); assert.equal(status.connected, true); assert.equal(JSON.stringify(status).includes('fictional-secret'), false);
   assert.equal(JSON.stringify(await host.catalog()).includes('fictional-secret'), false);
   assert.notEqual(authSession, electron.session.defaultSession);
+  const originalRequest = M.requestJSON;
+  try {
+    M.requestJSON = async () => { throw Object.assign(new Error('Fictional missing room'), { code: 'http-error', status: 404 }); };
+    assert.deepEqual(await host.invoke(manifest.id, 'http-status'), { code: 'http-error', status: 404 });
+  } finally { M.requestJSON = originalRequest; }
   await host.invoke(manifest.id, 'logout'); assert.equal(records[0].auth, undefined);
   await host.invoke(manifest.id, 'login');
   const preferences = authWindow.webContents.getLastWebPreferences();
