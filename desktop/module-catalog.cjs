@@ -78,7 +78,7 @@ async function install(input, read, signal, host, guard) {
   if (!item || item.compatible === false) invalid();
   const bundle = await G.load({ url: repository, ref: item.commit, directory: item.directory }, read, signal); guard();
   if (bundle.digest !== item.digest || !require('node:util').isDeepStrictEqual(bundle.manifest, item.manifest)) invalid();
-  // The trusted installer confirms permissions after revalidating the displayed package.
+  // The explicit inline confirmation covers the displayed package; revalidate before installing.
   await host.install(bundle, true); guard();
 }
 async function prepared(directory, item) {

@@ -1,6 +1,16 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Модуль будет доступен сразу после установки.": "The module will be available immediately after installation.",
+    "Установленные модули работают в песочнице. Их настройки доступны без входа в Exchange.": "Installed modules run in a sandbox. Their settings are available without signing in to Exchange.",
+    "Подключите модуль, чтобы открыть его настройки. Вход в Exchange для этого не нужен.": "Connect a module to open its settings. Exchange sign-in is not required.",
+    "Подключить этот модуль?": "Connect this module?",
+
+    "Подтвердить подключение": "Confirm connection",
+    "Проверьте разрешения и подтвердите подключение.": "Review the permissions and confirm the connection.",
+    "Подключаем модуль…": "Connecting module…",
+
+    "Не удалось открыть окно установщика": "Could not open the installer window",
     "При подключении вы подтвердите разрешения для текущего аккаунта.": "You will confirm permissions for the current account when connecting.",
     "Можно подключить модуль заранее. После входа подключите его к нужному аккаунту.": "You can prepare a module in advance. After signing in, connect it to the account you want.",
     "Разрешения и сведения о модуле": "Permissions and module details",

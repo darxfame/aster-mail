@@ -1,7 +1,7 @@
 const modulePermissionNames = () => ({ ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), 'meeting.launch': tr('Запуск приложения встречи по нажатию «Подключиться»'), 'auth.session': tr('Корпоративный вход в отдельное пространство сервиса'), events: tr('События приложения и модулей') });
 let connectedModules = [], moduleMountState = '', moduleMountBusy = false;
 function moduleSettingsMarkup() {
-  return `<p class="form-note">${tr('Модули работают в песочнице. Разрешения включаются отдельно для каждого аккаунта.')}</p><p class="form-note">${tr('Модули автора и предложения сообщества — в репозитории Aster Mail Modules.')}</p><p><button type="button" class="secondary" data-action="link" data-url="https://github.com/darxfame/aster-mail-modules">${tr('Модули автора · предложить свой модуль')}</button></p><button type="button" class="primary" data-action="module-approved-list">${tr('Каталог одобренных модулей')}</button> <button type="button" class="secondary" data-action="module-import" ${!window.aster || !state.account ? 'disabled' : ''}>${tr('Подключить модуль')}</button> <button type="button" class="secondary" data-action="module-github" ${!window.aster || !state.account ? 'disabled' : ''}>${tr('Подключить с GitHub')}</button><div id="module-list" aria-live="polite"></div>`;
+  return `<p class="form-note">${tr('Установленные модули работают в песочнице. Их настройки доступны без входа в Exchange.')}</p><p class="form-note">${tr('Модули автора и предложения сообщества — в репозитории Aster Mail Modules.')}</p><p><button type="button" class="secondary" data-action="link" data-url="https://github.com/darxfame/aster-mail-modules">${tr('Модули автора · предложить свой модуль')}</button></p><button type="button" class="primary" data-action="module-approved-list">${tr('Каталог одобренных модулей')}</button> <button type="button" class="secondary" data-action="module-import" ${!window.aster ? 'disabled' : ''}>${tr('Подключить модуль')}</button> <button type="button" class="secondary" data-action="module-github" ${!window.aster ? 'disabled' : ''}>${tr('Подключить с GitHub')}</button><div id="module-list" aria-live="polite"></div>`;
 }
 async function refreshModuleList() {
   const container = document.querySelector('#module-list');
@@ -14,6 +14,7 @@ async function handleModuleAction(button) {
   const action = button.dataset.action, row = button.closest('[data-module]'), id = row?.dataset.module || button.dataset.module;
   if (action === 'module-approved-list') return moduleAuthorCatalog();
   if (action === 'module-approved-connect') return connectApprovedModule(button);
+  if (action === 'module-approved-cancel') return resetModuleConfirmation(button.closest('.module-catalog-row'));
   if (action === 'module-github') return moduleGitHubDialog();
   if (action === 'module-panel') return openModulePanel(id, button.dataset.view);
   button.disabled = true;
@@ -46,7 +47,7 @@ function renderModuleContributions() {
   }
 }
 async function loadModuleContributions() {
-  connectedModules = window.aster && state.account ? await api('moduleCatalog') : [];
+  connectedModules = window.aster ? await api('moduleCatalog') : [];
   renderModuleContributions();
 }
 function openModulePanel(id, viewId) {
@@ -55,7 +56,7 @@ function openModulePanel(id, viewId) {
   modal(item.name, view.title, moduleViewSlot(item, view));
 }
 function receiveModuleAction(data) {
-  if (data.sessionId !== state.account?.sessionId || !connectedModules.some(item => item.id === data.id && item.enabled)) return;
+  if (!connectedModules.some(item => item.id === data.id && item.enabled && data.sessionId === (item.sessionId || state.account?.sessionId))) return;
   if (data.method === 'ui.openView') return openModulePanel(data.id, data.input.view);
   if (!['meeting.openDraft', 'meeting.patchDraft'].includes(data.method)) return;
   if (data.method === 'meeting.openDraft') { if (modalBusy || !confirmDiscardChanges()) return; eventModal(); }
@@ -67,7 +68,7 @@ function receiveModuleAction(data) {
   markModalDirty();
 }
 async function syncModuleMounts() {
-  if (isComposeWindow || !window.aster || !state.account || moduleMountBusy) return;
+  if (isComposeWindow || !window.aster || !connectedModules.some(item => item.enabled) || moduleMountBusy) return;
   const modal = document.querySelector('#modal');
   const views = [...document.querySelectorAll('.module-view-slot')].filter(slot => !modal.open || modal.contains(slot)).map(slot => {
     const rect = slot.getBoundingClientRect();
@@ -83,7 +84,7 @@ async function syncModuleMounts() {
     right = Math.max(left, right); bottom = Math.max(top, bottom);
     return { id: slot.dataset.module, view: slot.dataset.view, editorId: slot.closest('#event-form')?.dataset.moduleEditor, draft: moduleDraft(slot.closest('#event-form')), bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }, clip: { x: left, y: top, width: right - left, height: bottom - top } };
   }).filter(Boolean).slice(0, 4);
-  const key = JSON.stringify([state.account.sessionId, views]); if (key === moduleMountState) return;
+  const key = JSON.stringify([connectedModules.find(item => item.enabled)?.sessionId || state.account?.sessionId, views]); if (key === moduleMountState) return;
   moduleMountState = key; moduleMountBusy = true;
   try { await api('moduleMounts', { views }); } catch (error) { showError(error); } finally { moduleMountBusy = false; }
 }
@@ -91,7 +92,7 @@ setInterval(() => { void syncModuleMounts(); }, 300);
 
 function unmountModuleViews() {
   moduleMountState = '';
-  if (!isComposeWindow && window.aster && state.account) void api('moduleMounts', { views: [] }).catch(() => {});
+  if (!isComposeWindow && window.aster) void api('moduleMounts', { views: [] }).catch(() => {});
 }
 
 function moduleDraft(form) {
@@ -102,7 +103,7 @@ function moduleDraft(form) {
 }
 
 function moduleGitHubDialog() {
-  if (!window.aster || !state.account || !confirmDiscardChanges()) return;
+  if (!window.aster || !confirmDiscardChanges()) return;
   modal(tr('Модуль с GitHub'), tr('Будут загружены только файлы пакета. Скрипты установки и сборки не запускаются.'), `<form id="module-github-form">${field('url', tr('Репозиторий GitHub'), '', 'url', true)}${field('ref', tr('Ветка, тег или commit (пусто — основная ветка)'))}${field('directory', tr('Папка модуля в репозитории (пусто — корень)'))}<p class="form-note">${tr('Поддерживаются публичные репозитории с module.json API 1. Перед установкой покажем точный commit, SHA-256 и разрешения.')}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr('Отмена')}</button><button type="submit" class="primary">${tr('Проверить и подключить')}</button></div></form>`);
 }
 async function installModuleFromGitHub(form) {
@@ -121,23 +122,43 @@ async function moduleAuthorCatalog() {
   const container = document.querySelector('#module-author-catalog'), account = state.account;
   if (!window.aster) { container.textContent = tr('Каталог доступен в настольном клиенте, в том числе в деморежиме.'); return; }
   try {
-    const [catalog, installed] = await Promise.all([api('moduleAuthorCatalog'), account && !state.demo ? api('moduleCatalog') : Promise.resolve([])]);
+    const [catalogResult, installedResult] = await Promise.allSettled([api('moduleAuthorCatalog'), api('moduleCatalog')]);
+    if (catalogResult.status === 'rejected') throw catalogResult.reason;
+    const catalog = catalogResult.value, installed = installedResult.status === 'fulfilled' ? installedResult.value : [];
     if (!container.isConnected || state.account !== account) return;
-    container.innerHTML = `<p class="form-note">${account && !state.demo ? tr('При подключении вы подтвердите разрешения для текущего аккаунта.') : tr('Можно подключить модуль заранее. После входа подключите его к нужному аккаунту.')}</p><div class="module-catalog-list">` + (catalog.modules.map(item => {
+    container.innerHTML = `${installedResult.status === 'rejected' ? `<p class="form-error" role="alert">${esc(errorText(installedResult.reason))}</p>` : ''}<p class="form-note">${tr('Подключите модуль, чтобы открыть его настройки. Вход в Exchange для этого не нужен.')}</p><div class="module-catalog-list">` + (catalog.modules.map(item => {
       const m = item.manifest, existing = installed.find(value => value.id === m.id), update = existing && moduleVersionNewer(m.version, existing.version);
-      const prepared = item.prepared && (!account || state.demo);
-      return `<article class="module-catalog-row"><div><h3>${esc(m.name)}<span class="module-version">${esc(m.version)}</span></h3>${item.description !== m.name ? `<p>${esc(item.description)}</p>` : ''}<details><summary>${tr('Разрешения и сведения о модуле')}</summary><p>${tr('Разрешения:')} ${esc(m.permissions.map(value => (modulePermissionNames()[value] || value)).join(', '))}</p><p>${tr('Сетевые адреса:')} ${esc(m.networkOrigins.join(', '))}<br>${tr('Дополнительные серверы с отдельным разрешением:')} ${esc((m.optionalOrigins || []).map(rule => rule.domain).join(', '))}<br>${tr('Приложение встречи:')} ${esc(m.meetingLinks ? m.meetingLinks.scheme + ' → ' + m.meetingLinks.origins.join(', ') : '')}<br>${tr('Серверы входа:')} ${esc([...(m.authentication?.origins || []), ...(m.authentication?.identityOrigins || [])].join(', '))}</p><p>${esc(item.directory || '/')}<br>commit: ${esc(item.commit)}<br>SHA-256: ${esc(item.digest)}</p></details></div><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(m.id)}" data-digest="${esc(item.digest)}" data-revision="${esc(catalog.revision)}" ${existing && !update || prepared || item.compatible === false ? 'disabled' : ''}>${item.compatible === false ? tr('Требуется обновление модуля для этого клиента') : update ? tr('Обновить с сохранением настроек') : existing ? tr('Уже подключён') : prepared ? tr('Подключён заранее') : tr('Подключить')}</button></article>`;
+      return `<article class="module-catalog-row"><div><h3>${esc(m.name)}<span class="module-version">${esc(m.version)}</span></h3>${item.description !== m.name ? `<p>${esc(item.description)}</p>` : ''}<details><summary>${tr('Разрешения и сведения о модуле')}</summary><p>${tr('Разрешения:')} ${esc(m.permissions.map(value => (modulePermissionNames()[value] || value)).join(', '))}</p><p>${tr('Сетевые адреса:')} ${esc(m.networkOrigins.join(', '))}<br>${tr('Дополнительные серверы с отдельным разрешением:')} ${esc((m.optionalOrigins || []).map(rule => rule.domain).join(', '))}<br>${tr('Приложение встречи:')} ${esc(m.meetingLinks ? m.meetingLinks.scheme + ' → ' + m.meetingLinks.origins.join(', ') : '')}<br>${tr('Серверы входа:')} ${esc([...(m.authentication?.origins || []), ...(m.authentication?.identityOrigins || [])].join(', '))}</p><p>${esc(item.directory || '/')}<br>commit: ${esc(item.commit)}<br>SHA-256: ${esc(item.digest)}</p></details></div><div class="module-catalog-actions"><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(m.id)}" data-digest="${esc(item.digest)}" data-revision="${esc(catalog.revision)}" ${existing && !update || item.compatible === false ? 'disabled' : ''}>${item.compatible === false ? tr('Требуется обновление модуля для этого клиента') : update ? tr('Обновить с сохранением настроек') : existing ? tr('Уже подключён') : tr('Подключить')}</button></div></article>`;
     }).join('') || `<p class="form-note">${tr(catalog.published === false ? 'Каталог ещё не опубликован автором.' : 'Одобренных модулей пока нет.')}</p>`) + '</div>';
   } catch (error) { if (container.isConnected && state.account === account) container.textContent = errorText(error); }
 }
+function resetModuleConfirmation(row) {
+  const button = row?.querySelector('[data-action="module-approved-connect"]');
+  if (button?.dataset.confirmLabel) button.textContent = button.dataset.confirmLabel;
+  if (button) { delete button.dataset.confirmed; delete button.dataset.confirmAccount; delete button.dataset.confirmLabel; }
+  row?.querySelector('.module-confirm-note')?.remove();
+  row?.querySelector('[data-action="module-approved-cancel"]')?.remove();
+}
 async function connectApprovedModule(button) {
   if (modalBusy || !window.aster) return;
+  const row = button.closest('.module-catalog-row');
+  if (button.dataset.confirmed !== 'true') {
+    document.querySelectorAll('.module-catalog-row').forEach(resetModuleConfirmation);
+    button.dataset.confirmed = 'true'; button.dataset.confirmAccount = state.account?.sessionId || '';
+    button.dataset.confirmLabel = button.textContent; button.textContent = tr('Подтвердить подключение');
+    // Installation itself authorizes the capabilities disclosed in the optional details.
+    const note = document.createElement('p'); note.className = 'module-confirm-note'; note.setAttribute('role', 'status');
+    note.textContent = tr('Подключить этот модуль?'); row.querySelector('div').append(note);
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'secondary'; cancel.dataset.action = 'module-approved-cancel'; cancel.textContent = tr('Отмена'); button.after(cancel);
+    return;
+  }
+  if (button.dataset.confirmAccount !== (state.account?.sessionId || '')) return moduleAuthorCatalog();
   const container = document.querySelector('#module-author-catalog'), account = state.account;
-  modalBusy = true; container.inert = true; container.setAttribute('aria-busy', 'true');
+  modalBusy = true; container.inert = true; container.setAttribute('aria-busy', 'true'); button.textContent = tr('Подключаем модуль…');
   let success = false;
   try { await api('moduleInstallApproved', { id: button.dataset.id, digest: button.dataset.digest, revision: button.dataset.revision }); success = true; }
   catch (error) { if (container.isConnected && state.account === account) { const message = document.createElement('p'); message.setAttribute('role', 'alert'); message.textContent = errorText(error); container.append(message); } }
-  finally { modalBusy = false; container.inert = false; container.removeAttribute('aria-busy'); }
+  finally { modalBusy = false; container.inert = false; container.removeAttribute('aria-busy'); button.textContent = tr('Подтвердить подключение'); }
   if (success && container.isConnected && state.account === account) { await loadModuleContributions(); await moduleAuthorCatalog(); }
 }
 

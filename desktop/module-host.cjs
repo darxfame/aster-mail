@@ -65,7 +65,7 @@ class ModuleHost {
   }
   async install(bundle, enabled = false) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
-    if (this.records().some(record => record.id === bundle.manifest.id)) return this.upgrade(bundle);
+    if (this.records().some(record => record.id === bundle.manifest.id)) return this.upgrade(bundle, enabled);
     if (this.records().length >= 8) throw new Error(tr('Достигнут лимит подключённых модулей'));
     const sessionId = this.current().sessionId;
     await M.installPackage(this.directory, bundle);
@@ -73,7 +73,7 @@ class ModuleHost {
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     await this.update(records => records.push({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled, settingsVersion: bundle.manifest.settingsVersion, data: {} }));
   }
-  async upgrade(bundle) {
+  async upgrade(bundle, authorized = false) {
     const Settings = require('./module-settings.cjs'), equal = require('node:util').isDeepStrictEqual;
     const id = bundle.manifest.id, sessionId = this.current().sessionId;
     const original = this.records().find(record => record.id === id);
@@ -93,7 +93,7 @@ class ModuleHost {
     try {
       const before = previous.manifest, after = bundle.manifest;
       const expanded = ['permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins'].some(key => (after[key] || []).some(value => !(before[key] || []).some(old => equal(old, value)))) || ['meetingLinks', 'authentication'].some(key => !equal(before[key], after[key])) || original.source?.repository !== bundle.source?.repository;
-      if (expanded) {
+      if (expanded && !authorized) {
         const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.permissionSummary(after.permissions)}\n${after.networkOrigins.join(', ')}\n${(after.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${M.meetingLaunchSummary(after)}\n${[...(after.authentication?.origins || []), ...(after.authentication?.identityOrigins || [])].join(', ')}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
         if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
         if (answer.response !== 1) return false;

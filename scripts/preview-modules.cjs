@@ -27,8 +27,8 @@ async function main() {
   class FixtureStore {
     constructor() { this.data = { modules, values: {} }; }
     requireEncryption() {}
-    async load(_owner, guard) { guard(); return structuredClone(this.data); }
-    async save(patch, guard) { guard(); this.data = { ...this.data, ...patch }; }
+    async load(_owner, guard = () => {}) { guard(); return structuredClone(this.data); }
+    async save(patch, guard = () => {}) { guard(); this.data = { ...this.data, ...patch }; }
     async loadCredentials() { return null; }
     async loadLoginHint() { return null; }
     async saveCredentials(_value, guard) { guard(); }

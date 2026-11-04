@@ -37,7 +37,7 @@ app.whenReady().then(async () => {
   await wc.executeJavaScript('setModalDirty(false); document.querySelector("#modal").close()');
   await wc.executeJavaScript(`(async () => {
     sidebarCollapsed=false; renderSidebar(); window.aster={}; state.account=null; state.demo=true;
-    window.catalogCalls=[]; api=async (operation) => { catalogCalls.push(operation); return { revision:'a'.repeat(40), modules:[{ manifest:{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',permissions:['ui','network'],networkOrigins:['https://service.example.test']},description:'Create a meeting link',digest:'b'.repeat(64),commit:'c'.repeat(40),directory:'example'}] }; };
+    window.catalogCalls=[]; api=async (operation) => { catalogCalls.push(operation); if(operation==='moduleCatalog') return []; return { revision:'a'.repeat(40), modules:[{ manifest:{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',permissions:['ui','network'],networkOrigins:['https://service.example.test']},description:'Create a meeting link',digest:'b'.repeat(64),commit:'c'.repeat(40),directory:'example'}] }; };
     await moduleAuthorCatalog();
   })()`);
   assert.equal(await wc.executeJavaScript('document.querySelector("[data-action=module-approved-connect]").disabled'), false);
@@ -45,6 +45,18 @@ app.whenReady().then(async () => {
   assert.equal(await wc.executeJavaScript('document.querySelector(".module-catalog-row").scrollWidth <= document.querySelector(".module-catalog-row").clientWidth'), true);
   const output = path.join(__dirname, '../release/ui-sidebar-catalog'); await fs.mkdir(output, { recursive: true });
   await fs.writeFile(path.join(output, 'catalog.png'), (await wc.capturePage()).toPNG());
+  await wc.executeJavaScript(`handleModuleAction(document.querySelector('[data-action="module-approved-connect"]'))`);
+  assert.equal(await wc.executeJavaScript(`document.querySelector('[data-action="module-approved-connect"]').textContent`), 'Подтвердить подключение');
+  assert.equal(await wc.executeJavaScript(`catalogCalls.includes('moduleInstallApproved')`), false);
+  assert.equal(await wc.executeJavaScript(`document.querySelector('.module-catalog-row details').open`), false);
+  await new Promise(resolve => setTimeout(resolve, 150));
+  await fs.writeFile(path.join(output, 'confirm.png'), (await wc.capturePage()).toPNG());
+  await wc.executeJavaScript(`handleModuleAction(document.querySelector('[data-action="module-approved-cancel"]'))`);
+  assert.equal(await wc.executeJavaScript(`document.querySelector('[data-action="module-approved-connect"]').textContent`), 'Подключить');
+  assert.equal(await wc.executeJavaScript(`catalogCalls.includes('moduleInstallApproved')`), false);
+  await wc.executeJavaScript(`(async () => { const button=document.querySelector('[data-action="module-approved-connect"]'); await handleModuleAction(button); await handleModuleAction(button); })()`);
+  assert.equal(await wc.executeJavaScript(`catalogCalls.filter(call=>call==='moduleInstallApproved').length`), 1);
+
   await wc.executeJavaScript(`(async () => {
     modal('Модули', '', '<div id="module-list"></div>');
     loadModuleContributions=async () => { connectedModules=[{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',enabled:true,permissions:['ui','network'],networkOrigins:['https://service.example.test'],views:[{id:'settings',title:'Настроить',slot:'panel'}]}]; };

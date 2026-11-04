@@ -1,7 +1,7 @@
-let updateSnapshot = { installed: '0.2.2', status: 'idle', autoCheck: true, available: null, error: '' };
+let updateSnapshot = { installed: '0.2.3', status: 'idle', autoCheck: true, available: null, error: '' };
 const promptedUpdateVersions = new Set();
 let updatePromptsReady = false;
-let updateInstallAttempt = 0;
+let updateInstallAttempt = 0, updateOpening = false;
 function maybePromptUpdate() {
   const value = updateSnapshot;
   if (!updatePromptsReady || !window.aster || !value.autoCheck || !value.available || value.error || !['available', 'ready'].includes(value.status) || promptedUpdateVersions.has(value.available.version)) return;
@@ -60,6 +60,11 @@ async function updatesModal() {
     ${window.aster ? '<div id="updates-panel"></div>' : tr('<p class="form-note">Проверка и загрузка доступны в настольном приложении.</p>')}`);
   renderUpdates();
 }
+async function openDownloadedUpdate() {
+  updateOpening = true;
+  try { return await api('openUpdateInstaller'); }
+  finally { updateOpening = false; }
+}
 document.addEventListener('click', async event => {
   const button = event.target.closest('[data-update]'); if (!button || button.disabled) return;
   button.disabled = true;
@@ -69,12 +74,16 @@ document.addEventListener('click', async event => {
     if (button.dataset.update === 'installUpdate') {
       const attempt = ++updateInstallAttempt;
       if (updateSnapshot.status !== 'ready') receiveUpdate(await api('downloadUpdate'));
-      if (attempt === updateInstallAttempt && updateSnapshot.status === 'ready' && !updateSnapshot.error && dialog.open && version === modalSequence) receiveUpdate(await api('openUpdateInstaller'));
-    } else receiveUpdate(await api(button.dataset.update));
+      if (attempt === updateInstallAttempt && updateSnapshot.status === 'ready' && !updateSnapshot.error && dialog.open && version === modalSequence) receiveUpdate(await openDownloadedUpdate());
+    } else receiveUpdate(await (button.dataset.update === 'openUpdateInstaller' ? openDownloadedUpdate() : api(button.dataset.update)));
   }
   catch (error) { toast(errorText(error)); renderUpdates(); }
 });
-document.addEventListener('close', () => { setTimeout(maybePromptUpdate, 0); }, true);
+document.addEventListener('close', () => {
+  updateInstallAttempt++;
+  if (updateOpening) void api('cancelUpdateInstall').catch(() => {});
+  setTimeout(maybePromptUpdate, 0);
+}, true);
 document.addEventListener('visibilitychange', maybePromptUpdate);
 window.addEventListener('focus', maybePromptUpdate);
 document.addEventListener('change', async event => {

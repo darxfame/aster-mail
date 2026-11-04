@@ -79,3 +79,13 @@ test('download errors or closing the prompt while downloading prevent installer 
     assert.deepEqual(calls, ['downloadUpdate']);
   }
 });
+
+
+test('closing the prompt during installer activation sends cancellation to the backend', async () => {
+  const calls = []; let finish;
+  const f = fixture(async operation => { calls.push(operation); if (operation === 'openUpdateInstaller') return new Promise(resolve => { finish = resolve; }); return { ...available, status: 'ready' }; });
+  f.context.receiveUpdate({ ...available, status: 'ready' }); f.context.enableUpdatePrompts();
+  const opening = f.listeners.click({ target: { closest: () => ({ dataset: { update: 'installUpdate' } }) } });
+  f.dialog.open = false; f.listeners.close(); finish({ ...available, status: 'ready' }); await opening;
+  assert.deepEqual(calls, ['openUpdateInstaller', 'cancelUpdateInstall']);
+});

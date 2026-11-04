@@ -262,3 +262,41 @@ test('a responsive stream can outlast the header deadline without a total downlo
   await updater.check(); await updater.download();
   assert.equal(updater.state.status, 'ready');
 });
+
+test('macOS explicitly activates the mounted installer volume, including an already mounted image', async () => {
+  const { openInstallerFile } = require('../desktop/updates.cjs');
+  const xml = `<?xml version="1.0"?><plist version="1.0"><dict><key>system-entities</key><array><dict><key>dev-entry</key><string>/dev/disk9</string></dict><dict><key>mount-point</key><string>/Volumes/Aster Mail 0.2.2-arm64</string></dict></array></dict></plist>`;
+  const file = '/private/tmp/updates/Aster-Mail-0.2.2-mac-arm64.dmg', opened = [];
+  const options = { platform: 'darwin', execute: async (command, args, options) => {
+    assert.equal(command, '/usr/bin/hdiutil');
+    assert.deepEqual(args, ['attach', '-readonly', '-nobrowse', '-noautoopen', '-plist', file]);
+    assert.ok(options.timeout > 0); return { stdout: xml };
+  } };
+  const shell = { openPath() { assert.fail('Do not activate DiskImageMounter'); }, async openExternal(url, options) { opened.push({ url, options }); } };
+  for (let i = 0; i < 2; i++) assert.equal(await openInstallerFile(file, shell, options), '');
+  assert.deepEqual(opened, Array(2).fill({ url: 'file:///Volumes/Aster%20Mail%200.2.2-arm64', options: { activate: true } }));
+  for (const stdout of ['', '<plist><dict></dict></plist>', xml.replace('/Volumes/Aster Mail 0.2.2-arm64', '/private/tmp/other'), xml.replace('/Volumes/Aster Mail 0.2.2-arm64', '/Volumes/../other')]) {
+    await assert.rejects(openInstallerFile(file, shell, { ...options, execute: async () => ({ stdout }) }), /окно установщика/);
+  }
+  assert.equal(opened.length, 2);
+  await assert.rejects(openInstallerFile(file, shell, { ...options, execute: async () => { throw new Error('Mount failed'); } }), /Mount failed/);
+  await assert.rejects(openInstallerFile(file, { openExternal: async () => { throw new Error('Finder failed'); } }, options), /Finder failed/);
+});
+
+test('Windows installer launch preserves the system open result and does not mount images', async () => {
+  const { openInstallerFile } = require('../desktop/updates.cjs');
+  const file = 'C:\\updates\\Aster-Mail-0.2.2-windows-x64.exe';
+  const shell = { async openPath(value) { assert.equal(value, file); return 'Fictional launch error'; } };
+  assert.equal(await openInstallerFile(file, shell, { platform: 'win32', execute: () => assert.fail('No hdiutil on Windows') }), 'Fictional launch error');
+});
+
+
+test('closing the update prompt cancels a pending verified installer open without invalidating the download', async t => {
+  let begin, finish, activated = false;
+  const started = new Promise(resolve => { begin = resolve; });
+  const { updater } = await fixture(t, undefined, { open: async (_file, signal) => { begin(); await new Promise(resolve => { finish = resolve; }); signal.throwIfAborted(); activated = true; return ''; } });
+  await updater.check(); await updater.download();
+  const opening = updater.openInstaller(); await started;
+  updater.cancelInstall(); finish(); await assert.rejects(opening);
+  assert.equal(activated, false); assert.equal(updater.state.status, 'ready'); assert.equal(updater.state.error, '');
+});

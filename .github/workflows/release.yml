@@ -45,6 +45,8 @@ jobs:
         run: npm run test:modules
       - name: Verify shared module SDK
         run: npm run test:module-sdk
+      - name: Verify native installer opening
+        run: npm run test:updates
       - name: Import macOS signing identity
         if: runner.os == 'macOS'
         timeout-minutes: 2

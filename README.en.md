@@ -192,7 +192,7 @@ Chromium sandbox with no Node.js, filesystem, Exchange session or direct network
 access. The host SDK checks permissions, account identity and destinations.
 Install from a package folder or a public GitHub repository under Settings →
 Modules. GitHub refs resolve to a pinned commit; only declared files are fetched.
-Manual imports remain disabled until the user grants permissions for the account.
+Installation enables the declared capabilities immediately. Module settings and service sign-in use their own encrypted profile and work without Exchange. Exchange calendar and meeting draft operations still require an active connection; account changes retire in-flight module operations.
 
 [Aster Mail Modules](https://github.com/darxfame/aster-mail-modules) is the
 repository for modules from the Aster Mail author. Contribute your own module via

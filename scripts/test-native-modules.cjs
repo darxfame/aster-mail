@@ -74,6 +74,13 @@ app.whenReady().then(async () => {
     } finally { await isolated.closeAllConnections(); await isolated.clearStorageData(); }
   }
   console.log('PASS: 20 fresh Chromium sessions apply deny proxy before first request, including loopback; no direct server hits');
+  const { ModuleProfile } = require(path.join(hostRoot, 'desktop/module-profile.cjs'));
+  const encryption = { isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value).toString('base64'), decryptString: value => Buffer.from(value.toString(), 'base64').toString() };
+  const profileDirectory = path.join(directory, 'module-profile');
+  const profileStore = new ModuleProfile(profileDirectory, host.directory, encryption); await profileStore.initialize();
+  sessionId = profileStore.sessionId;
+  host.scope = () => ({ ...profileStore.scope(), sessionId });
+  host.save = async (value, scopeId) => { await profileStore.save(value, scopeId); records = value; };
   const Catalog = require(path.join(hostRoot, 'desktop/module-catalog.cjs'));
   await Catalog.prepare(host.directory, bundle, () => {});
   assert.equal(await Catalog.prepared(host.directory, { manifest: bundle.manifest, digest: bundle.digest }), true);
@@ -85,6 +92,9 @@ app.whenReady().then(async () => {
   assert.equal(hits, 0); assert.equal(udpHits, 0);
   assert.deepEqual(await host.invoke(bundle.manifest.id, 'increment'), { count: 1 });
   assert.equal(records[0].data.count, 1);
+  const restored = new ModuleProfile(profileDirectory, host.directory, encryption); await restored.initialize();
+  assert.equal(restored.scope().records[0].data.count, 1);
+  console.log('PASS: standalone module settings and panel work without Exchange and survive profile reload');
   const runtime = host.entries.get(bundle.manifest.id);
   const preferences = runtime.window.webContents.getLastWebPreferences();
   assert.equal(preferences.sandbox, true); assert.equal(preferences.nodeIntegration, false); assert.equal(preferences.contextIsolation, true);

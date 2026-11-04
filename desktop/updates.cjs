@@ -52,6 +52,27 @@ async function request(fetch, url, signal, headers = {}) {
   }
   throw new Error(tr('Слишком много перенаправлений GitHub'));
 }
+async function openInstallerFile(file, shell, { platform = process.platform, signal, execute = require('node:util').promisify(require('node:child_process').execFile) } = {}) {
+  signal?.throwIfAborted();
+  if (platform !== 'darwin') return shell.openPath(file);
+  // Open the mounted volume itself: DiskImageMounter can leave Finder behind Aster.
+  const { stdout } = await execute('/usr/bin/hdiutil', ['attach', '-readonly', '-nobrowse', '-noautoopen', '-plist', file], { timeout: 60000, maxBuffer: 1024 * 1024, signal });
+  signal?.throwIfAborted();
+  const document = new (require('fast-xml-parser').XMLParser)({ preserveOrder: true, parseTagValue: false }).parse(stdout);
+  const findVolume = nodes => {
+    if (!Array.isArray(nodes)) return null;
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].key?.[0]?.['#text'] === 'mount-point') return nodes[i + 1]?.string?.[0]?.['#text'] || null;
+      for (const value of Object.values(nodes[i])) { const volume = findVolume(value); if (volume) return volume; }
+    }
+    return null;
+  };
+  const volume = findVolume(document);
+  if (typeof volume !== 'string' || !volume.startsWith('/Volumes/') || path.dirname(volume) !== '/Volumes') throw new Error(tr('Не удалось открыть окно установщика'));
+  signal?.throwIfAborted();
+  await shell.openExternal(require('node:url').pathToFileURL(volume).href, { activate: true });
+  return '';
+}
 // Race the operation too: an injected or stalled transport need not honour abort.
 function abortable(operation, signal) {
   return new Promise((resolve, reject) => {
@@ -242,9 +263,11 @@ class Updates {
       return this.publish({ status: preserve ? 'paused' : 'available', progress: preserve ? Math.floor(received * 100 / asset.size) : 0, received: preserve ? received : 0, speed: 0, retryAt: null, error: error.paused || error.cancelled ? '' : error.message });
     } finally { this.downloadController = null; this.busy = false; finished(); }
   }
+  cancelInstall() { this.openController?.abort(); return this.snapshot(); }
   async openInstaller() {
     if (this.busy || this.state.status !== 'ready') throw new Error(tr('Установщик ещё не готов'));
     const asset = this.state.available, file = path.join(this.directory, asset.name);
+    const controller = this.openController = new AbortController();
     this.busy = true;
     try {
       const stat = await fs.lstat(file);
@@ -254,11 +277,12 @@ class Updates {
       try { const hash = crypto.createHash('sha256'); for await (const chunk of handle.createReadStream()) hash.update(chunk); digest = hash.digest('hex'); }
       finally { await handle.close(); }
       if (digest !== asset.sha256) throw new Error(tr('Установщик изменён; скачайте его заново'));
-      const error = await this.open(file);
+      controller.signal.throwIfAborted();
+      const error = await this.open(file, controller.signal);
       if (error) throw new Error(error);
       return this.snapshot();
-    } catch (error) { this.publish({ status: 'available', error: error.message }); throw error; }
-    finally { this.busy = false; }
+    } catch (error) { if (!controller.signal.aborted) this.publish({ status: 'available', error: error.message }); throw error; }
+    finally { this.openController = null; this.busy = false; }
   }
 }
-module.exports = { Updates, newer, releaseInfo, allowedURL, request, apiURL };
+module.exports = { Updates, newer, releaseInfo, allowedURL, request, apiURL, openInstallerFile };

@@ -57,7 +57,7 @@ test('missing catalog is unpublished, network failures are errors and changed ap
   assert.equal(installed, true);
 });
 
-test('public catalog IPC is available before login while install operations stay account-scoped', async () => {
+test('public catalog needs no Exchange account while mailbox operations remain protected', async () => {
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
   const start = source.indexOf("      if (operation === 'moduleAuthorCatalog')");
@@ -67,9 +67,9 @@ test('public catalog IPC is available before login while install operations stay
   Object.defineProperty(context, 'client', { get() { throw new Error('Account accessed'); } });
   const value = await vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, context);
   assert.equal(value.ok, true);
-  for (const operation of ['moduleImportGitHub', 'moduleConfigure']) {
-    const denied = vm.createContext({ operation, client: null, tr: value => value });
-    await assert.rejects(vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, denied), /OWA/);
+  for (const operation of ['messages', 'send']) {
+    const denied = vm.createContext({ operation, client: null, data: {}, tr: value => value });
+    await assert.rejects(vm.runInContext(`(async () => { ${source.slice(start, source.indexOf("      if (operation === 'saveMeetingReminders')", start))} })()`, denied), /OWA/);
   }
 });
 
@@ -79,10 +79,10 @@ test('desktop catalog displays package cards without an account and in demo, wit
   for (const demo of [false, true]) {
     const calls = [], container = { isConnected: true };
     const context = vm.createContext({ modalBusy: false, confirmDiscardChanges: () => true, modal() {}, tr: value => value, esc: value => String(value), modulePermissionNames: () => ({}),
-      state: { account: null, demo }, window: { aster: {} }, document: { querySelector: () => container }, api: async operation => { calls.push(operation); assert.equal(operation, 'moduleAuthorCatalog'); return { revision, modules: [f.item] }; } });
+      state: { account: null, demo }, window: { aster: {} }, document: { querySelector: () => container }, api: async operation => { calls.push(operation); if (operation === 'moduleCatalog') return []; assert.equal(operation, 'moduleAuthorCatalog'); return { revision, modules: [f.item] }; } });
     vm.runInContext(source.slice(source.indexOf('async function moduleAuthorCatalog()'), source.indexOf('async function connectApprovedModule(')), context);
     await context.moduleAuthorCatalog();
-    assert.deepEqual(calls, ['moduleAuthorCatalog']);
+    assert.deepEqual(calls, ['moduleAuthorCatalog', 'moduleCatalog']);
     assert.match(container.innerHTML, /Fictional approved module/);
     assert.doesNotMatch(container.innerHTML, /data-action="module-approved-connect"[^>]*disabled/);
     assert.match(container.innerHTML, /<details><summary>Разрешения и сведения о модуле/);
@@ -129,30 +129,31 @@ test('approved install IPC prepares before login, grants only the matching accou
     const active = ['account', 'stale'].includes(scenario) ? { syncId: 'current' } : null;
     const calls = [], isolated = { closeAllConnections: async () => {}, clearStorageData: async () => {} };
     let context;
-    context = vm.createContext({ operation: 'moduleInstallApproved', client: active, accountEpoch: 1, resettingLocalData: scenario === 'reset',
+    context = vm.createContext({ operation: 'moduleInstallApproved', client: active, moduleProfile: { initialize: async guard => guard() }, accountEpoch: 1, resettingLocalData: scenario === 'reset',
       connection: active ? { controller: new AbortController() } : null, event: { sender },
       data: { sessionId: scenario === 'account' ? 'current' : ['stale', 'signed-out'].includes(scenario) ? 'retired' : undefined },
+      path, app: { getPath: () => '/fictional' }, moduleHost: { install: async () => calls.push({ approved: true, prepare: false }) },
       AbortController, tr: value => value, net: {}, crypto: { randomUUID: () => 'fictional' }, session: { fromPartition: () => isolated },
-      require: name => name === './module-github.cjs' ? { getBytes() {} } : { async install(_data, _read, _signal, host, guard) {
+      require: name => name === './module-github.cjs' ? { getBytes() {} } : { prepare: async (_directory, _bundle, guard) => { guard(); calls.push({ approved: true, prepare: true }); }, async install(_data, _read, _signal, host, guard) {
         if (scenario === 'changed') context.accountEpoch++;
         guard(); await host.install({ manifest: {} }); guard();
       } },
-      installModuleBundle: async (_bundle, guard, approved, prepare) => { guard(); calls.push({ approved, prepare }); } });
+      installModuleBundle: () => assert.fail('Catalog installation must not open a native confirmation') });
     const run = () => vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, context);
     if (['prepare', 'account'].includes(scenario)) {
       assert.equal((await run()).ok, true);
-      assert.deepEqual(calls, [{ approved: true, prepare: scenario === 'prepare' }]);
+      assert.deepEqual(calls, [{ approved: true, prepare: false }]);
     } else { await assert.rejects(run(), /Сессия/); assert.deepEqual(calls, []); }
     assert.equal(sender.listenerCount('destroyed'), 0);
   }
 });
 
-test('native confirmation cancellation never prepares a package or enables an account module', async () => {
+test('manual package import still requires confirmation and cancellation never installs', async () => {
   const fs = require('node:fs'), vm = require('node:vm'), f = await fixture();
   const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
   const start = source.indexOf('async function installModuleBundle('), end = source.indexOf('const methods =', start);
   const context = vm.createContext({ tr: value => value, window: {}, dialog: { showMessageBox: async () => ({ response: 0 }) },
     moduleHost: { install: () => assert.fail('Cancelled account install') }, require: name => { assert.equal(name, './modules.cjs'); return M; } });
   vm.runInContext(source.slice(start, end), context);
-  for (const prepare of [false, true]) await context.installModuleBundle(f.bundle, () => {}, true, prepare);
+  await context.installModuleBundle(f.bundle, () => {});
 });

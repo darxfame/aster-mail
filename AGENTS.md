@@ -152,7 +152,7 @@ proprietary modules. Update README limitations when capabilities change.
 
 The module platform ships with Aster Mail 0.2.0. Keep provider implementations in the separate module repository.
 `desktop/modules.cjs` validates/snapshots packages and brokers JSON HTTPS requests;
-`desktop/module-host.cjs` owns the sandbox runtime, permissions, account guards,
+`desktop/module-host.cjs` owns the sandbox runtime, declared capabilities, context guards,
 RPC and embedded `WebContentsView` lifecycle. Module source must never be required
 or evaluated in main/preload/Node. Keep sandbox/context isolation enabled, direct
 network and file access blocked, and Exchange cookies/credentials out of module
@@ -168,7 +168,7 @@ calendar completeness from the bounded module calendar list.
 Read `docs/modules/architecture.md` and `docs/modules/development.md` before changing
 the contract. Validate API/version/permissions and package digest before running
 code. Package copies may persist only after explicit installation; module settings
-use the existing encrypted account store, never renderer storage. Review new SDK
+use the independent encrypted module profile (`desktop/module-profile.cjs`), never renderer storage. Installation authorizes declared capabilities; do not add separate account permission prompts. Module settings and service sign-in must work before Exchange login. Retire module runtimes and pending writes on account changes while preserving module-owned settings. Review new SDK
 capabilities as trust-boundary changes and test both denied and authorized paths.
 Run `npm run test:modules` against actual Electron in addition to Node checks;
 `npm run test:connection` remains mandatory after changes to connection behavior.
@@ -208,6 +208,6 @@ Provider implementation, service-specific authentication, protocols and resource
 belong in `aster-mail-modules`, never in this repository. Keep the host SDK generic.
 
 Public catalog browsing must not depend on an Exchange account, including desktop
-demo mode. Installation stays account-scoped. Optional domain families authorize
+demo mode. Installation and module-owned settings are independent of Exchange login. Exchange SDK operations still require an active account. Optional domain families authorize
 no traffic until a native prompt grants an exact HTTPS origin; isolate grants
-per module/account and never move service credentials between origins.
+per module profile and never move service credentials between origins.
