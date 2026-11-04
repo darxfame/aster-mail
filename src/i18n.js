@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Создать комнату": "Create room",
     "Модуль будет доступен сразу после установки.": "The module will be available immediately after installation.",
     "Установленные модули работают в песочнице. Их настройки доступны без входа в Exchange.": "Installed modules run in a sandbox. Their settings are available without signing in to Exchange.",
     "Подключите модуль, чтобы открыть его настройки. Вход в Exchange для этого не нужен.": "Connect a module to open its settings. Exchange sign-in is not required.",

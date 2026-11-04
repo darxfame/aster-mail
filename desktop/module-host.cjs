@@ -55,11 +55,6 @@ class ModuleHost {
     // Check registration before launching; do not silently open a second target on failure.
     if (route && !await this.electron.app.getApplicationNameForProtocol(target)) throw new Error(tr('Приложение встречи не установлено. Откройте ссылку в браузере.'));
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    if (route) {
-      const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Открыть приложение встречи?'), detail: `${route.name}\n${target}\n${await this.electron.app.getApplicationNameForProtocol(target)}`, buttons: [tr('Отмена'), tr('Открыть')], defaultId: 0, cancelId: 0 });
-      if (answer.response !== 1) return;
-      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    }
     if (route && !this.records().some(item => item.id === route.id && item.enabled && item.digest === route.digest)) throw new Error(tr('Модуль выключен или не настроен'));
     await this.electron.shell.openExternal(target);
   }

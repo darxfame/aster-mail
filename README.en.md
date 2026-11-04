@@ -186,6 +186,10 @@ apps. System notification appearance and stacking remain controlled by the OS.
 
 ### Modules
 
+KTalk settings stay in Modules. In a new meeting, Create room inserts the link while
+preserving the agenda. Join on a saved meeting opens the installed KTalk app for
+a matching link without a second confirmation. Requires KTalk module 0.1.3.
+
 Aster Mail 0.2.0 supports self-contained browser JavaScript packages with commands,
 embedded views, private encrypted state and events. Untrusted code runs inside a
 Chromium sandbox with no Node.js, filesystem, Exchange session or direct network

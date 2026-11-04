@@ -19,18 +19,19 @@ async function handleModuleAction(button) {
   if (action === 'module-panel') return openModulePanel(id, button.dataset.view);
   button.disabled = true;
   const form = button.closest('#event-form');
+  if (form?.dataset.editing === 'true') return;
   if (form && modalBusy) { button.disabled = false; return; }
   if (form) { modalBusy = true; form.inert = true; }
   try {
     if (action === 'module-import') await api('moduleImport');
     else if (action === 'module-remove') { if (!confirm(tr('Удалить модуль и его сохранённые настройки?'))) return; await api('moduleRemove', { id }); }
     else if (action === 'module-configure') await api('moduleConfigure', { id, enabled: button.dataset.enabled === 'true' });
-    else if (action === 'module-invoke') { await api('moduleInvoke', { id, command: button.dataset.command, editorId: form?.dataset.moduleEditor, draft: moduleDraft(form) }); return; }
+    else if (action === 'module-invoke') { const result = await api('moduleInvoke', { id, command: button.dataset.command, editorId: form?.dataset.moduleEditor, draft: moduleDraft(form) }); if (typeof result?.message === 'string') toast(result.message.slice(0, 1000)); return; }
     await refreshModuleList();
   } finally { button.disabled = false; if (form) { form.inert = false; modalBusy = false; } }
 }
 function moduleButtons(slot) {
-  return connectedModules.filter(item => item.enabled && !item.error).flatMap(item => item.commands.filter(command => command.slot === slot).map(command => `<button type="button" class="secondary" data-action="module-invoke" data-module="${esc(item.id)}" data-command="${esc(command.id)}">${esc(command.title)}</button>`)).join('');
+  return connectedModules.filter(item => item.enabled && !item.error).flatMap(item => item.commands.filter(command => command.slot === slot).map(command => `<button type="button" class="secondary" data-action="module-invoke" data-module="${esc(item.id)}" data-command="${esc(command.id)}">${esc(tr(command.title))}</button>`)).join('');
 }
 function moduleViewSlot(item, view) { return `<section class="module-view-part"><strong>${esc(view.title)}</strong><div class="module-view-slot" data-module="${esc(item.id)}" data-view="${esc(view.id)}" style="height:${view.height}px"></div></section>`; }
 function moduleMeetingControls() { return '<div id="meeting-module-contributions"></div>'; }
@@ -42,7 +43,9 @@ function renderModuleContributions() {
   }
   const container = document.querySelector('#meeting-module-contributions');
   if (container) {
-    const form = container.closest('form'); form.dataset.moduleEditor ||= crypto.randomUUID();
+    const form = container.closest('form');
+    if (form.dataset.editing === 'true') { container.replaceChildren(); return; }
+    form.dataset.moduleEditor ||= crypto.randomUUID();
     container.innerHTML = moduleButtons('meeting.create') + connectedModules.filter(item => item.enabled && !item.error).flatMap(item => item.views.filter(view => view.slot === 'meeting.create').map(view => moduleViewSlot(item, view))).slice(0, 4).join('');
   }
 }
@@ -63,7 +66,7 @@ function receiveModuleAction(data) {
   const form = document.querySelector('#event-form');
   if (!form || form.dataset.editing === 'true' || data.method === 'meeting.patchDraft' && data.editorId !== form.dataset.moduleEditor) return;
   const entries = Object.entries(data.input).map(([key, value]) => [key, ['start', 'end'].includes(key) ? T.wall(value, timeZone).slice(0, 16) : value]);
-  if (entries.some(([key, value]) => form.elements[key]?.value && form.elements[key].value !== value) && !confirm(tr('Модуль предлагает заменить заполненные поля встречи. Применить?'))) return;
+  if (entries.some(([key, value]) => form.elements[key]?.value && form.elements[key].value !== value && !(key === 'body' && value.startsWith(form.elements[key].value + '\n\n'))) && !confirm(tr('Модуль предлагает заменить заполненные поля встречи. Применить?'))) return;
   for (const [key, value] of entries) if (form.elements[key]) form.elements[key].value = value;
   markModalDirty();
 }

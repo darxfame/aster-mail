@@ -135,7 +135,7 @@ async function editMeeting(invite = false) {
   eventModal(); $('#modal').classList.add('meeting-edit-dialog');
   $('#modal .modal-header h2').textContent = own ? scope === 'series' ? tr('Редактировать весь ряд') : detail.recurring ? tr('Редактировать этот повтор') : tr('Редактировать встречу') : tr('Личные настройки встречи');
   $('#modal .modal-header p').textContent = own ? tr('Изменения расписания и участников будут отправлены участникам. Неизменённые описание и вложения сохранятся.') : tr('Расписание и участников изменяет организатор. Вы можете настроить свою копию встречи.');
-  const form = $('#event-form'); form.dataset.editing = 'true';
+  const form = $('#event-form'); form.dataset.editing = 'true'; renderModuleContributions();
   const values = { title: detail.title, start: localDate(detail.start), end: localDate(detail.end), location: detail.location, attendees: detail.attendees.filter(a => a.role === 'required' || !a.role).map(a => a.email).filter(Boolean).join(', '), body: meetingPlainBody(detail) };
   for (const [name, value] of Object.entries(values)) { form.elements[name].value = value; form.elements[name].disabled = !own; }
   const optional = detail.attendees.filter(a => a.role === 'optional').map(a => a.email).filter(Boolean).join(', ');

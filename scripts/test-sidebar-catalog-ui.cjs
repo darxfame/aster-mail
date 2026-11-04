@@ -66,9 +66,30 @@ app.whenReady().then(async () => {
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-list .module-catalog-row").scrollWidth <= document.querySelector("#module-list .module-catalog-row").clientWidth'), true);
   await new Promise(resolve => setTimeout(resolve, 150));
   await fs.writeFile(path.join(output, 'connected.png'), (await wc.capturePage()).toPNG());
+  await wc.executeJavaScript(`(() => {
+    connectedModules=[{id:'fictional.module',sessionId:'fictional-module-session',enabled:true,commands:[{id:'create-room',title:'Создать комнату',slot:'meeting.create'}],views:[{id:'settings',title:'Настроить',slot:'panel',height:500}]}];
+    eventModal(); const form=document.querySelector('#event-form'); form.elements.title.value='Встреча команды'; form.elements.body.value='Повестка встречи';
+    window.fixtureInvokeCount=0;
+    api=async (operation, data) => {
+      if(operation!=='moduleInvoke') return [];
+      fixtureInvokeCount++;
+      receiveModuleAction({id:data.id,sessionId:'fictional-module-session',method:'meeting.patchDraft',editorId:data.editorId,input:{location:'https://service.example.test/room',body:data.draft.body+'\\n\\nСсылка: https://service.example.test/room'}});
+      return {message:'Ссылка на комнату добавлена в новую встречу.'};
+    };
+    window.fixtureConfirm=window.confirm; window.confirm=()=>{throw new Error('Unexpected confirmation');};
+  })()`);
+  assert.equal(await wc.executeJavaScript('document.querySelectorAll("#meeting-module-contributions button").length'), 1);
+  assert.equal(await wc.executeJavaScript('document.querySelectorAll("#event-form .module-view-slot").length'), 0);
+  await wc.executeJavaScript('handleModuleAction(document.querySelector("#meeting-module-contributions button"))');
+  assert.equal(await wc.executeJavaScript('fixtureInvokeCount'), 1);
+  assert.equal(await wc.executeJavaScript('document.querySelector("#event-form").elements.location.value'), 'https://service.example.test/room');
+  assert.equal(await wc.executeJavaScript('document.querySelector("#event-form").elements.body.value'), 'Повестка встречи\n\nСсылка: https://service.example.test/room');
+  await fs.writeFile(path.join(output, 'meeting-room.png'), (await wc.capturePage()).toPNG());
+  await wc.executeJavaScript('document.querySelector("#event-form").dataset.editing="true"; renderModuleContributions(); window.confirm=fixtureConfirm; setModalDirty(false)');
+  assert.equal(await wc.executeJavaScript('document.querySelector("#meeting-module-contributions").childElementCount'), 0);
   await wc.executeJavaScript('document.querySelector("#modal").close(); window.aster=null; renderSidebar()');
   await new Promise(resolve => setTimeout(resolve, 250));
   await fs.writeFile(path.join(output, 'sidebar.png'), (await wc.capturePage()).toPNG());
-  console.log('PASS: folder rows fit at 180/210/300px and 100/150/200% zoom; collapsed icons fit; catalog connects before login; catalog and installed details start collapsed; demo planner detects own meetings');
+  console.log('PASS: sidebar zoom/layout; public catalog; demo availability; new meeting has one room button and inserts link without confirmation; saved meetings have no creation controls');
   window.destroy(); app.exit(0);
 }).catch(error => { console.error(error); window?.destroy(); app.exit(1); });

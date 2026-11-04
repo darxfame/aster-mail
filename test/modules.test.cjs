@@ -174,3 +174,16 @@ test('module proxy setup waits for Chromium configuration and rejects direct or 
     else await assert.rejects(host.configureProxy(isolated), /Module proxy policy unavailable/);
   }
 });
+
+test('an explicit module action may append a room link while preserving the existing agenda without a replacement prompt', async () => {
+  const vm = require('node:vm'), source = await fs.readFile(path.join(__dirname, '../src/modules-ui.js'), 'utf8');
+  const form = { dataset: { moduleEditor: 'editor' }, elements: { body: { value: 'Keep this agenda' }, location: { value: '' } } };
+  let dirty = false;
+  const context = vm.createContext({ tr: value => value, connectedModules: [{ id: 'example', enabled: true, sessionId: 'module-session' }], state: { account: null }, document: { querySelector: () => form }, confirm() { assert.fail('Appending the requested link does not replace the agenda'); }, markModalDirty() { dirty = true; } });
+  vm.runInContext(source.slice(source.indexOf('function receiveModuleAction('), source.indexOf('async function syncModuleMounts(')), context);
+  context.receiveModuleAction({ sessionId: 'module-session', id: 'example', method: 'meeting.patchDraft', editorId: 'editor', input: { body: 'Keep this agenda\n\nJoin: https://room.example.test/one', location: 'https://room.example.test/one' } });
+  assert.equal(form.elements.location.value, 'https://room.example.test/one'); assert.equal(dirty, true);
+  form.dataset.editing = 'true'; dirty = false;
+  context.receiveModuleAction({ sessionId: 'module-session', id: 'example', method: 'meeting.patchDraft', editorId: 'editor', input: { location: 'https://room.example.test/two' } });
+  assert.equal(dirty, false); assert.equal(form.elements.location.value, 'https://room.example.test/one');
+});

@@ -40,12 +40,13 @@ test('network broker uses the declared authentication scheme only in its isolate
 });
 test('app join preserves normal HTTPS, handles only matching enabled routes and rejects stale grants', async () => {
   const d = definition(), opened = [], record = { id: d.id, enabled: true, digest: 'a' }, route = { ...d, ...record, error: false };
-  let current = true, response = 1, records = [record];
-  const host = { current: () => { if (!current) throw new Error('retired'); return { sessionId: 'test' }; }, catalog: async () => [route], records: () => records, electron: { app: { getApplicationNameForProtocol: async () => 'Fictional Meeting App' }, dialog: { showMessageBox: async () => ({ response }) }, shell: { openExternal: async url => opened.push(url) } } };
+  let current = true, records = [record];
+  const host = { current: () => { if (!current) throw new Error('retired'); return { sessionId: 'test' }; }, catalog: async () => [route], records: () => records, electron: { app: { getApplicationNameForProtocol: async () => 'Fictional Meeting App' }, dialog: { showMessageBox: async () => assert.fail('An explicit Join click already authorizes the configured application') }, shell: { openExternal: async url => opened.push(url) } } };
   await ModuleHost.prototype.openMeeting.call(host, 'https://unmatched.example.test/room'); assert.equal(opened.pop(), 'https://unmatched.example.test/room');
   await ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room'); assert.equal(opened.pop(), 'aster-fixture-meeting://rooms.example.test/room');
-  response = 0; await ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room'); assert.equal(opened.length, 0);
-  response = 1; records = []; await assert.rejects(ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room')); assert.equal(opened.length, 0);
+  host.electron.app.getApplicationNameForProtocol = async () => '';
+  await assert.rejects(ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room'), /не установлено/); assert.equal(opened.length, 0);
+  host.electron.app.getApplicationNameForProtocol = async () => 'Fictional Meeting App'; records = []; await assert.rejects(ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room')); assert.equal(opened.length, 0);
   current = false; await assert.rejects(ModuleHost.prototype.openMeeting.call(host, 'https://rooms.example.test/room'));
 });
 
