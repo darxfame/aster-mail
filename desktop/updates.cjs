@@ -6,16 +6,17 @@ const { constants } = require('node:fs');
 const repository = 'darxfame/aster-mail';
 const apiURL = `https://api.github.com/repos/${repository}/releases/latest`;
 const maxSize = 500 * 1024 * 1024;
-function version(value) {
-  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) throw new Error(tr('Некорректная версия релиза'));
-  const parts = value.split('.').map(Number);
+function version(value, allowPrerelease = false) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(value);
+  if (!match || match[4] && (!allowPrerelease || match[4].split('.').some(part => /^0\d+$/.test(part)))) throw new Error(tr('Некорректная версия релиза'));
+  const parts = match.slice(1, 4).map(Number);
   if (!parts.every(Number.isSafeInteger)) throw new Error(tr('Некорректная версия релиза'));
   return parts;
 }
 function newer(candidate, installed) {
-  const a = version(candidate), b = version(installed);
+  const a = version(candidate), b = version(installed, true);
   for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
-  return false;
+  return installed.includes('-');
 }
 function releaseInfo(release, installed, platform, arch) {
   if (release.draft || release.prerelease) throw new Error(tr('Доступен только стабильный опубликованный релиз'));

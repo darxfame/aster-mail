@@ -34,6 +34,22 @@ test('only exact public installer names, repository, stable version and digest a
   }
   assert.throws(() => releaseInfo(release(), '0.1.8', 'darwin', 'x64'));
 });
+test('stable updates accept installed module previews without accepting remote prereleases or downgrades', async t => {
+  const installed = '0.1.34-modules.2834318';
+  assert.equal(newer('0.2.0', installed), true);
+  assert.equal(newer('0.1.34', installed), true);
+  assert.equal(newer('0.1.33', installed), false);
+  assert.equal(newer('0.2.0', '0.2.0-rc.1'), true);
+  assert.equal(newer('0.2.0', '0.2.0'), false);
+  for (const value of ['0.1.34-modules.02834318', '0.1.34-', '0.1.34-modules..1', '0.1.34-modules/1']) assert.throws(() => newer('0.2.0', value));
+  assert.throws(() => releaseInfo(release('0.2.0-rc.1'), installed, 'darwin', 'arm64'));
+  const { updater } = await fixture(t, async () => new Response(JSON.stringify(release('0.2.0'))), { installed });
+  await updater.check();
+  assert.equal(updater.state.status, 'available');
+  assert.equal(updater.state.available.version, '0.2.0');
+  assert.equal(updater.state.error, '');
+  assert.ok(updater.state.lastChecked);
+});
 test('downloads use isolated credential-free requests and reject unsafe redirects', async () => {
   for (const url of ['http://github.com/a', 'https://github.com.evil.test/', 'https://user:secret@github.com/', 'file:///tmp/file', 'https://github.com:444/']) assert.equal(allowedURL(url), false);
   const calls = [];
