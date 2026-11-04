@@ -168,6 +168,14 @@ class ModuleHost {
     }
     return this.proxyReady;
   }
+  async configureProxy(isolated) {
+    const proxyPort = await this.denyProxy();
+    await isolated.setProxy({ mode: 'fixed_servers', proxyRules: `http=127.0.0.1:${proxyPort};https=127.0.0.1:${proxyPort}`, proxyBypassRules: '<-loopback>' });
+    // setProxy updates preferences; synchronize Chromium's proxy service before checking it.
+    await isolated.forceReloadProxyConfig();
+    const route = await isolated.resolveProxy('https://example.test');
+    if (route !== `PROXY 127.0.0.1:${proxyPort}`) throw new Error(`Module proxy policy unavailable: ${route}`);
+  }
   async start(id) {
     if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
     let entry = this.entries.get(id); if (entry) { await entry.ready; this.current(entry); return entry; }
@@ -177,9 +185,7 @@ class ModuleHost {
     const bundle = await this.bundle(record); if (this.current().sessionId !== active.sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     if (this.entries.has(id)) return this.start(id);
     const isolated = this.electron.session.fromPartition(`aster-module-${crypto.randomUUID()}`, { cache: false });
-    const proxyPort = await this.denyProxy();
-    await isolated.setProxy({ proxyRules: `http=127.0.0.1:${proxyPort};https=127.0.0.1:${proxyPort}`, proxyBypassRules: '<-loopback>' });
-    if ((await isolated.resolveProxy('https://example.test')) !== `PROXY 127.0.0.1:${proxyPort}`) throw new Error('Module proxy policy unavailable');
+    await this.configureProxy(isolated);
     if (this.current().sessionId !== active.sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     const network = this.electron.session.fromPartition(`aster-module-network-${crypto.randomUUID()}`, { cache: false });
     const webPreferences = { session: isolated, preload: path.join(__dirname, 'module-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInWorker: false, webSecurity: true, webviewTag: false, plugins: false, spellcheck: false, backgroundThrottling: false };

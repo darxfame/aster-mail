@@ -60,6 +60,20 @@ app.whenReady().then(async () => {
     await downloadSession.closeAllConnections();
     console.log('PASS: real GitHub commit-pinned download matches the local package fingerprint');
   }
+  const proxyPort = await host.denyProxy();
+  for (let i = 0; i < 20; i++) {
+    const isolated = electron.session.fromPartition(`aster-proxy-check-${i}`, { cache: false });
+    try {
+      await host.configureProxy(isolated);
+      for (const url of ['http://example.test/', `http://127.0.0.1:${server.address().port}/blocked`, 'https://example.test/']) {
+        assert.equal(await isolated.resolveProxy(url), `PROXY 127.0.0.1:${proxyPort}`);
+      }
+      const denied = await isolated.fetch(`http://127.0.0.1:${server.address().port}/blocked`);
+      assert.equal(denied.status, 403); await denied.text();
+      assert.equal(hits, 0);
+    } finally { await isolated.closeAllConnections(); await isolated.clearStorageData(); }
+  }
+  console.log('PASS: 20 fresh Chromium sessions apply deny proxy before first request, including loopback; no direct server hits');
   const Catalog = require(path.join(hostRoot, 'desktop/module-catalog.cjs'));
   await Catalog.prepare(host.directory, bundle, () => {});
   assert.equal(await Catalog.prepared(host.directory, { manifest: bundle.manifest, digest: bundle.digest }), true);

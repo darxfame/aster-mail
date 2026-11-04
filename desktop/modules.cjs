@@ -99,12 +99,23 @@ async function readPackage(directory) {
 }
 async function installPackage(root, bundle) {
   const directory = path.join(root, bundle.manifest.id, `${bundle.manifest.version}-${bundle.digest}`);
+  const verifyExisting = async () => {
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) invalid();
+    if ((await readPackage(directory)).digest !== bundle.digest) invalid();
+  };
+  try { await verifyExisting(); return; } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await fs.mkdir(path.dirname(directory), { recursive: true, mode: 0o700 });
   const temporary = `${directory}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.mkdir(temporary, { mode: 0o700 });
     for (const [name, bytes] of bundle.files) { await fs.mkdir(path.dirname(path.join(temporary, name)), { recursive: true, mode: 0o700 }); await fs.writeFile(path.join(temporary, name), bytes, { mode: 0o600, flag: 'wx' }); }
-    try { await fs.rename(temporary, directory); } catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error; }
+    try { await fs.rename(temporary, directory); }
+    catch (error) {
+      if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error;
+      // A concurrent install may have published this exact package first.
+      try { await verifyExisting(); } catch { throw error; }
+    }
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }
 function recordDirectory(root, record) {

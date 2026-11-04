@@ -136,3 +136,41 @@ test('a delayed renderer crash from an old module instance cannot stop its repla
   host.entries.set('example', replacement); host.protect(contents, old, 'runtime'); contents.emit('render-process-gone');
   assert.equal(stopped, 0); assert.equal(host.entries.get('example'), replacement);
 });
+
+test('prepared packages are reused without replacement on Windows and corrupted copies remain rejected', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'aster-modules-reuse-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
+  await M.installPackage(directory, bundle);
+  const installed = M.recordDirectory(directory, { id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest });
+  // Windows returns EPERM when rename targets an existing package directory.
+  const denied = Object.assign(new Error('Fictional Windows rename denial'), { code: 'EPERM' });
+  const rename = t.mock.method(fs, 'rename', async () => { throw denied; });
+  await M.installPackage(directory, bundle);
+  assert.equal(rename.mock.callCount(), 0);
+  assert.equal((await M.readPackage(installed)).digest, bundle.digest);
+  await fs.appendFile(path.join(installed, 'main.js'), '\n// changed');
+  await assert.rejects(M.installPackage(directory, bundle));
+  assert.equal(rename.mock.callCount(), 0);
+  await assert.rejects(M.installPackage(path.join(directory, 'new'), bundle), error => error === denied);
+  t.mock.restoreAll();
+  const concurrent = path.join(directory, 'concurrent');
+  await Promise.all([M.installPackage(concurrent, bundle), M.installPackage(concurrent, bundle)]);
+  assert.equal((await M.readPackage(M.recordDirectory(concurrent, { id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest }))).digest, bundle.digest);
+});
+
+test('module proxy setup waits for Chromium configuration and rejects direct or fallback routes', async () => {
+  const { ModuleHost } = require('../desktop/module-host.cjs');
+  const host = new ModuleHost({ electron: { ipcMain: { handle() {}, on() {} } }, scope: () => null });
+  host.denyProxy = async () => 12345;
+  for (const route of ['PROXY 127.0.0.1:12345', 'DIRECT', '', 'PROXY 127.0.0.1:12345; DIRECT']) {
+    const calls = [];
+    const isolated = {
+      async setProxy(config) { assert.equal(config.mode, 'fixed_servers'); assert.equal(config.proxyBypassRules, '<-loopback>'); calls.push('set'); },
+      async forceReloadProxyConfig() { calls.push('reload'); },
+      async resolveProxy() { assert.deepEqual(calls, ['set', 'reload']); return route; }
+    };
+    if (route === 'PROXY 127.0.0.1:12345') await host.configureProxy(isolated);
+    else await assert.rejects(host.configureProxy(isolated), /Module proxy policy unavailable/);
+  }
+});
