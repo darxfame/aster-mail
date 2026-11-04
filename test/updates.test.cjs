@@ -274,7 +274,7 @@ test('macOS explicitly activates the mounted installer volume, including an alre
   } };
   const shell = { openPath() { assert.fail('Do not activate DiskImageMounter'); }, async openExternal(url, options) { opened.push({ url, options }); } };
   for (let i = 0; i < 2; i++) assert.equal(await openInstallerFile(file, shell, options), '');
-  assert.deepEqual(opened, Array(2).fill({ url: 'file:///Volumes/Aster%20Mail%200.2.2-arm64', options: { activate: true } }));
+  assert.deepEqual(opened, Array(2).fill({ url: require('node:url').pathToFileURL('/Volumes/Aster Mail 0.2.2-arm64').href, options: { activate: true } }));
   for (const stdout of ['', '<plist><dict></dict></plist>', xml.replace('/Volumes/Aster Mail 0.2.2-arm64', '/private/tmp/other'), xml.replace('/Volumes/Aster Mail 0.2.2-arm64', '/Volumes/../other')]) {
     await assert.rejects(openInstallerFile(file, shell, { ...options, execute: async () => ({ stdout }) }), /окно установщика/);
   }

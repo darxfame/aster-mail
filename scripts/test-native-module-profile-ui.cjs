@@ -25,9 +25,11 @@ electron.app.on('browser-window-created', (_event, window) => {
       await waitFor(() => { panel = electron.webContents.getAllWebContents().find(contents => contents.getURL().includes('/package/panel.html')); return panel && !panel.isLoading(); });
       await panel.executeJavaScript('document.querySelector("#increment").click()');
       await waitFor(() => panel.executeJavaScript('document.querySelector("#result").textContent === "1"'));
-      const output = path.join(__dirname, '../release/ui-sidebar-catalog'); await fs.mkdir(output, { recursive: true });
-      await new Promise(resolve => setTimeout(resolve, 150));
-      await fs.writeFile(path.join(output, 'standalone-panel.png'), (await panel.capturePage()).toPNG());
+      if (process.argv.includes('--screenshots')) {
+        const output = path.join(__dirname, '../release/ui-sidebar-catalog'); await fs.mkdir(output, { recursive: true });
+        await new Promise(resolve => setTimeout(resolve, 150));
+        await fs.writeFile(path.join(output, 'standalone-panel.png'), (await panel.capturePage()).toPNG());
+      }
       assert.equal(await wc.executeJavaScript('state.account'), null);
       console.log('PASS: installed module appears and its embedded settings read/write through real main/preload IPC without Exchange');
       electron.app.exit(0);
