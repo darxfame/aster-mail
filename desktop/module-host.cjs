@@ -8,7 +8,7 @@ const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inl
 class ModuleHost {
   constructor({ electron, directory, scope, save, sdk }) {
     Object.assign(this, { electron, directory, scope, save, sdk });
-    this.entries = new Map(); this.senders = new Map(); this.pending = new Map(); this.views = new Map(); this.mountRevisions = new WeakMap(); this.owners = new WeakSet(); this.saving = Promise.resolve();
+    this.updating = new Set(); this.entries = new Map(); this.senders = new Map(); this.pending = new Map(); this.views = new Map(); this.mountRevisions = new WeakMap(); this.owners = new WeakSet(); this.saving = Promise.resolve();
     electron.ipcMain.handle('aster-module-api', async (event, method, input) => {
       try { return { ok: true, value: await this.receive(event, method, input) }; }
       catch (error) { return { ok: false, error: tr('Запрос модуля отклонён'), code: ['http-error', 'network-unknown', 'permission-denied', 'rate-limit'].includes(error.code) ? error.code : 'module-request-rejected', ...(Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? { status: error.status } : {}) }; }
@@ -65,14 +65,60 @@ class ModuleHost {
   }
   async install(bundle, enabled = false) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
-    if (this.records().some(record => record.id === bundle.manifest.id)) throw new Error(tr('Модуль уже подключён. Сначала удалите прежнюю версию.'));
+    if (this.records().some(record => record.id === bundle.manifest.id)) return this.upgrade(bundle);
     if (this.records().length >= 8) throw new Error(tr('Достигнут лимит подключённых модулей'));
     const sessionId = this.current().sessionId;
     await M.installPackage(this.directory, bundle);
+    await this.bundle({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest });
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    await this.update(records => records.push({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled, data: {} }));
+    await this.update(records => records.push({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled, settingsVersion: bundle.manifest.settingsVersion, data: {} }));
+  }
+  async upgrade(bundle) {
+    const Settings = require('./module-settings.cjs'), equal = require('node:util').isDeepStrictEqual;
+    const id = bundle.manifest.id, sessionId = this.current().sessionId;
+    const original = this.records().find(record => record.id === id);
+    if (!original || !Settings.newer(bundle.manifest.version, original.version)) throw new Error(tr('Для обновления нужна новая версия модуля'));
+    let previous;
+    try { previous = await this.bundle(original); }
+    catch {
+      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+      // Recover opaque encrypted settings without executing an obsolete/corrupt package.
+      // An empty capability baseline forces full consent for the replacement.
+      previous = { manifest: { settingsVersion: original.settingsVersion ?? 1, permissions: [], networkOrigins: [], networkHeaders: [] } };
+    }
+    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+    if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
+    const assertIdle = () => { const entry = this.entries.get(id); if (entry?.context || entry?.calls || entry?.authFlow) throw new Error(tr('Завершите операцию модуля перед обновлением')); };
+    assertIdle(); this.updating.add(id);
+    try {
+      const before = previous.manifest, after = bundle.manifest;
+      const expanded = ['permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins'].some(key => (after[key] || []).some(value => !(before[key] || []).some(old => equal(old, value)))) || ['meetingLinks', 'authentication'].some(key => !equal(before[key], after[key])) || original.source?.repository !== bundle.source?.repository;
+      if (expanded) {
+        const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.permissionSummary(after.permissions)}\n${after.networkOrigins.join(', ')}\n${(after.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${M.meetingLaunchSummary(after)}\n${[...(after.authentication?.origins || []), ...(after.authentication?.identityOrigins || [])].join(', ')}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
+        if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+        if (answer.response !== 1) return false;
+      }
+      // Validate deterministic migration before stopping the old runtime or committing metadata.
+      Settings.migrate(original.data, original.settingsVersion ?? before.settingsVersion, after);
+      await M.installPackage(this.directory, bundle);
+      await this.bundle({ id, version: bundle.manifest.version, digest: bundle.digest });
+      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+      assertIdle(); this.stop(id);
+      await this.update(records => {
+        const index = records.findIndex(record => record.id === id), current = records[index];
+        if (!current || current.digest !== original.digest || current.version !== original.version) throw new Error(tr('Версия модуля изменилась. Обновите список.'));
+        const data = Settings.migrate(current.data, current.settingsVersion ?? before.settingsVersion, after);
+        const next = { ...current, version: after.version, digest: bundle.digest, data, settingsVersion: after.settingsVersion, originGrants: (current.originGrants || []).filter(value => M.optionalOriginMatches(after, value)) };
+        if (bundle.source) next.source = bundle.source; else delete next.source;
+        const auth = next.auth, effective = M.effectiveManifest(after, next.originGrants);
+        if (auth && (!effective.authentication?.origins.includes(auth.origin) || !equal(before.authentication?.capture, after.authentication?.capture) || !equal(before.authentication?.authorization, after.authentication?.authorization) || before.authentication?.type !== after.authentication?.type)) delete next.auth;
+        records[index] = next;
+      });
+      return true;
+    } finally { this.updating.delete(id); }
   }
   async configure(id, enabled) {
+    if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
     if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
     const sessionId = this.current().sessionId;
     const record = this.records().find(record => record.id === id); if (!record) throw new Error(tr('Модуль не найден'));
@@ -81,6 +127,7 @@ class ModuleHost {
     this.stop(id); await this.update(records => { records.find(record => record.id === id).enabled = enabled; });
   }
   async remove(id) {
+    if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
     const sessionId = this.current().sessionId;
     const record = this.records().find(record => record.id === id); if (!record) throw new Error(tr('Модуль не найден'));
     const directory = M.recordDirectory(this.directory, record);
@@ -122,6 +169,7 @@ class ModuleHost {
     return this.proxyReady;
   }
   async start(id) {
+    if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
     let entry = this.entries.get(id); if (entry) { await entry.ready; this.current(entry); return entry; }
     if (this.electron.app.commandLine.hasSwitch('no-sandbox')) throw new Error(tr('Песочница отключена. Запуск модулей запрещён.'));
     const active = this.current(), record = this.records().find(record => record.id === id && record.enabled === true);

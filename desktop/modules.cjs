@@ -10,7 +10,7 @@ function origin(value) { const url = new URL(value); if (url.protocol !== 'https
 function bounded(value, maximum = 65536) { const encoded = JSON.stringify(value); if (!encoded || Buffer.byteLength(encoded) > maximum) invalid(); return JSON.parse(encoded); }
 function manifest(input) {
   const m = bounded(input, 16000);
-  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
+  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins', 'settingsVersion', 'settingsMigrations', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
   if (m.apiVersion !== 1 || !/^[a-z][a-z0-9.-]{2,79}$/.test(m.id) || typeof m.version !== 'string' || m.version.length > 40 || !/^\d+\.\d+\.\d+$/.test(m.version) || !['integration', 'workflow', 'panel', 'hybrid'].includes(m.type)) invalid();
   text(m.name); relative(m.main); if (!/\.m?js$/.test(m.main)) invalid();
   if (!Array.isArray(m.files) || !m.files.length || m.files.length > 199 || new Set(m.files.map(value => String(value).toLowerCase())).size !== m.files.length) invalid();
@@ -65,6 +65,7 @@ function manifest(input) {
       if (key === 'views') { relative(item.file); if (!m.files.includes(item.file) || !/\.html$/.test(item.file) || !['panel', 'meeting.create'].includes(item.slot)) invalid(); item.height ??= 220; if (!Number.isInteger(item.height) || item.height < 100 || item.height > 500) invalid(); }
     }
   }
+  require('./module-settings.cjs').validate(m);
   return m;
 }
 function fromFiles(files) {
@@ -118,9 +119,10 @@ function records(input) {
     recordDirectory('', record); ids.add(record.id);
     if (record.source && (record.source.type !== 'github' || !/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(record.source.repository) || !/^[a-f0-9]{40}$/.test(record.source.commit))) invalid();
     if (record.source?.directory) relative(record.source.directory);
+    if (record.settingsVersion !== undefined && !require('./module-settings.cjs').version(record.settingsVersion)) invalid();
     if (record.originGrants && (!Array.isArray(record.originGrants) || record.originGrants.length > 8 || new Set(record.originGrants).size !== record.originGrants.length || record.originGrants.some(value => typeof value !== 'string' || origin(value) !== value))) invalid();
     if (record.auth && (typeof record.auth.origin !== 'string' || origin(record.auth.origin) !== record.auth.origin || typeof record.auth.token !== 'string' || !record.auth.token || record.auth.token.length > 4096 || /\s/.test(record.auth.token) || typeof record.auth.expiresAt !== 'string' || !Number.isFinite(Date.parse(record.auth.expiresAt)))) invalid();
-    return { ...(record.originGrants ? { originGrants: [...record.originGrants] } : {}), ...(record.source ? { source: bounded(record.source, 1000) } : {}), ...(record.auth ? { auth: { origin: record.auth.origin, token: record.auth.token, expiresAt: record.auth.expiresAt } } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
+    return { ...(record.settingsVersion !== undefined ? { settingsVersion: record.settingsVersion } : {}), ...(record.originGrants ? { originGrants: [...record.originGrants] } : {}), ...(record.source ? { source: bounded(record.source, 1000) } : {}), ...(record.auth ? { auth: { origin: record.auth.origin, token: record.auth.token, expiresAt: record.auth.expiresAt } } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
   });
 }
 // The sandbox's only network path. No account transport, cookies, redirects or retries.
@@ -188,4 +190,4 @@ function meetingTarget(definition, value) {
 function meetingLaunchSummary(definition) {
   return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
 }
-module.exports = { features: ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+module.exports = { features: ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
