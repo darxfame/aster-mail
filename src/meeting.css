@@ -363,3 +363,5 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 
 .module-catalog-actions { display:flex; flex-direction:column; align-self:start; gap:8px; max-width:200px; }
 .module-confirm-note { color:var(--text); }
+.module-update { flex-basis:100%; min-width:0; }
+.module-update .primary { width:100%; }

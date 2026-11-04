@@ -57,6 +57,7 @@ async function signIn(host, entry, input) {
     const url = value || event.url;
     if (allowedNavigation(url, origins)) return;
     event.preventDefault();
+    if (event.isMainFrame === false) return; // Block unrelated frames without misreporting them as a login redirect.
     try { const parsed = new URL(url); entry.authBlockedOrigin = parsed.protocol === 'https:' ? parsed.origin : null; } catch { /* Never expose query strings from login redirects. */ }
   };
   const protect = item => {

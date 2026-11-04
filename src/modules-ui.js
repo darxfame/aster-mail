@@ -5,9 +5,36 @@ function moduleSettingsMarkup() {
 }
 async function refreshModuleList() {
   const container = document.querySelector('#module-list');
+  if (!container) return;
+  const refreshId = crypto.randomUUID(); container.dataset.refreshId = refreshId;
   await loadModuleContributions();
-  if (!container?.isConnected) return;
+  if (!container.isConnected || container.dataset.refreshId !== refreshId) return;
   container.innerHTML = connectedModules.length ? connectedModules.map(item => `<article class="module-catalog-row" data-module="${esc(item.id)}"><div><h3>${esc(item.name)}<span class="module-version">${esc(item.version)}</span></h3><details><summary>${tr('Разрешения и сведения о модуле')}</summary>${item.source ? `<p class="form-note">${esc(item.source.repository)} · ${esc(item.source.commit.slice(0, 12))}</p>` : ''}<p class="form-note">${tr('Разрешения:')} ${esc((item.permissions || []).map(value => (modulePermissionNames()[value] || value)).join(', '))}<br>${tr('Сетевые адреса:')} ${esc((item.networkOrigins || []).join(', '))}</p></details><p>${item.error ? tr('Файлы модуля изменились. Требуется повторная установка.') : item.enabled ? tr('Включён') : tr('Выключен')}</p></div><div class="module-actions"><button type="button" class="secondary" data-action="module-configure" data-enabled="${!item.enabled}" ${item.error ? 'disabled' : ''}>${item.enabled ? tr('Выключить') : tr('Включить')}</button>${item.enabled ? item.views.filter(view => view.slot === 'panel').map(view => `<button type="button" class="secondary" data-action="module-panel" data-view="${esc(view.id)}">${esc(view.title)}</button>`).join('') : ''}<button type="button" class="secondary danger" data-action="module-remove">${tr('Удалить')}</button></div></article>`).join('') : `<p class="form-note">${tr('Подключённых модулей пока нет.')}</p>`;
+  if (!window.aster || !connectedModules.length) return;
+  const note = document.createElement('p'); note.className = 'form-note'; note.setAttribute('role', 'status'); note.textContent = tr('Проверяем обновления модулей…'); container.append(note);
+  try {
+    const catalog = await api('moduleAuthorCatalog');
+    if (!container.isConnected || container.dataset.refreshId !== refreshId) return;
+    for (const row of container.querySelectorAll('[data-module]')) {
+      const installed = connectedModules.find(item => item.id === row.dataset.module), next = catalog.modules.find(item => item.manifest.id === installed?.id);
+      if (!next || !moduleVersionNewer(next.manifest.version, installed.version)) continue;
+      const update = document.createElement('div'); update.className = 'module-update';
+      update.innerHTML = `<p class="form-note">${tr('Доступно обновление:')} ${esc(next.manifest.version)}</p><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(next.manifest.id)}" data-digest="${esc(next.digest)}" data-revision="${esc(catalog.revision)}" ${next.compatible === false ? 'disabled' : ''}>${tr(next.compatible === false ? 'Требуется обновление модуля для этого клиента' : 'Обновить с сохранением настроек')}</button>`;
+      row.querySelector('.module-actions').prepend(update);
+    }
+    note.remove();
+  } catch {
+    if (container.isConnected && container.dataset.refreshId === refreshId) note.innerHTML = `${tr('Не удалось проверить обновления модулей.')} <button type="button" class="secondary" data-action="module-check-updates">${tr('Повторить')}</button>`;
+  }
+}
+function moduleCommandFeedback(form, message, failed = false) {
+  if (!form) { toast(message); return; }
+  if (!form.isConnected) return;
+  const status = form.querySelector('#meeting-module-status');
+  if (!status) return;
+  status.textContent = message; status.className = failed ? 'form-error' : 'form-note'; status.hidden = false;
+  status.setAttribute('role', failed ? 'alert' : 'status');
+  if (failed) status.scrollIntoView({ block: 'nearest' });
 }
 async function handleModuleAction(button) {
   if (button.disabled) return;
@@ -17,24 +44,33 @@ async function handleModuleAction(button) {
   if (action === 'module-approved-cancel') return resetModuleConfirmation(button.closest('.module-catalog-row'));
   if (action === 'module-github') return moduleGitHubDialog();
   if (action === 'module-panel') return openModulePanel(id, button.dataset.view);
-  button.disabled = true;
   const form = button.closest('#event-form');
   if (form?.dataset.editing === 'true') return;
+  button.disabled = true;
   if (form && modalBusy) { button.disabled = false; return; }
   if (form) { modalBusy = true; form.inert = true; }
   try {
     if (action === 'module-import') await api('moduleImport');
     else if (action === 'module-remove') { if (!confirm(tr('Удалить модуль и его сохранённые настройки?'))) return; await api('moduleRemove', { id }); }
     else if (action === 'module-configure') await api('moduleConfigure', { id, enabled: button.dataset.enabled === 'true' });
-    else if (action === 'module-invoke') { const result = await api('moduleInvoke', { id, command: button.dataset.command, editorId: form?.dataset.moduleEditor, draft: moduleDraft(form) }); if (typeof result?.message === 'string') toast(result.message.slice(0, 1000)); return; }
+    else if (action === 'module-invoke') {
+      const status = form?.querySelector('#meeting-module-status'); if (status) status.hidden = true;
+      const result = await api('moduleInvoke', { id, command: button.dataset.command, editorId: form?.dataset.moduleEditor, draft: moduleDraft(form) });
+      if (typeof result?.message === 'string' && result.message.trim()) moduleCommandFeedback(form, result.message.slice(0, 1000), Boolean(result.error));
+      else if (result?.error) moduleCommandFeedback(form, tr('Не удалось выполнить действие модуля. Проверьте его настройки в разделе «Модули».'), true);
+      return;
+    }
     await refreshModuleList();
+  } catch (error) {
+    if (!form) throw error;
+    moduleCommandFeedback(form, `${errorText(error)} ${tr('Проверьте настройки модуля в разделе «Модули» и повторите действие.')}`, true);
   } finally { button.disabled = false; if (form) { form.inert = false; modalBusy = false; } }
 }
 function moduleButtons(slot) {
   return connectedModules.filter(item => item.enabled && !item.error).flatMap(item => item.commands.filter(command => command.slot === slot).map(command => `<button type="button" class="secondary" data-action="module-invoke" data-module="${esc(item.id)}" data-command="${esc(command.id)}">${esc(tr(command.title))}</button>`)).join('');
 }
 function moduleViewSlot(item, view) { return `<section class="module-view-part"><strong>${esc(view.title)}</strong><div class="module-view-slot" data-module="${esc(item.id)}" data-view="${esc(view.id)}" style="height:${view.height}px"></div></section>`; }
-function moduleMeetingControls() { return '<div id="meeting-module-contributions"></div>'; }
+function moduleMeetingControls() { return '<div id="meeting-module-contributions"></div><p id="meeting-module-status" class="form-note" role="status" hidden></p>'; }
 function renderModuleContributions() {
   for (const slot of ['topbar', 'calendar']) {
     const parent = document.querySelector(slot === 'topbar' ? '.topbar' : '.calendar-toolbar'); if (!parent) continue;
@@ -156,13 +192,16 @@ async function connectApprovedModule(button) {
     return;
   }
   if (button.dataset.confirmAccount !== (state.account?.sessionId || '')) return moduleAuthorCatalog();
-  const container = document.querySelector('#module-author-catalog'), account = state.account;
+  const container = button.closest('#module-author-catalog, #module-list'), account = state.account;
   modalBusy = true; container.inert = true; container.setAttribute('aria-busy', 'true'); button.textContent = tr('Подключаем модуль…');
   let success = false;
   try { await api('moduleInstallApproved', { id: button.dataset.id, digest: button.dataset.digest, revision: button.dataset.revision }); success = true; }
   catch (error) { if (container.isConnected && state.account === account) { const message = document.createElement('p'); message.setAttribute('role', 'alert'); message.textContent = errorText(error); container.append(message); } }
   finally { modalBusy = false; container.inert = false; container.removeAttribute('aria-busy'); button.textContent = tr('Подтвердить подключение'); }
-  if (success && container.isConnected && state.account === account) { await loadModuleContributions(); await moduleAuthorCatalog(); }
+  if (success && container.isConnected && state.account === account) {
+    if (container.id === 'module-list') await refreshModuleList();
+    else { await loadModuleContributions(); await moduleAuthorCatalog(); }
+  }
 }
 
 function moduleVersionNewer(next, previous) {

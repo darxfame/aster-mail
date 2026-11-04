@@ -19,7 +19,7 @@ app.whenReady().then(async () => {
     const session = electron.session.fromPartition(partition, options);
     if (partition.startsWith('aster-module-auth-')) {
       authSession = session;
-      session.protocol.handle('https', () => { captures++; return new Response(`<script>localStorage.setItem('fictional-login', JSON.stringify({credential:{access:'fictional-secret',until:'${expiry}'}}));</script>Fictional provider`, { headers: { 'Content-Type': 'text/html' } }); });
+      session.protocol.handle('https', () => { captures++; return new Response(`<iframe src="https://analytics.example.test/frame"></iframe><script>localStorage.setItem('fictional-login', JSON.stringify({credential:{access:'fictional-secret',until:'${expiry}'}}));</script>Fictional provider`, { headers: { 'Content-Type': 'text/html' } }); });
     }
     return session;
   } }, BrowserWindow: class extends electron.BrowserWindow {
@@ -33,7 +33,7 @@ app.whenReady().then(async () => {
   await host.invoke(manifest.id, 'login');
   const deadline = Date.now() + 10000;
   while (!records[0].auth && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(records[0].auth?.token, 'fictional-secret'); assert.ok(captures > 0); assert.ok(authWindow.isDestroyed());
+  assert.equal(records[0].auth?.token, 'fictional-secret'); assert.ok(captures > 0); assert.ok(authWindow.isDestroyed()); assert.equal(host.entries.get(manifest.id).authBlockedOrigin, null);
   const status = await host.invoke(manifest.id, 'status'); assert.equal(status.connected, true); assert.equal(JSON.stringify(status).includes('fictional-secret'), false);
   assert.equal(JSON.stringify(await host.catalog()).includes('fictional-secret'), false);
   assert.notEqual(authSession, electron.session.defaultSession);

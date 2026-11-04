@@ -1,6 +1,11 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Проверяем обновления модулей…": "Checking for module updates…",
+    "Доступно обновление:": "Update available:",
+    "Не удалось проверить обновления модулей.": "Could not check for module updates.",
+    "Не удалось выполнить действие модуля. Проверьте его настройки в разделе «Модули».": "The module action failed. Check its settings in Modules.",
+    "Проверьте настройки модуля в разделе «Модули» и повторите действие.": "Check the module settings in Modules and try again.",
     "Создать комнату": "Create room",
     "Модуль будет доступен сразу после установки.": "The module will be available immediately after installation.",
     "Установленные модули работают в песочнице. Их настройки доступны без входа в Exchange.": "Installed modules run in a sandbox. Their settings are available without signing in to Exchange.",

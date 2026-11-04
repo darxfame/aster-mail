@@ -17,6 +17,7 @@ electron.app.on('browser-window-created', (_event, window) => {
       const wc = window.webContents;
       await waitFor(() => wc.executeJavaScript('updatePromptsReady'));
       assert.equal(await wc.executeJavaScript('state.account'), null);
+      await wc.executeJavaScript(`window.fixtureApi=api; api=(operation,data)=>operation==='moduleAuthorCatalog'?Promise.resolve({modules:[]}):fixtureApi(operation,data); void 0`);
       await wc.executeJavaScript('settingsModal().then(()=>selectSettingsTab(document.querySelector("#settings-tab-modules")))');
       await waitFor(() => wc.executeJavaScript('Boolean(document.querySelector("#module-list [data-action=module-panel]"))'));
       assert.equal(await wc.executeJavaScript('document.querySelector("#module-list").textContent.includes("Подключённых модулей пока нет.")'), false);

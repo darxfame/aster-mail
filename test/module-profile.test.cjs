@@ -45,6 +45,22 @@ test('empty module browsing needs no encryption prompt; invalid legacy packages 
   assert.deepEqual(invalid.scope().records, []);
 });
 
+test('removing and reinstalling a module cannot resurrect its server, secrets or legacy settings', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'aster-module-remove-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
+  const packages = path.join(root, 'packages'), directory = path.join(root, 'profile');
+  const legacy = () => [{ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: true, data: { server: 'https://service.example.test', apiKey: 'fictional-key' } }];
+  await M.installPackage(packages, bundle);
+  const profile = new ModuleProfile(directory, packages, encryption, legacy); await profile.initialize();
+  const makeHost = profile => new ModuleHost({ directory: packages, electron: { ipcMain: { handle() {}, on() {} } }, scope: () => profile.scope(), save: (records, sessionId) => profile.save(records, sessionId) });
+  await makeHost(profile).remove(bundle.manifest.id);
+  const restored = new ModuleProfile(directory, packages, encryption, legacy); await restored.initialize();
+  assert.deepEqual(restored.scope().records, []);
+  await makeHost(restored).install(bundle, true);
+  assert.deepEqual(restored.scope().records[0].data, {}); assert.equal(restored.scope().records[0].auth, undefined);
+});
+
 test('standalone modules get UI context but cannot call Exchange SDK operations before login', async () => {
   const vm = require('node:vm'), source = await fs.readFile(require.resolve('../desktop/main.cjs'), 'utf8');
   const start = source.indexOf('      const active = client;', source.indexOf('    sdk: async'));
