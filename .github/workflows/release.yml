@@ -38,6 +38,12 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: Verify native connection recovery
+        run: npm run test:connection
+      - name: Verify module sandbox
+        run: npm run test:modules
+      - name: Verify shared module SDK
+        run: npm run test:module-sdk
       - name: Import macOS signing identity
         if: runner.os == 'macOS'
         timeout-minutes: 2

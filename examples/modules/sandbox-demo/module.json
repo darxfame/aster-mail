@@ -1,0 +1,59 @@
+{
+  "apiVersion": 1,
+  "id": "example.sandbox-demo",
+  "version": "1.0.0",
+  "type": "hybrid",
+  "name": "Sandbox SDK demo",
+  "main": "main.js",
+  "permissions": [
+    "ui",
+    "storage",
+    "events",
+    "meeting.draft"
+  ],
+  "networkOrigins": [],
+  "commands": [
+    {
+      "id": "open",
+      "title": "SDK demo",
+      "slot": "topbar"
+    },
+    {
+      "id": "draft",
+      "title": "SDK: draft",
+      "slot": "meeting.create"
+    },
+    {
+      "id": "increment",
+      "title": "Increment",
+      "slot": "internal"
+    },
+    {
+      "id": "inspect",
+      "title": "Inspect sandbox",
+      "slot": "internal"
+    }
+  ],
+  "views": [
+    {
+      "id": "panel",
+      "title": "SDK demo panel",
+      "file": "panel.html",
+      "slot": "panel",
+      "height": 240
+    },
+    {
+      "id": "meeting",
+      "title": "SDK demo part",
+      "file": "panel.html",
+      "slot": "meeting.create",
+      "height": 160
+    }
+  ],
+  "files": [
+    "main.js",
+    "panel.html",
+    "panel.js",
+    "panel.css"
+  ]
+}

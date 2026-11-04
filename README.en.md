@@ -183,3 +183,27 @@ are running, even when they are not sharing. It checks every two seconds and bef
 alerts, and hides on check failure. This checks running applications, not actual capture;
 universal capture detection is not guaranteed. Use manual presentation mode for other
 apps. System notification appearance and stacking remain controlled by the OS.
+
+### Modules
+
+Aster Mail 0.2.0 supports self-contained browser JavaScript packages with commands,
+embedded views, private encrypted state and events. Untrusted code runs inside a
+Chromium sandbox with no Node.js, filesystem, Exchange session or direct network
+access. The host SDK checks permissions, account identity and destinations.
+Install from a package folder or a public GitHub repository under Settings →
+Modules. GitHub refs resolve to a pinned commit; only declared files are fetched.
+Manual imports remain disabled until the user grants permissions for the account.
+
+[Aster Mail Modules](https://github.com/darxfame/aster-mail-modules) is the
+repository for modules from the Aster Mail author. Contribute your own module via
+a pull request or discuss an idea in Issues. The in-app approved catalog provides a Connect button that installs and enables
+the selected version with its disclosed permissions. Package requirements are in
+the guide below.
+
+See [architecture](docs/modules/architecture.md),
+[development guide](docs/modules/development.md) and the
+[synthetic SDK example](examples/modules/sandbox-demo).
+Run `node scripts/check-module.cjs examples/modules/sandbox-demo` and
+`npm run test:modules` and `npm run test:module-sdk`.
+
+[Optional Xerj reference tool](docs/xerj.md): each reference operation requires user consent.

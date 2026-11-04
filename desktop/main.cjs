@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ComposeWindows } = require('./compose-windows.cjs');
-let composeWindows;
+let composeWindows, moduleHost;
 const { Updates } = require('./updates.cjs');
 const { AttachmentFiles, safeName } = require('./attachment-files.cjs');
 let attachmentFiles, attachmentPreviews;
@@ -238,6 +238,7 @@ async function pollNotifications() {
 
 
 function retireAccount() {
+  moduleHost?.closeAll();
   attachmentPreviews?.closeAll();
   composeWindows?.destroyAll();
   const previous = connection;
@@ -296,6 +297,13 @@ async function connect(data, remember, restoring = false) {
   }
 }
 
+async function installModuleBundle(bundle, guard) {
+  guard();
+  const source = bundle.source ? `${bundle.source.repository}\ncommit: ${bundle.source.commit}\n${bundle.source.directory}` : tr('Локальный пакет');
+  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Дополнительные серверы с отдельным разрешением:')} ${(bundle.manifest.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(bundle.manifest)}\n${tr('Серверы входа:')} ${[...(bundle.manifest.authentication?.origins || []), ...(bundle.manifest.authentication?.identityOrigins || [])].join(', ')}\n${tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
+  guard(); if (answer.response === 1) await moduleHost.install(bundle);
+}
+
 const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
@@ -308,6 +316,43 @@ function validate(operation, data) {
 }
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.astermail.desktop');
+  const { ModuleHost } = require('./module-host.cjs');
+  moduleHost = new ModuleHost({ electron: require('electron'), directory: path.join(app.getPath('userData'), 'modules'),
+    scope: () => client && connection ? { sessionId: client.syncId, signal: connection.controller.signal, records: localStore?.data.modules || [] } : null,
+    save: async (records, sessionId) => {
+      const active = client;
+      const guard = () => { if (!active || client !== active || active.syncId !== sessionId) throw new Error(tr('Сессия аккаунта завершена')); };
+      guard(); await localStore.save({ modules: records }, guard); guard();
+    },
+    sdk: async (entry, method, input, context) => {
+      const active = client;
+      const guard = () => { moduleHost.current(entry); if (client !== active) throw new Error(tr('Сессия аккаунта завершена')); };
+      guard();
+      if (method === 'calendar.list') {
+        const start = Date.parse(input.start), end = Date.parse(input.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > 31 * 86400000) throw new Error('Invalid calendar range');
+        const events = await active.calendar({ start: new Date(start).toISOString(), end: new Date(end).toISOString() }); guard();
+        return require('./modules.cjs').bounded({ items: events.slice(0, 200).map(event => ({ id: event.id, title: event.title, start: event.start, end: event.end, allDay: event.allDay })), truncated: events.length > 200, complete: false }, 65536);
+      }
+      if (method === 'ui.context') return { language: i18n.language, theme: notificationSettings.theme, timeZone: require('../src/time.js').zone(notificationSettings.timeZone), interfaceScale: notificationSettings.interfaceScale };
+      if (method === 'ui.openView') {
+        if (!context) throw new Error(tr('Действие модуля требует открытого интерфейса'));
+        if (!entry.bundle.manifest.views.some(view => view.id === input.view)) throw new Error('Unknown module view');
+        guard(); window?.webContents.send('aster-module-action', { sessionId: active.syncId, id: entry.id, method, input }); return true;
+      }
+      if (!context || !window || window.isDestroyed()) throw new Error(tr('Действие модуля требует открытого интерфейса'));
+      if (method === 'meeting.getDraft' && context.editorId && context.draft) return require('./modules.cjs').bounded(context.draft);
+      if (method === 'meeting.openDraft' && context.editorId) throw new Error('Use patchDraft for the active editor');
+      if (method === 'meeting.openDraft' || method === 'meeting.patchDraft' && typeof context.editorId === 'string') {
+        if (Object.keys(input).some(key => !['title', 'location', 'body', 'start', 'end'].includes(key)) || Object.values(input).some(value => typeof value !== 'string' || value.length > 8000)) throw new Error('Invalid meeting draft');
+        for (const key of ['start', 'end']) if (input[key] !== undefined && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z$/.test(input[key]) || !Number.isFinite(Date.parse(input[key])))) throw new Error('Invalid meeting instant');
+        if (input.start && input.end && Date.parse(input.end) <= Date.parse(input.start)) throw new Error('Invalid meeting interval');
+        guard(); window.webContents.send('aster-module-action', { sessionId: active.syncId, id: entry.id, method, editorId: context.editorId, input }); return true;
+      }
+      throw new Error('Unsupported module API');
+    },
+  });
+
   attachmentPreviews = new AttachmentPreviews({ BrowserWindow, session });
   attachmentFiles = new AttachmentFiles(path.join(app.getPath('userData'), 'opened-attachments'), file => shell.openPath(file));
   try { await attachmentFiles.clear(); } catch (error) { attachmentCleanupError = error.message; }
@@ -476,9 +521,51 @@ app.whenReady().then(async () => {
         }
         return { ok: true, value: await attachmentFiles.open({ name: file.name, load: async () => file.bytes, assertActive }) };
       }
+      if (operation === 'moduleAuthorCatalog') return { ok: true, value: await require('./module-catalog.cjs').browse({ net, session }, event.sender) };
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
       const activeClient = client;
       if (data.sessionId !== activeClient.syncId) throw new Error(tr('Сессия аккаунта завершена'));
+      if (['moduleInstallApproved', 'moduleCatalog', 'moduleImport', 'moduleImportGitHub', 'moduleConfigure', 'moduleRemove', 'moduleInvoke', 'moduleMounts'].includes(operation)) {
+        const epoch = accountEpoch, guard = () => { if (client !== activeClient || epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); };
+        if (operation === 'moduleInstallApproved') {
+          const Github = require('./module-github.cjs'), Catalog = require('./module-catalog.cjs');
+          const isolated = session.fromPartition(`aster-module-catalog-${crypto.randomUUID()}`, { cache: false });
+          try {
+            const read = (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal);
+            await Catalog.install(data, read, connection.controller.signal, moduleHost, guard);
+          } finally { await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]); }
+        }
+        if (operation === 'moduleImport') {
+          const selected = await dialog.showOpenDialog(window, { title: tr('Подключить модуль'), properties: ['openDirectory'] }); guard();
+          if (!selected.canceled && selected.filePaths.length === 1) {
+            const bundle = await require('./modules.cjs').readPackage(selected.filePaths[0]); guard();
+            await installModuleBundle(bundle, guard);
+          }
+        }
+        if (operation === 'moduleImportGitHub') {
+          const Github = require('./module-github.cjs');
+          const isolated = session.fromPartition(`aster-module-install-${crypto.randomUUID()}`, { cache: false });
+          try {
+            const bundle = await Github.load({ url: data.url, ref: data.ref, directory: data.directory }, (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal), connection.controller.signal);
+            guard(); await installModuleBundle(bundle, guard);
+          } finally { await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]); }
+        }
+        if (operation === 'moduleConfigure') {
+          if (data.enabled === true) {
+            const module = (await moduleHost.catalog()).find(item => item.id === data.id); guard();
+            if (!module || module.error) throw new Error(tr('Модуль не найден'));
+            const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Разрешить возможности модуля?'), detail: `${module.name}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(module.permissions)}\n${tr('Сетевые адреса:')} ${module.networkOrigins.join(', ')}\n${tr('Дополнительные серверы с отдельным разрешением:')} ${(module.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(module)}\n${tr('Серверы входа:')} ${[...(module.authentication?.origins || []), ...(module.authentication?.identityOrigins || [])].join(', ')}`, buttons: [tr('Отмена'), tr('Включить')], defaultId: 0, cancelId: 0 }); guard();
+            if (answer.response !== 1) return { ok: true, value: await moduleHost.catalog() };
+          }
+          await moduleHost.configure(data.id, data.enabled);
+        }
+        if (operation === 'moduleRemove') await moduleHost.remove(data.id);
+        if (operation === 'moduleInvoke') {
+          const value = await moduleHost.invoke(data.id, data.command, data.input || {}, data.editorId ? { editorId: data.editorId, draft: data.draft || null } : {}); guard(); return { ok: true, value };
+        }
+        if (operation === 'moduleMounts') { await moduleHost.mounts(window, data.views); guard(); return { ok: true, value: true }; }
+        guard(); return { ok: true, value: await moduleHost.catalog() };
+      }
       if (operation === 'saveMeetingReminders') {
         const normalized = require('./notifications.cjs').meetingReminders([{ id: data.ref?.id, start: data.start, minutes: data.minutes }]);
         if (normalized.length !== 1 || typeof data.custom !== 'boolean') throw new Error(tr('Некорректное напоминание'));
@@ -502,7 +589,7 @@ app.whenReady().then(async () => {
         if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
         const url = meetingLink(event);
         if (!url || event.cancelled) throw new Error(tr('Ссылка на созвон недоступна'));
-        await shell.openExternal(url); return { ok: true, value: true };
+        await moduleHost.openMeeting(url); return { ok: true, value: true };
       }
       if (operation === 'openAttachment') {
         if (typeof data.id !== 'string' || data.id.length > 16000 || typeof data.ref?.id !== 'string' || data.ref.id.length > 16000) throw new Error('Invalid attachment');
@@ -527,7 +614,10 @@ app.whenReady().then(async () => {
       const value = await activeClient[operation](data);
       if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
       if (composeEntry && ['send', 'draft', 'editDraft'].includes(operation) && window && !window.isDestroyed()) window.webContents.send('aster-compose-saved');
-      if (['respond', 'createEvent', 'updateEvent'].includes(operation)) { widgetDetail = null; void pollNotifications(); }
+      if (['respond', 'createEvent', 'updateEvent'].includes(operation)) {
+        try { moduleHost.publish('calendar.changed', { operation }); } catch { /* Module delivery cannot change a successful Exchange write. */ }
+        widgetDetail = null; void pollNotifications();
+      }
       return { ok: true, value };
     } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: debugErrors }), userFacing: true, connectionError: error.connectionError === true }; }
     finally { if (composeWrite) composeEntry.busy = false; }
@@ -559,7 +649,7 @@ app.whenReady().then(async () => {
         if (['Decline', 'Declined'].includes(meeting.response)) throw new Error(tr('Встреча отклонена. Измените ответ в карточке встречи.'));
         const url = httpsURL(meetingLink(meeting));
         if (!url) throw new Error(tr('Ссылка на созвон не найдена. Откройте карточку встречи.'));
-        widgetWindow.hide(); await shell.openExternal(url);
+        widgetWindow.hide(); await moduleHost.openMeeting(url);
       } else throw new Error('Unknown widget operation');
       return { ok: true };
     } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: notificationSettings.debugErrors }), userFacing: true }; }
@@ -589,7 +679,7 @@ app.on('before-quit', event => {
     const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Временные вложения не удалены'), detail: tr('Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.'), buttons: [tr('Остаться'), tr('Выйти')], defaultId: 0, cancelId: 0 });
     if (answer !== 1) { event.preventDefault(); return; }
   }
-  quitting = true; attachmentPreviews?.closeAll(); composeWindows?.destroyAll(); connection?.controller.abort();
+  quitting = true; moduleHost?.closeAll(); attachmentPreviews?.closeAll(); composeWindows?.destroyAll(); connection?.controller.abort();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => { try { attachmentFiles?.clearSync(); } catch { /* The user has acknowledged locked copies before quitting; retry at startup. */ } });

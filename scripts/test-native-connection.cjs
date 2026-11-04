@@ -5,8 +5,9 @@ const zlib = require('node:zlib');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createTransport } = require('../desktop/transport.cjs');
-const { OWAClient } = require('../desktop/owa.cjs');
+const hostRoot = process.env.ASTER_PACKAGED_APP || path.join(__dirname, '..');
+const { createTransport } = require(path.join(hostRoot, 'desktop/transport.cjs'));
+const { OWAClient } = require(path.join(hostRoot, 'desktop/owa.cjs'));
 
 // No real account, network destination or system certificate changes.
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'aster-connection-test-'));

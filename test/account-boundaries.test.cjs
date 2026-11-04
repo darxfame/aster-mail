@@ -7,7 +7,7 @@ const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 test('logout clears renderer corporate data, signatures, drafts, meetings and local preference copies', () => {
   const nodes = { '#search': { value: 'private query' }, '#people-search-suggestions': { replaceChildren() { this.cleared = true; } } };
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
-    closeAttachmentPreview() {}, applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
+    connectedModules: [{ id: 'private-module' }], loadModuleContributions: async () => {}, closeAttachmentPreview() {}, applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
     state: { account: { sessionId: 'old' }, generation: 1, selected: { html: 'private mail' }, messages: ['private'], contacts: ['private'], events: ['private'], signature: 'private' },
     localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },
@@ -19,7 +19,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
   });
   vm.runInContext(source.slice(source.indexOf('function applyAccount('), source.indexOf('async function boot()')), context);
   context.applyAccount(null);
-  assert.equal(nodes.findCleared, true);
+  assert.equal(nodes.findCleared, true); assert.equal(context.connectedModules.length, 0);
   assert.equal(context.state.account, null); assert.equal(context.state.signature, ''); assert.equal(context.state.selected, null);
   for (const key of ['messages', 'contacts', 'events', 'folders']) assert.equal(context.state[key].length, 0);
   for (const key of ['serverSignature', 'composeData', 'activeMeeting', 'meetingEdit', 'moveRuleContext', 'mailDrag']) assert.equal(context[key], null);
@@ -57,7 +57,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     authenticate() { return new Promise(resolve => { this.finish = resolve; }); }
   }
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
-    composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
+    moduleHost: undefined, composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
     attachmentPreviews: undefined, attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },
