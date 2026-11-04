@@ -31,8 +31,9 @@ function manifest(input) {
   if (m.permissions.includes('meeting.launch') && !m.meetingLinks) invalid();
   if (m.authentication !== undefined) {
     const auth = m.authentication;
-    if (!auth || typeof auth !== 'object' || Array.isArray(auth) || Object.keys(auth).some(key => !['type', 'origins', 'identityOrigins', 'capture', 'authorization', 'path'].includes(key)) || auth.type !== 'browser-token' || !m.permissions.includes('auth.session') || !m.permissions.includes('network') || !Array.isArray(auth.origins) || !auth.origins.length || auth.origins.length > 8 || !Array.isArray(auth.identityOrigins) || auth.identityOrigins.length > 8) invalid();
+    if (!auth || typeof auth !== 'object' || Array.isArray(auth) || Object.keys(auth).some(key => !['type', 'origins', 'identityOrigins', 'capture', 'authorization', 'path', 'startOrigin'].includes(key)) || auth.type !== 'browser-token' || !m.permissions.includes('auth.session') || !m.permissions.includes('network') || !Array.isArray(auth.origins) || !auth.origins.length || auth.origins.length > 8 || !Array.isArray(auth.identityOrigins) || auth.identityOrigins.length > 8) invalid();
     auth.origins = auth.origins.map(origin); auth.identityOrigins = auth.identityOrigins.map(origin);
+    if (auth.startOrigin !== undefined) { auth.startOrigin = origin(auth.startOrigin); if (![...auth.origins, ...auth.identityOrigins].includes(auth.startOrigin)) invalid(); }
     auth.path ??= '/';
     if (typeof auth.path !== 'string' || !/^\/(?:[a-zA-Z0-9_/-]*)$/.test(auth.path) || auth.path.length > 200 || auth.path.startsWith('//') || auth.path.includes('..')) invalid();
     const capture = auth.capture;
@@ -201,4 +202,4 @@ function meetingTarget(definition, value) {
 function meetingLaunchSummary(definition) {
   return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
 }
-module.exports = { features: ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };

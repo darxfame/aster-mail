@@ -94,7 +94,7 @@ async function signIn(host, entry, input) {
     finally { reading = false; }
   }, 700);
   timer = setTimeout(close, 5 * 60000);
-  try { await window.loadURL(origin + entry.bundle.manifest.authentication.path); } catch { close(); throw new Error(tr('Не удалось открыть корпоративный вход')); }
+  try { await window.loadURL((definition.authentication.startOrigin || origin) + definition.authentication.path); } catch { close(); throw new Error(tr('Не удалось открыть корпоративный вход')); }
   return authenticationStatus(host, entry);
 }
 module.exports = { sessionScript, sessionValue, allowedNavigation, authenticationStatus, closeAuthentication, signIn };

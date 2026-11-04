@@ -10,16 +10,23 @@ const M = require(path.join(hostRoot, 'desktop/modules.cjs'));
 const { ModuleHost } = require(path.join(hostRoot, 'desktop/module-host.cjs'));
 const profile = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'aster-sdk-native-'));
 app.setPath('userData', profile);
+app.on('window-all-closed', () => {});
 let host;
 app.whenReady().then(async () => {
-  const origin = 'https://login.example.test', expiry = new Date(Date.now() + 3600000).toISOString();
+  const origin = 'https://login.example.test', startOrigin = 'https://start.example.test', expiry = new Date(Date.now() + 3600000).toISOString();
   let records = [], currentSession = 'fictional', authSession, authWindow, captures = 0;
   const controller = new AbortController();
   const adaptedElectron = { ...electron, session: { fromPartition(partition, options) {
     const session = electron.session.fromPartition(partition, options);
     if (partition.startsWith('aster-module-auth-')) {
       authSession = session;
-      session.protocol.handle('https', () => { captures++; return new Response(`<iframe src="https://analytics.example.test/frame"></iframe><script>localStorage.setItem('fictional-login', JSON.stringify({credential:{access:'fictional-secret',until:'${expiry}'}}));</script>Fictional provider`, { headers: { 'Content-Type': 'text/html' } }); });
+      session.protocol.handle('https', request => {
+        captures++;
+        const body = new URL(request.url).origin === startOrigin
+          ? `<button id="sso">Workspace SSO</button><script>localStorage.setItem('fictional-login',JSON.stringify({credential:{access:'must-not-capture-from-start',until:'${expiry}'}}));document.querySelector('button').onclick=()=>location.href='${origin}/';</script>`
+          : `<iframe src="https://analytics.example.test/frame"></iframe><script>localStorage.setItem('fictional-login', JSON.stringify({credential:{access:'fictional-secret',until:'${expiry}'}}));</script>Fictional provider`;
+        return new Response(body, { headers: { 'Content-Type': 'text/html' } });
+      });
     }
     return session;
   } }, BrowserWindow: class extends electron.BrowserWindow {
@@ -43,6 +50,17 @@ app.whenReady().then(async () => {
     assert.deepEqual(await host.invoke(manifest.id, 'http-status'), { code: 'http-error', status: 404 });
   } finally { M.requestJSON = originalRequest; }
   await host.invoke(manifest.id, 'logout'); assert.equal(records[0].auth, undefined);
+  const nextFiles = new Map(bundle.files), nextManifest = structuredClone(manifest);
+  nextManifest.version = '1.0.1'; nextManifest.authentication.startOrigin = startOrigin; nextManifest.authentication.identityOrigins = [startOrigin];
+  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest))); await host.install(M.fromFiles(nextFiles), true);
+  await host.invoke(manifest.id, 'login');
+  assert.equal(new URL(authWindow.webContents.getURL()).origin, startOrigin);
+  await new Promise(resolve => setTimeout(resolve, 900)); assert.equal(records[0].auth, undefined);
+  await authWindow.webContents.executeJavaScript('document.querySelector("#sso").click()');
+  const separateDeadline = Date.now() + 5000;
+  while (!records[0].auth && Date.now() < separateDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(records[0].auth?.token, 'fictional-secret'); assert.equal(records[0].auth?.origin, origin);
+  await host.invoke(manifest.id, 'logout');
   await host.invoke(manifest.id, 'login');
   const preferences = authWindow.webContents.getLastWebPreferences();
   assert.equal(preferences.sandbox, true); assert.equal(preferences.nodeIntegration, false); assert.equal(preferences.contextIsolation, true);

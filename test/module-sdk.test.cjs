@@ -38,6 +38,14 @@ test('network broker uses the declared authentication scheme only in its isolate
     const response = Object.assign(new EventEmitter(), { statusCode: 200 }); request.emit('response', response); response.emit('data', Buffer.from('{}')); response.emit('end'); await pending;
   }
 });
+
+test('a separate sign-in start origin must already be declared and does not change the capture origin', () => {
+  const d = definition();
+  const next = M.manifest({ ...d, authentication: { ...d.authentication, startOrigin: 'https://identity.example.test' } });
+  assert.equal(next.authentication.startOrigin, 'https://identity.example.test');
+  assert.deepEqual(next.authentication.origins, d.authentication.origins);
+  for (const startOrigin of ['http://identity.example.test', 'https://foreign.example.test', 'https://identity.example.test/path']) assert.throws(() => M.manifest({ ...d, authentication: { ...d.authentication, startOrigin } }));
+});
 test('app join preserves normal HTTPS, handles only matching enabled routes and rejects stale grants', async () => {
   const d = definition(), opened = [], record = { id: d.id, enabled: true, digest: 'a' }, route = { ...d, ...record, error: false };
   let current = true, records = [record];

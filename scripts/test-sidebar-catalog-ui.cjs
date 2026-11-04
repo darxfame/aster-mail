@@ -10,7 +10,7 @@ app.whenReady().then(async () => {
   window = new BrowserWindow({ width: 1280, height: 900, show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   const wc = window.webContents;
   await window.loadFile(path.join(__dirname, '../src/index.html'));
-  await wc.executeJavaScript('document.querySelector("[data-action=demo]").click()');
+  await wc.executeJavaScript('applyLanguage("ru"); document.querySelector("[data-action=demo]").click()');
   for (let i = 0; i < 100 && !await wc.executeJavaScript('state.demo && state.messages.length > 0'); i++) await new Promise(resolve => setTimeout(resolve, 50));
   for (const scale of [1, 1.5, 2]) {
     wc.setZoomFactor(scale);
@@ -42,6 +42,7 @@ app.whenReady().then(async () => {
   })()`);
   assert.equal(await wc.executeJavaScript('document.querySelector("[data-action=module-approved-connect]").disabled'), false);
   assert.equal(await wc.executeJavaScript('document.querySelector(".module-catalog-row details").open'), false);
+  assert.equal(await wc.executeJavaScript('document.querySelector("#module-author-catalog").textContent.includes("service.example.test")'), false);
   assert.equal(await wc.executeJavaScript('document.querySelector(".module-catalog-row").scrollWidth <= document.querySelector(".module-catalog-row").clientWidth'), true);
   const output = path.join(__dirname, '../release/ui-sidebar-catalog');
   const capture = async name => { if (process.argv.includes('--screenshots')) { await fs.mkdir(output, { recursive: true }); await new Promise(resolve => setTimeout(resolve, 150)); await fs.writeFile(path.join(output, name), (await wc.capturePage()).toPNG()); } };
@@ -64,6 +65,7 @@ app.whenReady().then(async () => {
     await refreshModuleList();
   })()`);
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-list details").open'), false);
+  assert.equal(await wc.executeJavaScript('document.querySelector("#module-list").textContent.includes("service.example.test")'), false);
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-list .module-catalog-row").scrollWidth <= document.querySelector("#module-list .module-catalog-row").clientWidth'), true);
   await new Promise(resolve => setTimeout(resolve, 150));
   await capture('connected.png');
