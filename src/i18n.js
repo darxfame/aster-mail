@@ -1,6 +1,12 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "При подключении вы подтвердите разрешения для текущего аккаунта.": "You will confirm permissions for the current account when connecting.",
+    "Можно подключить модуль заранее. После входа подключите его к нужному аккаунту.": "You can prepare a module in advance. After signing in, connect it to the account you want.",
+    "Разрешения и сведения о модуле": "Permissions and module details",
+    "Подключён заранее": "Connected in advance",
+    "Пакет будет сохранён на этом компьютере. После входа подключите его к нужному аккаунту. До этого код модуля не запускается.": "The package will be saved on this computer. After signing in, connect it to the account you want. Module code will not run until then.",
+
     "Модули автора и предложения сообщества — в репозитории Aster Mail Modules.": "Author modules and community contributions are available in the Aster Mail Modules repository.",
     "Модули автора · предложить свой модуль": "Author modules · contribute a module",
     "Каталог одобренных модулей": "Approved modules catalog",

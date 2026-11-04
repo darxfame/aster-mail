@@ -482,6 +482,15 @@ async function saveColleagues(list) { localPreferences.setItem(colleaguesKey(), 
 async function fetchAvailability(emails, start, end) {
   if (!state.demo) return api('availability', { emails: emails.join(','), start: start.toISOString(), end: end.toISOString() });
   return emails.map((email, i) => {
+    if (email.toLowerCase() === 'you@example.com') {
+      const blocks = window.asterDemo.events.filter(event => !event.cancelled && !['Decline', 'Declined'].includes(event.response) && Date.parse(event.start) < +end && Date.parse(event.end) > +start).map(event => {
+        let type = event.showAs || 'Busy';
+        if (type === 'WorkingElsewhere') type = 'Free';
+        if (event.showAsKnown === false || !['Free', 'Tentative', 'Busy', 'OOF'].includes(type)) type = 'NoData';
+        return { start: event.start, end: event.end, type };
+      });
+      return { email, start: start.toISOString(), end: end.toISOString(), blocks };
+    }
     const busy = new Date(start); busy.setHours(11 + i, 0, 0, 0);
     const finish = new Date(+busy + 3600000);
     const now = Date.now();
@@ -541,7 +550,7 @@ async function runPlanner(button) {
     start = T.fromWall(form.elements.start.value, timeZone); end = T.fromWall(form.elements.end.value, timeZone);
     if (!Number.isFinite(+start) || !Number.isFinite(+end) || end <= start || end - start > 86400000) throw new Error(tr('Укажите начало и окончание встречи в пределах суток.'));
     const emails = form.elements.attendees.value.split(/[,;\n]/).map(s => s.trim().toLowerCase()).filter(Boolean);
-    const own = state.demo ? 'you@example.com' : state.account?.username;
+    const own = state.demo ? 'you@example.com' : (await api('identity')).email;
     if (/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(own || '')) emails.push(own.toLowerCase());
     const unique = [...new Set(emails)];
 
@@ -549,8 +558,7 @@ async function runPlanner(button) {
     const to = window.asterCalendar.range(end, 'day', timeZone).end;
     const people = unique.length ? await fetchAvailability(unique, from, to) : [];
     if (!unique.includes(own?.toLowerCase())) {
-      const mine = await api('calendar', { start: from.toISOString(), end: to.toISOString() });
-      people.push({ email: '__self__', start: from.toISOString(), end: to.toISOString(), blocks: mine.filter(e => !e.cancelled && !['Decline', 'Declined'].includes(e.response) && e.showAs !== 'Free').map(e => ({ start: e.start, end: e.end, type: 'Busy' })) });
+      people.push({ email: '__self__', start: from.toISOString(), end: to.toISOString(), blocks: [], error: tr('Нет полных данных занятости') });
     }
     if (!$('#event-form') || $('#event-form') !== form || plannerFingerprint(form) !== fingerprint) return;
     const duration = Math.ceil((end - start) / 60000);
@@ -1167,7 +1175,7 @@ document.addEventListener('submit', event => {
   if (form.id === 'event-form') submitForm(form, async data => {
     data.start = T.fromWall(data.start, timeZone).toISOString(); data.end = T.fromWall(data.end, timeZone).toISOString();
     if (new Date(data.end) <= new Date(data.start)) throw new Error(tr('Окончание должно быть позже начала'));
-    if (state.demo) window.asterDemo.events.push({ id: `demo-event-${Date.now()}`, title: data.title, start: data.start, end: data.end, location: data.location, preview: data.body, isOrganizer: true, response: 'Organizer', organizer: { name: tr('Вы'), email: 'you@example.com' } }); else await api('createEvent', data);
+    if (state.demo) window.asterDemo.events.push({ id: `demo-event-${Date.now()}`, title: data.title, start: data.start, end: data.end, location: data.location, preview: data.body, showAs: 'Busy', isOrganizer: true, response: 'Organizer', organizer: { name: tr('Вы'), email: 'you@example.com' } }); else await api('createEvent', data);
     state.week = new Date(data.start); state.view = 'calendar'; state.query = ''; $('#search').value = ''; $('#modal').close(); toast(state.demo ? tr('Демо: встреча создана') : tr('Встреча создана в Exchange')); await loadView();
   });
   if (form.id === 'contact-form') submitForm(form, async data => {

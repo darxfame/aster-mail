@@ -297,11 +297,15 @@ async function connect(data, remember, restoring = false) {
   }
 }
 
-async function installModuleBundle(bundle, guard) {
+async function installModuleBundle(bundle, guard, approved = false, prepare = false) {
   guard();
   const source = bundle.source ? `${bundle.source.repository}\ncommit: ${bundle.source.commit}\n${bundle.source.directory}` : tr('Локальный пакет');
-  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Дополнительные серверы с отдельным разрешением:')} ${(bundle.manifest.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(bundle.manifest)}\n${tr('Серверы входа:')} ${[...(bundle.manifest.authentication?.origins || []), ...(bundle.manifest.authentication?.identityOrigins || [])].join(', ')}\n${tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
-  guard(); if (answer.response === 1) await moduleHost.install(bundle);
+  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Дополнительные серверы с отдельным разрешением:')} ${(bundle.manifest.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(bundle.manifest)}\n${tr('Серверы входа:')} ${[...(bundle.manifest.authentication?.origins || []), ...(bundle.manifest.authentication?.identityOrigins || [])].join(', ')}\n${prepare ? tr('Пакет будет сохранён на этом компьютере. После входа подключите его к нужному аккаунту. До этого код модуля не запускается.') : approved ? tr('«Подключить» устанавливает модуль и разрешает перечисленные возможности для текущего аккаунта.') : tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
+  guard();
+  if (answer.response !== 1) return;
+  if (prepare) await require('./module-catalog.cjs').prepare(path.join(app.getPath('userData'), 'modules'), bundle, guard);
+  else await moduleHost.install(bundle, approved);
+  guard();
 }
 
 const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
@@ -521,20 +525,33 @@ app.whenReady().then(async () => {
         }
         return { ok: true, value: await attachmentFiles.open({ name: file.name, load: async () => file.bytes, assertActive }) };
       }
-      if (operation === 'moduleAuthorCatalog') return { ok: true, value: await require('./module-catalog.cjs').browse({ net, session }, event.sender) };
+      if (operation === 'moduleAuthorCatalog') return { ok: true, value: await require('./module-catalog.cjs').browse({ net, session }, event.sender, path.join(app.getPath('userData'), 'modules')) };
+      if (operation === 'moduleInstallApproved') {
+        const active = client, epoch = accountEpoch, sender = event.sender;
+        const controller = new AbortController(), cancel = () => controller.abort();
+        const guard = () => {
+          if (controller.signal.aborted || resettingLocalData || client !== active || accountEpoch !== epoch || sender.isDestroyed() || active && data.sessionId !== active.syncId || !active && (connection || data.sessionId)) throw new Error(tr('Сессия аккаунта завершена'));
+        };
+        guard();
+        sender.once('destroyed', cancel);
+        connection?.controller.signal.addEventListener('abort', cancel, { once: true });
+        const accountSignal = connection?.controller.signal;
+        const Github = require('./module-github.cjs'), Catalog = require('./module-catalog.cjs');
+        const isolated = session.fromPartition(`aster-module-catalog-${crypto.randomUUID()}`, { cache: false });
+        try {
+          const read = (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal);
+          await Catalog.install(data, read, controller.signal, { install: bundle => installModuleBundle(bundle, guard, true, !active) }, guard);
+          return { ok: true, value: true };
+        } finally {
+          sender.removeListener('destroyed', cancel); accountSignal?.removeEventListener('abort', cancel);
+          await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]);
+        }
+      }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
       const activeClient = client;
       if (data.sessionId !== activeClient.syncId) throw new Error(tr('Сессия аккаунта завершена'));
-      if (['moduleInstallApproved', 'moduleCatalog', 'moduleImport', 'moduleImportGitHub', 'moduleConfigure', 'moduleRemove', 'moduleInvoke', 'moduleMounts'].includes(operation)) {
+      if (['moduleCatalog', 'moduleImport', 'moduleImportGitHub', 'moduleConfigure', 'moduleRemove', 'moduleInvoke', 'moduleMounts'].includes(operation)) {
         const epoch = accountEpoch, guard = () => { if (client !== activeClient || epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); };
-        if (operation === 'moduleInstallApproved') {
-          const Github = require('./module-github.cjs'), Catalog = require('./module-catalog.cjs');
-          const isolated = session.fromPartition(`aster-module-catalog-${crypto.randomUUID()}`, { cache: false });
-          try {
-            const read = (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal);
-            await Catalog.install(data, read, connection.controller.signal, moduleHost, guard);
-          } finally { await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]); }
-        }
         if (operation === 'moduleImport') {
           const selected = await dialog.showOpenDialog(window, { title: tr('Подключить модуль'), properties: ['openDirectory'] }); guard();
           if (!selected.canceled && selected.filePaths.length === 1) {

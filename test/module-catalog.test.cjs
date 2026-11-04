@@ -62,12 +62,12 @@ test('public catalog IPC is available before login while install operations stay
   const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
   const start = source.indexOf("      if (operation === 'moduleAuthorCatalog')");
   const end = source.indexOf("      const activeClient = client;", start);
-  const context = vm.createContext({ operation: 'moduleAuthorCatalog', event: { sender: {} }, net: {}, session: {}, tr: value => value,
+  const context = vm.createContext({ operation: 'moduleAuthorCatalog', event: { sender: {} }, net: {}, session: {}, path, app: { getPath: () => '/fictional' }, tr: value => value,
     require: name => { assert.equal(name, './module-catalog.cjs'); return { browse: async () => ({ modules: [] }) }; } });
   Object.defineProperty(context, 'client', { get() { throw new Error('Account accessed'); } });
   const value = await vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, context);
   assert.equal(value.ok, true);
-  for (const operation of ['moduleInstallApproved', 'moduleImportGitHub', 'moduleConfigure']) {
+  for (const operation of ['moduleImportGitHub', 'moduleConfigure']) {
     const denied = vm.createContext({ operation, client: null, tr: value => value });
     await assert.rejects(vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, denied), /OWA/);
   }
@@ -84,7 +84,8 @@ test('desktop catalog displays package cards without an account and in demo, wit
     await context.moduleAuthorCatalog();
     assert.deepEqual(calls, ['moduleAuthorCatalog']);
     assert.match(container.innerHTML, /Fictional approved module/);
-    assert.match(container.innerHTML, /data-action="module-approved-connect"[^>]*disabled/);
+    assert.doesNotMatch(container.innerHTML, /data-action="module-approved-connect"[^>]*disabled/);
+    assert.match(container.innerHTML, /<details><summary>Разрешения и сведения о модуле/);
   }
 });
 
@@ -99,4 +100,59 @@ test('published flat catalog validates pinned manifests and cannot install unsup
   entry.host.features = ['unsupported.provider-adapter'];
   assert.equal((await C.list(read, new AbortController().signal)).modules[0].compatible, false);
   await assert.rejects(C.install({ id: entry.id, digest: entry.sha256, revision }, read, new AbortController().signal, { async install() { assert.fail('Unsupported feature installed'); } }, () => {}));
+});
+
+
+test('preparing an approved package persists only verified code, and detects tampering after restart', async t => {
+  const fs = require('node:fs/promises'), os = require('node:os');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'aster-prepare-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const f = await fixture(); let approvals = 0;
+  assert.equal(await C.prepared(root, f.item), false);
+  await C.install({ id: f.item.manifest.id, digest: f.item.digest, revision }, f.read, new AbortController().signal,
+    { async install(bundle) { approvals++; await C.prepare(root, bundle, () => {}); } }, () => {});
+  assert.equal(approvals, 1);
+  assert.equal(await C.prepared(root, f.item), true);
+  assert.equal(await C.prepared(root, { ...f.item, digest: 'c'.repeat(64) }), false);
+  await fs.appendFile(path.join(M.recordDirectory(root, { id: f.item.manifest.id, version: f.item.manifest.version, digest: f.item.digest }), 'main.js'), '// changed');
+  assert.equal(await C.prepared(root, f.item), false);
+  await assert.rejects(C.prepare(root, f.bundle, () => { throw new Error('retired'); }), /retired/);
+});
+
+test('approved install IPC prepares before login, grants only the matching account and rejects scope changes', async () => {
+  const fs = require('node:fs'), vm = require('node:vm'), { EventEmitter } = require('node:events');
+  const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
+  const start = source.indexOf("      if (operation === 'moduleInstallApproved')");
+  const end = source.indexOf("      if (!client) throw", start);
+  for (const scenario of ['prepare', 'account', 'stale', 'signed-out', 'changed', 'reset']) {
+    const sender = new EventEmitter(); sender.isDestroyed = () => false;
+    const active = ['account', 'stale'].includes(scenario) ? { syncId: 'current' } : null;
+    const calls = [], isolated = { closeAllConnections: async () => {}, clearStorageData: async () => {} };
+    let context;
+    context = vm.createContext({ operation: 'moduleInstallApproved', client: active, accountEpoch: 1, resettingLocalData: scenario === 'reset',
+      connection: active ? { controller: new AbortController() } : null, event: { sender },
+      data: { sessionId: scenario === 'account' ? 'current' : ['stale', 'signed-out'].includes(scenario) ? 'retired' : undefined },
+      AbortController, tr: value => value, net: {}, crypto: { randomUUID: () => 'fictional' }, session: { fromPartition: () => isolated },
+      require: name => name === './module-github.cjs' ? { getBytes() {} } : { async install(_data, _read, _signal, host, guard) {
+        if (scenario === 'changed') context.accountEpoch++;
+        guard(); await host.install({ manifest: {} }); guard();
+      } },
+      installModuleBundle: async (_bundle, guard, approved, prepare) => { guard(); calls.push({ approved, prepare }); } });
+    const run = () => vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, context);
+    if (['prepare', 'account'].includes(scenario)) {
+      assert.equal((await run()).ok, true);
+      assert.deepEqual(calls, [{ approved: true, prepare: scenario === 'prepare' }]);
+    } else { await assert.rejects(run(), /Сессия/); assert.deepEqual(calls, []); }
+    assert.equal(sender.listenerCount('destroyed'), 0);
+  }
+});
+
+test('native confirmation cancellation never prepares a package or enables an account module', async () => {
+  const fs = require('node:fs'), vm = require('node:vm'), f = await fixture();
+  const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
+  const start = source.indexOf('async function installModuleBundle('), end = source.indexOf('const methods =', start);
+  const context = vm.createContext({ tr: value => value, window: {}, dialog: { showMessageBox: async () => ({ response: 0 }) },
+    moduleHost: { install: () => assert.fail('Cancelled account install') }, require: name => { assert.equal(name, './modules.cjs'); return M; } });
+  vm.runInContext(source.slice(start, end), context);
+  for (const prepare of [false, true]) await context.installModuleBundle(f.bundle, () => {}, true, prepare);
 });

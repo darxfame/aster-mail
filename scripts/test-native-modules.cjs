@@ -60,6 +60,11 @@ app.whenReady().then(async () => {
     await downloadSession.closeAllConnections();
     console.log('PASS: real GitHub commit-pinned download matches the local package fingerprint');
   }
+  const Catalog = require(path.join(hostRoot, 'desktop/module-catalog.cjs'));
+  await Catalog.prepare(host.directory, bundle, () => {});
+  assert.equal(await Catalog.prepared(host.directory, { manifest: bundle.manifest, digest: bundle.digest }), true);
+  assert.equal(records.length, 0); assert.equal(host.entries.size, 0);
+  console.log('PASS: preparation stores verified package bytes without account grants or runtime execution');
   await host.install(bundle); await host.configure(bundle.manifest.id, true);
   const report = await host.invoke(bundle.manifest.id, 'inspect', { url: `http://127.0.0.1:${server.address().port}/blocked`, iceServer: `stun:127.0.0.1:${udp.address().port}`, file: `file://${path.join(directory, 'fictional-secret.txt')}` });
   assert.deepEqual(report, { cookie: '', coreBridge: false, node: false, directNetworkBlocked: true, fileBlocked: true, calendarBlocked: true });

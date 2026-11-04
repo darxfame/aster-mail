@@ -78,15 +78,30 @@ async function install(input, read, signal, host, guard) {
   if (!item || item.compatible === false) invalid();
   const bundle = await G.load({ url: repository, ref: item.commit, directory: item.directory }, read, signal); guard();
   if (bundle.digest !== item.digest || !require('node:util').isDeepStrictEqual(bundle.manifest, item.manifest)) invalid();
-  // The card discloses the approved package's permissions; its explicit Connect click grants them.
+  // The trusted installer confirms permissions after revalidating the displayed package.
   await host.install(bundle, true); guard();
 }
-async function browse({ net, session }, sender) {
+async function prepared(directory, item) {
+  try {
+    const bundle = await M.readPackage(M.recordDirectory(directory, { id: item.manifest.id, version: item.manifest.version, digest: item.digest }));
+    return bundle.digest === item.digest && require('node:util').isDeepStrictEqual(bundle.manifest, item.manifest);
+  } catch { return false; }
+}
+async function prepare(directory, bundle, guard) {
+  guard(); await M.installPackage(directory, bundle); guard();
+  if (!await prepared(directory, { manifest: bundle.manifest, digest: bundle.digest })) invalid();
+  guard();
+}
+async function browse({ net, session }, sender, directory) {
   const isolated = session.fromPartition(`aster-module-catalog-${require('node:crypto').randomUUID()}`, { cache: false });
   const controller = new AbortController(), cancel = () => controller.abort();
   sender.once('destroyed', cancel);
   if (sender.isDestroyed()) cancel();
-  try { return await list((url, limit, signal) => G.getBytes(net, isolated, url, limit, signal), controller.signal); }
+  try {
+    const catalog = await list((url, limit, signal) => G.getBytes(net, isolated, url, limit, signal), controller.signal);
+    if (directory) await Promise.all(catalog.modules.map(async item => { item.prepared = await prepared(directory, item); }));
+    return catalog;
+  }
   finally { sender.removeListener('destroyed', cancel); await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]); }
 }
-module.exports = { repository, parse, list, install, browse };
+module.exports = { repository, parse, list, install, browse, prepare, prepared };

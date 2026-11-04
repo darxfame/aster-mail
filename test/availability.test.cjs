@@ -61,3 +61,80 @@ test('availability uses authenticated OWA transport and retains per-recipient er
   assert.equal(result[0].error, undefined);
   assert.equal(result[1].error, 'ErrorNoFreeBusyAccess');
 });
+
+test('demo planner reads the live personal calendar, including meetings without attendees', async () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+  const events = [
+    { start, end, showAs: 'Busy' },
+    { start: '2026-10-29T06:15:00Z', end: '2026-10-29T08:00:00Z', showAs: 'Busy' }
+  ];
+  const context = vm.createContext({ state: { demo: true }, window: { asterDemo: { events } } });
+  vm.runInContext(source.slice(source.indexOf('async function fetchAvailability('), source.indexOf('function availabilityLabel(')), context);
+  const fetch = async emails => context.fetchAvailability(emails, new Date('2026-10-29T00:00:00Z'), new Date('2026-10-30T00:00:00Z'));
+  const [mine] = await fetch(['you@example.com']);
+  assert.equal(mine.blocks.length, 2);
+  assert.equal(S.available([mine], start, end), false);
+  assert.equal(S.status(mine, Date.parse('2026-10-29T06:20:00Z')).until, '2026-10-29T08:00:00.000Z');
+  assert.equal(S.available([mine], '2026-10-29T08:00:00Z', '2026-10-29T08:30:00Z'), true);
+  for (const fields of [{ showAs: 'Free' }, { showAs: 'WorkingElsewhere' }, { cancelled: true }, { response: 'Decline' }, { response: 'Declined' }]) {
+    events.splice(0, events.length, { start, end, showAs: 'Busy', ...fields });
+    assert.equal(S.available(await fetch(['YOU@example.com']), start, end), true, JSON.stringify(fields));
+  }
+  for (const fields of [{ showAs: 'Tentative' }, { showAs: 'OOF' }, { showAs: 'NoData' }, { showAs: 'Busy', showAsKnown: false }, {}]) {
+    events.splice(0, events.length, { start, end, ...fields });
+    assert.equal(S.available(await fetch(['you@example.com']), start, end), false, JSON.stringify(fields));
+  }
+  const withParticipant = await fetch(['colleague@example.com', 'you@example.com']);
+  assert.equal(withParticipant[0].email, 'colleague@example.com');
+  assert.equal(withParticipant[0].blocks[0].type, 'Busy');
+  assert.equal(S.available([withParticipant[1]], start, end), false);
+  events.length = 0;
+  assert.equal(S.available(await fetch(['you@example.com']), start, end), true);
+  context.state.demo = false;
+  context.api = async (operation, payload) => { assert.equal(operation, 'availability'); assert.equal(payload.emails, 'real@example.test'); return 'server availability'; };
+  assert.equal(await fetch(['real@example.test']), 'server availability');
+});
+
+test('live planner includes the resolved own mailbox without attendees and never confirms missing data as free', async () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+  for (const scenario of ['email-busy', 'domain-busy', 'free', 'missing', 'unknown', 'no-identity', 'participant']) {
+    const calls = [], from = '2026-10-29T00:00:00.000Z', to = '2026-10-30T00:00:00.000Z';
+    const form = { elements: { start: { value: '2026-10-29T06:00' }, end: { value: '2026-10-29T07:00' }, attendees: { value: scenario === 'participant' ? 'other@example.test' : '' } } };
+    const box = { innerHTML: '', isConnected: true }, button = {};
+    const client = new OWAClient({ server: 'https://mail.example.test', username: scenario === 'email-busy' ? 'me@example.test' : 'DOMAIN\\fictional' }, async (url, options) => {
+      calls.push(url);
+      if (url.includes('GetOwaUserConfiguration')) return { status: 200, text: JSON.stringify({ Body: { UserSessionSettings: { UserEmailAddress: scenario === 'no-identity' ? '' : 'Me@example.test' } } }) };
+      assert.ok(url.includes('GetUserAvailabilityInternal'));
+      const request = JSON.parse(decodeURIComponent(options.headers['X-OWA-UrlPostData'])).request;
+      const emails = request.Body.MailboxDataArray.map(item => item.Email.Address);
+      assert.ok(emails.includes('me@example.test'));
+      assert.equal(emails.length, scenario === 'participant' ? 2 : 1);
+      assert.equal(request.Body.FreeBusyViewOptions.TimeWindow.StartTime, from.slice(0, 19));
+      const responses = emails.map(email => {
+        if (email !== 'me@example.test' || scenario === 'free') return row('0'.repeat(96));
+        if (scenario === 'missing') return { ResponseMessage: { ResponseCode: 'ErrorNoFreeBusyAccess' } };
+        return row('0'.repeat(24) + (scenario === 'unknown' ? '4444' : '2222') + '0'.repeat(68));
+      });
+      return { status: 200, text: JSON.stringify({ Body: { FreeBusyResponseArray: responses } }) };
+    }, async () => 'fictional-token');
+    client.canary = 'fictional-token';
+    const context = vm.createContext({ state: { demo: false, account: { username: client.account.username } }, timeZone: 'UTC', T: require('../src/time.js'),
+      window: { asterCalendar: { range: () => ({ start: new Date(from), end: new Date(to) }) }, asterAvailability: S },
+      $: selector => selector === '#event-form' ? form : box, tr: value => value, esc: String,
+      colleagues: () => [], dateFormat: () => '', time: () => '', errorText: error => error.message,
+      availabilityLabel: (person, at) => ({ ...S.status(person, at), text: '' }),
+      fetchAvailability: (emails, start, end) => client.availability({ emails: emails.join(','), start: start.toISOString(), end: end.toISOString() }),
+      api: operation => { assert.equal(operation, 'identity'); return client.identity(); } });
+    vm.runInContext(source.slice(source.indexOf('function plannerFingerprint('), source.indexOf('function renderContacts(')), context);
+    await context.runPlanner(button);
+    assert.equal(button.disabled, false);
+    if (scenario === 'missing') { assert.ok(box.innerHTML.includes('ErrorNoFreeBusyAccess')); assert.ok(!box.innerHTML.includes('planner-verdict free')); continue; }
+    assert.ok(box.innerHTML.includes('planner-verdict'), scenario);
+    assert.equal(box.innerHTML.includes('planner-verdict free'), scenario === 'free', scenario);
+    assert.ok(box.innerHTML.includes('Вы'), scenario);
+    if (['missing', 'unknown', 'no-identity'].includes(scenario)) assert.ok(box.innerHTML.includes('свободное время не подтверждено'), scenario);
+    assert.ok(calls[0].includes('GetOwaUserConfiguration'));
+  }
+});
