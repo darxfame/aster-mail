@@ -46,6 +46,18 @@ test('a separate sign-in start origin must already be declared and does not chan
   assert.deepEqual(next.authentication.origins, d.authentication.origins);
   for (const startOrigin of ['http://identity.example.test', 'https://foreign.example.test', 'https://identity.example.test/path']) assert.throws(() => M.manifest({ ...d, authentication: { ...d.authentication, startOrigin } }));
 });
+
+test('corporate identity redirects allow HTTPS only and never grant broker access to the identity provider', async () => {
+  const d = definition(); d.authentication.identityRedirects = true;
+  const enabled = M.manifest(d);
+  assert.match(M.permissionSummary(enabled.permissions, enabled.authentication), /Переходы в корпоративную систему входа/);
+  assert.equal(A.allowedNavigation('https://company-idp.example.test/sso', [], false), false);
+  assert.equal(A.allowedNavigation('https://company-idp.example.test/sso', [], true), true);
+  for (const url of ['http://company-idp.example.test', 'https://user:secret@company-idp.example.test', 'file:///tmp/secret', 'javascript:alert(1)', 'ktalk://room', 'data:text/html,test']) assert.equal(A.allowedNavigation(url, [], true), false);
+  for (const identityRedirects of [1, 'true', null]) assert.throws(() => M.manifest({ ...d, authentication: { ...d.authentication, identityRedirects } }));
+  assert.throws(() => M.requestJSON({ request() { assert.fail('IdP must not receive broker requests'); } }, {}, enabled, { url: 'https://company-idp.example.test/data' }, new AbortController().signal));
+  assert.deepEqual(enabled.networkOrigins, d.networkOrigins);
+});
 test('app join preserves normal HTTPS, handles only matching enabled routes and rejects stale grants', async () => {
   const d = definition(), opened = [], record = { id: d.id, enabled: true, digest: 'a' }, route = { ...d, ...record, error: false };
   let current = true, records = [record];

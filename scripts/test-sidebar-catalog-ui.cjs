@@ -37,12 +37,13 @@ app.whenReady().then(async () => {
   await wc.executeJavaScript('setModalDirty(false); document.querySelector("#modal").close()');
   await wc.executeJavaScript(`(async () => {
     sidebarCollapsed=false; renderSidebar(); window.aster={}; state.account=null; state.demo=true;
-    window.catalogCalls=[]; api=async (operation) => { catalogCalls.push(operation); if(operation==='moduleCatalog') return []; return { revision:'a'.repeat(40), modules:[{ manifest:{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',permissions:['ui','network'],networkOrigins:['https://service.example.test']},description:'Create a meeting link',digest:'b'.repeat(64),commit:'c'.repeat(40),directory:'example'}] }; };
+    window.catalogCalls=[]; api=async (operation) => { catalogCalls.push(operation); if(operation==='moduleCatalog') return []; return { revision:'a'.repeat(40), modules:[{ manifest:{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',permissions:['ui','network'],authentication:{identityRedirects:true},networkOrigins:['https://service.example.test']},description:'Create a meeting link',digest:'b'.repeat(64),commit:'c'.repeat(40),directory:'example'}] }; };
     await moduleAuthorCatalog();
   })()`);
   assert.equal(await wc.executeJavaScript('document.querySelector("[data-action=module-approved-connect]").disabled'), false);
   assert.equal(await wc.executeJavaScript('document.querySelector(".module-catalog-row details").open'), false);
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-author-catalog").textContent.includes("service.example.test")'), false);
+  assert.equal(await wc.executeJavaScript('document.querySelector("#module-author-catalog").textContent.includes("Переходы в корпоративную систему входа")'), true);
   assert.equal(await wc.executeJavaScript('document.querySelector(".module-catalog-row").scrollWidth <= document.querySelector(".module-catalog-row").clientWidth'), true);
   const output = path.join(__dirname, '../release/ui-sidebar-catalog');
   const capture = async name => { if (process.argv.includes('--screenshots')) { await fs.mkdir(output, { recursive: true }); await new Promise(resolve => setTimeout(resolve, 150)); await fs.writeFile(path.join(output, name), (await wc.capturePage()).toPNG()); } };
@@ -61,11 +62,12 @@ app.whenReady().then(async () => {
 
   await wc.executeJavaScript(`(async () => {
     modal('Модули', '', '<div id="module-list"></div>');
-    loadModuleContributions=async () => { connectedModules=[{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',enabled:true,permissions:['ui','network'],networkOrigins:['https://service.example.test'],views:[{id:'settings',title:'Настроить',slot:'panel'}]}]; };
+    loadModuleContributions=async () => { connectedModules=[{id:'fictional.module',name:'Fictional meetings',version:'1.0.0',enabled:true,permissions:['ui','network'],authentication:{identityRedirects:true},networkOrigins:['https://service.example.test'],views:[{id:'settings',title:'Настроить',slot:'panel'}]}]; };
     await refreshModuleList();
   })()`);
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-list details").open'), false);
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-list").textContent.includes("service.example.test")'), false);
+  assert.equal(await wc.executeJavaScript('document.querySelector("#module-list").textContent.includes("Переходы в корпоративную систему входа")'), true);
   assert.equal(await wc.executeJavaScript('document.querySelector("#module-list .module-catalog-row").scrollWidth <= document.querySelector("#module-list .module-catalog-row").clientWidth'), true);
   await new Promise(resolve => setTimeout(resolve, 150));
   await capture('connected.png');

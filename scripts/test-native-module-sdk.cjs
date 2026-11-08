@@ -13,7 +13,8 @@ app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 let host;
 app.whenReady().then(async () => {
-  const origin = 'https://login.example.test', startOrigin = 'https://start.example.test', expiry = new Date(Date.now() + 3600000).toISOString();
+  const origin = 'https://login.example.test', startOrigin = 'https://start.example.test', corporateOrigin = 'https://company-idp.example.test', expiry = new Date(Date.now() + 3600000).toISOString();
+  let corporateFlow = false;
   let records = [], currentSession = 'fictional', authSession, authWindow, captures = 0;
   const controller = new AbortController();
   const adaptedElectron = { ...electron, session: { fromPartition(partition, options) {
@@ -22,8 +23,10 @@ app.whenReady().then(async () => {
       authSession = session;
       session.protocol.handle('https', request => {
         captures++;
-        const body = new URL(request.url).origin === startOrigin
-          ? `<button id="sso">Workspace SSO</button><script>localStorage.setItem('fictional-login',JSON.stringify({credential:{access:'must-not-capture-from-start',until:'${expiry}'}}));document.querySelector('button').onclick=()=>location.href='${origin}/';</script>`
+        const requestOrigin = new URL(request.url).origin;
+        if (requestOrigin === 'https://analytics.example.test') return new Response('Fictional frame');
+        const body = requestOrigin === startOrigin || requestOrigin === corporateOrigin
+          ? `<button id="sso">Workspace SSO</button><script>localStorage.setItem('fictional-login',JSON.stringify({credential:{access:'must-not-capture-from-idp',until:'${expiry}'}}));document.querySelector('button').onclick=()=>location.href='${requestOrigin === startOrigin && corporateFlow ? corporateOrigin : origin}/';</script>`
           : `<iframe src="https://analytics.example.test/frame"></iframe><script>localStorage.setItem('fictional-login', JSON.stringify({credential:{access:'fictional-secret',until:'${expiry}'}}));</script>Fictional provider`;
         return new Response(body, { headers: { 'Content-Type': 'text/html' } });
       });
@@ -61,12 +64,32 @@ app.whenReady().then(async () => {
   while (!records[0].auth && Date.now() < separateDeadline) await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(records[0].auth?.token, 'fictional-secret'); assert.equal(records[0].auth?.origin, origin);
   await host.invoke(manifest.id, 'logout');
+  corporateFlow = true;
+  await host.invoke(manifest.id, 'login');
+  await authWindow.webContents.executeJavaScript('document.querySelector("#sso").click()');
+  await new Promise(resolve => setTimeout(resolve, 900));
+  assert.equal(host.entries.get(manifest.id).authBlockedOrigin, corporateOrigin); assert.equal(records[0].auth, undefined);
+  await host.invoke(manifest.id, 'logout');
+  nextManifest.version = '1.0.2'; nextManifest.authentication.identityRedirects = true;
+  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest))); await host.install(M.fromFiles(nextFiles), true);
+  await host.invoke(manifest.id, 'login');
+  await authWindow.webContents.executeJavaScript('document.querySelector("#sso").click()');
+  const corporateDeadline = Date.now() + 5000;
+  while (new URL(authWindow.webContents.getURL()).origin !== corporateOrigin && Date.now() < corporateDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(new URL(authWindow.webContents.getURL()).origin, corporateOrigin);
+  await new Promise(resolve => setTimeout(resolve, 900)); assert.equal(records[0].auth, undefined);
+  await authWindow.webContents.executeJavaScript('document.querySelector("#sso").click()');
+  const callbackDeadline = Date.now() + 5000;
+  while (!records[0].auth && Date.now() < callbackDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(records[0].auth?.token, 'fictional-secret'); assert.equal(records[0].auth?.origin, origin);
+  assert.deepEqual(records[0].originGrants || [], []);
+  await host.invoke(manifest.id, 'logout');
   await host.invoke(manifest.id, 'login');
   const preferences = authWindow.webContents.getLastWebPreferences();
   assert.equal(preferences.sandbox, true); assert.equal(preferences.nodeIntegration, false); assert.equal(preferences.contextIsolation, true);
   const entry = host.entries.get(manifest.id); assert.ok(entry.authFlow);
   currentSession = 'retired'; host.closeAll(); assert.ok(authWindow.isDestroyed()); assert.equal(host.entries.size, 0);
   assert.equal(typeof app.getApplicationNameForProtocol('aster-fictional-unregistered://rooms.example.test/room'), 'string');
-  console.log('PASS: real isolated browser sign-in, declarative token capture, hidden credentials, logout, account retirement and OS protocol lookup');
+  console.log('PASS: isolated sign-in, strict and corporate redirects, workspace-only session capture, hidden credentials, logout, account retirement and OS protocol lookup');
   app.exit(0);
 }).catch(error => { console.error(error); host?.closeAll(); app.exit(1); });

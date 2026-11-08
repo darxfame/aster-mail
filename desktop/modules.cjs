@@ -31,9 +31,10 @@ function manifest(input) {
   if (m.permissions.includes('meeting.launch') && !m.meetingLinks) invalid();
   if (m.authentication !== undefined) {
     const auth = m.authentication;
-    if (!auth || typeof auth !== 'object' || Array.isArray(auth) || Object.keys(auth).some(key => !['type', 'origins', 'identityOrigins', 'capture', 'authorization', 'path', 'startOrigin'].includes(key)) || auth.type !== 'browser-token' || !m.permissions.includes('auth.session') || !m.permissions.includes('network') || !Array.isArray(auth.origins) || !auth.origins.length || auth.origins.length > 8 || !Array.isArray(auth.identityOrigins) || auth.identityOrigins.length > 8) invalid();
+    if (!auth || typeof auth !== 'object' || Array.isArray(auth) || Object.keys(auth).some(key => !['type', 'origins', 'identityOrigins', 'capture', 'authorization', 'path', 'startOrigin', 'identityRedirects'].includes(key)) || auth.type !== 'browser-token' || !m.permissions.includes('auth.session') || !m.permissions.includes('network') || !Array.isArray(auth.origins) || !auth.origins.length || auth.origins.length > 8 || !Array.isArray(auth.identityOrigins) || auth.identityOrigins.length > 8) invalid();
     auth.origins = auth.origins.map(origin); auth.identityOrigins = auth.identityOrigins.map(origin);
     if (auth.startOrigin !== undefined) { auth.startOrigin = origin(auth.startOrigin); if (![...auth.origins, ...auth.identityOrigins].includes(auth.startOrigin)) invalid(); }
+    if (auth.identityRedirects !== undefined && typeof auth.identityRedirects !== 'boolean') invalid();
     auth.path ??= '/';
     if (typeof auth.path !== 'string' || !/^\/(?:[a-zA-Z0-9_/-]*)$/.test(auth.path) || auth.path.length > 200 || auth.path.startsWith('//') || auth.path.includes('..')) invalid();
     const capture = auth.capture;
@@ -170,9 +171,9 @@ function requestJSON(net, isolatedSession, definition, data, signal, sessionToke
     request.end(data.body === undefined ? undefined : JSON.stringify(data.body));
   });
 }
-function permissionSummary(values) {
+function permissionSummary(values, authentication) {
   const labels = { ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), 'meeting.launch': tr('Запуск приложения встречи по нажатию «Подключиться»'), 'auth.session': tr('Корпоративный вход в отдельное пространство сервиса'), events: tr('События приложения и модулей') };
-  return values.map(value => labels[value]).join(', ');
+  return values.map(value => labels[value]).concat(authentication?.identityRedirects ? [tr('Переходы в корпоративную систему входа')] : []).join(', ');
 }
 function validApplicationScheme(value) {
   return typeof value === 'string' && /^[a-z][a-z0-9+.-]{1,31}$/.test(value) && !/^(?:https?|file|javascript|data|blob|about|chrome.*|devtools|electron|shell|cmd|powershell|pwsh|bash|sh|vbscript|wscript|cscript|ms-.*|vscode.*|smb|ftp|mailto|tel|ssh|sftp|intent)$/.test(value);
@@ -202,4 +203,4 @@ function meetingTarget(definition, value) {
 function meetingLaunchSummary(definition) {
   return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
 }
-module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'auth.identity-redirects', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };

@@ -21,8 +21,8 @@ function sessionValue(value, origin, now = Date.now()) {
   if (!value || typeof value.token !== 'string' || !value.token || value.token.length > 4096 || /\s/.test(value.token) || !Number.isFinite(Date.parse(value.expiresAt)) || Date.parse(value.expiresAt) <= now) return null;
   return { origin, token: value.token, expiresAt: new Date(value.expiresAt).toISOString() };
 }
-function allowedNavigation(value, origins) {
-  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && origins.includes(url.origin); } catch { return false; }
+function allowedNavigation(value, origins, identityRedirects = false) {
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && (origins.includes(url.origin) || identityRedirects === true); } catch { return false; }
 }
 function authenticationStatus(host, entry) {
   host.current(entry);
@@ -55,7 +55,7 @@ async function signIn(host, entry, input) {
   entry.authFlow = { window, close };
   const navigation = (event, value) => {
     const url = value || event.url;
-    if (allowedNavigation(url, origins)) return;
+    if (allowedNavigation(url, origins, definition.authentication.identityRedirects)) return;
     event.preventDefault();
     if (event.isMainFrame === false) return; // Block unrelated frames without misreporting them as a login redirect.
     try { const parsed = new URL(url); entry.authBlockedOrigin = parsed.protocol === 'https:' ? parsed.origin : null; } catch { /* Never expose query strings from login redirects. */ }
@@ -68,7 +68,7 @@ async function signIn(host, entry, input) {
     item.webContents.on('render-process-gone', close);
     item.webContents.on('will-attach-webview', event => event.preventDefault());
     item.webContents.setWindowOpenHandler(({ url }) => {
-      if (windows.size >= 3 || url !== 'about:blank' && !allowedNavigation(url, origins)) { navigation({ preventDefault() {} }, url); return { action: 'deny' }; }
+      if (windows.size >= 3 || url !== 'about:blank' && !allowedNavigation(url, origins, definition.authentication.identityRedirects)) { navigation({ preventDefault() {} }, url); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: preferences, autoHideMenuBar: true } };
     });
     item.webContents.on('did-create-window', protect);

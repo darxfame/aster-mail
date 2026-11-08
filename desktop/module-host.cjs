@@ -89,7 +89,7 @@ class ModuleHost {
       const before = previous.manifest, after = bundle.manifest;
       const expanded = ['permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins'].some(key => (after[key] || []).some(value => !(before[key] || []).some(old => equal(old, value)))) || ['meetingLinks', 'authentication'].some(key => !equal(before[key], after[key])) || original.source?.repository !== bundle.source?.repository;
       if (expanded && !authorized) {
-        const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.permissionSummary(after.permissions)}\n${after.networkOrigins.join(', ')}\n${(after.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${M.meetingLaunchSummary(after)}\n${[...(after.authentication?.origins || []), ...(after.authentication?.identityOrigins || [])].join(', ')}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
+        const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.permissionSummary(after.permissions, after.authentication)}\n${after.networkOrigins.join(', ')}\n${(after.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${M.meetingLaunchSummary(after)}\n${[...(after.authentication?.origins || []), ...(after.authentication?.identityOrigins || [])].join(', ')}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
         if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
         if (answer.response !== 1) return false;
       }
@@ -243,7 +243,7 @@ class ModuleHost {
         if ((this.records().find(item => item.id === entry.id)?.originGrants || []).length >= 8) throw new Error(tr('Достигнут лимит дополнительных серверов модуля'));
         entry.originGrantPending = true;
         try {
-          const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Разрешить модулю доступ к серверу?'), detail: `${definition.name}\n${input.origin}\n${M.permissionSummary(definition.permissions)}`, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 });
+          const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Разрешить модулю доступ к серверу?'), detail: `${definition.name}\n${input.origin}\n${M.permissionSummary(definition.permissions, definition.authentication)}`, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 });
           this.current(entry);
           if (answer.response !== 1) return { granted: false, origin: input.origin };
           await this.update(records => { this.current(entry); const record = records.find(item => item.id === entry.id && item.enabled); if (!record) throw new Error(tr('Модуль выключен или не настроен')); record.originGrants = [...new Set([...(record.originGrants || []), input.origin])]; });

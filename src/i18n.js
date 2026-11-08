@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Переходы в корпоративную систему входа": "Redirects to the corporate identity provider",
     "Проверяем обновления модулей…": "Checking for module updates…",
     "Доступно обновление:": "Update available:",
     "Не удалось проверить обновления модулей.": "Could not check for module updates.",

@@ -80,6 +80,7 @@ test('desktop catalog displays package cards without an account and in demo, wit
     const calls = [], container = { isConnected: true };
     const context = vm.createContext({ modalBusy: false, confirmDiscardChanges: () => true, modal() {}, tr: value => value, esc: value => String(value), modulePermissionNames: () => ({}),
       state: { account: null, demo }, window: { aster: {} }, document: { querySelector: () => container }, api: async operation => { calls.push(operation); if (operation === 'moduleCatalog') return []; assert.equal(operation, 'moduleAuthorCatalog'); return { revision, modules: [f.item] }; } });
+    vm.runInContext(source.slice(source.indexOf('function modulePermissionSummary('), source.indexOf('let connectedModules')), context);
     vm.runInContext(source.slice(source.indexOf('async function moduleAuthorCatalog()'), source.indexOf('async function connectApprovedModule(')), context);
     await context.moduleAuthorCatalog();
     assert.deepEqual(calls, ['moduleAuthorCatalog', 'moduleCatalog']);
