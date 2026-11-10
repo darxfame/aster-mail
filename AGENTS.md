@@ -3,7 +3,10 @@
 ## Project Structure & Module Organization
 
 Aster Mail is an Electron client for Exchange OWA, targeting macOS
-Apple Silicon and Windows x64. `desktop/main.cjs` owns windows, credentials, transport, and IPC;
+13 Ventura or later on Apple Silicon and Windows x64. Preserve macOS 13.0 deployment
+targets for Electron, the frozen Keychain helper and all bundled native code;
+`scripts/verify-macos-compatibility.cjs` checks the packaged app during signing.
+`desktop/main.cjs` owns windows, credentials, transport, and IPC;
 `desktop/owa.cjs` implements OWA/EWS operations; `desktop/protocol.cjs` contains
 payload builders and parsers. `src/` holds the plain HTML/CSS/JavaScript UI and
 explicit demo data. `test/` contains Node.js tests, `assets/` contains the original

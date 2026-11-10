@@ -1,4 +1,4 @@
-// Two signed, hardened parents share one immutable TEST helper and a unique TEST Keychain item.
+// Signed parents share one TEST Keychain item; the frozen release helper is ping-only.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
@@ -24,10 +24,18 @@ app.whenReady().then(async () => {
   let legacyReads = 0;
   const legacy = { isEncryptionAvailable: () => true, decryptString(bytes) { legacyReads++; assert.equal(bytes.subarray(0,4).toString(),'old:'); return bytes.subarray(4).toString(); } };
   encryption = new KeychainEncryption({ resourcesPath:process.resourcesPath, legacy });
+  if (app.getVersion()==='0.0.4') {
+    // The exact release binary must answer without accessing its production key.
+    assert.equal(await encryption.isEncryptionAvailable(),true);
+    encryption.close(); app.exit(0); return;
+  }
   if (process.env.ASTER_DENIED_PROBE) {
     assert.equal(await encryption.isEncryptionAvailable(), false); encryption.close(); app.exit(0); return;
   }
   const data = path.join(directory, 'data'); await fs.mkdir(data, {recursive:true});
+  for (const value of ['', 'я', 'x'.repeat(3000), 'я'.repeat(4096), 'x'.repeat(65536)]) {
+    assert.equal(await encryption.decryptString(await encryption.encryptString(value)),value);
+  }
   const store = new LocalStore(data, encryption), modules = new LocalStore(path.join(data,'module-profile'), encryption);
   const credentials = {username:'fictional-user',password:'fictional-keychain-test-secret',server:'https://fictional.invalid'};
   if (app.getVersion()==='0.0.1') {
@@ -73,14 +81,17 @@ async function main() {
     await execute('/usr/bin/xcrun', ['swiftc', '-O', '-D', 'ASTER_KEYCHAIN_FIXTURE', '-module-cache-path', path.join(directory, 'swift-cache'), '-target', 'arm64-apple-macos13.0', swift, '-o', binary]);
     await execute('/usr/bin/codesign', ['--force', '--sign', 'Aster Mail Local Signing', '--identifier', 'app.astermail.keychain-helper.v1', '--options', 'runtime', '--timestamp=none', binary]);
     const digest = hash(await fs.readFile(binary));
-    await fs.writeFile(path.join(source, 'desktop/keychain-helper.json'), JSON.stringify({ protocol: 1, file: 'aster-keychain-v1', sha256: digest }));
     // An unsigned Node caller must be refused before any Keychain operation.
     const untrusted = spawn(binary, [], { stdio: ['pipe', 'pipe', 'ignore'] });
     let output = ''; untrusted.stdout.on('data', chunk => { output += chunk; });
     untrusted.stdin.on('error', () => {}); untrusted.stdin.end('{"id":1,"operation":"ping"}\n');
     assert.equal(await new Promise(resolve => untrusted.once('exit', resolve)), 77); assert.equal(output, '');
     const parents = [];
-    for (const version of ['0.0.1', '0.0.2', '0.0.3']) {
+    for (const version of ['0.0.1', '0.0.2', '0.0.3', '0.0.4']) {
+      const productionProbe = version === '0.0.4';
+      const helper = productionProbe ? path.join(root, 'assets/keychain-macos/aster-keychain-v1') : binary;
+      const manifest = productionProbe ? require('../desktop/keychain-helper.json') : { protocol: 1, file: 'aster-keychain-v1', sha256: digest };
+      await fs.writeFile(path.join(source, 'desktop/keychain-helper.json'), JSON.stringify(manifest));
       await fs.writeFile(path.join(source, 'package.json'), JSON.stringify({ name: 'aster-keychain-fixture', version, main: 'main.cjs', description: 'Fictional Keychain test', author: 'Aster Mail', license: 'MIT' }));
       const out = path.join(directory, version);
       await build({ projectDir: source, targets: Platform.MAC.createTarget('dir', Arch.arm64), publish: 'never', config: {
@@ -89,12 +100,12 @@ async function main() {
         directories: { output: out }, files: ['main.cjs', 'desktop/**', 'src/**'],
         electronFuses: version === '0.0.3' ? null : require('../package.json').build.electronFuses,
         afterSign: version === '0.0.3' ? undefined : context => require('./verify-keychain-helper.cjs').stampFramework(path.join(context.appOutDir, 'Aster Keychain Fixture.app')),
-        extraResources: [{ from: binary, to: 'keychain/aster-keychain-v1' }],
+        extraResources: [{ from: helper, to: 'keychain/aster-keychain-v1' }],
         mac: { identity: 'Aster Mail Local Signing', forceCodeSigning: true, target: 'dir', timestamp: 'none',
-          extendInfo: { AsterKeychainProtocol: 'fixture-1' }, signIgnore: ['aster-keychain-v1$', '\\.pak$', '\\.bin$', '\\.dat$', '\\.car$', '\\.metallib$'] },
+          extendInfo: { AsterKeychainProtocol: productionProbe ? '1' : 'fixture-1' }, signIgnore: ['aster-keychain-v1$', '\\.pak$', '\\.bin$', '\\.dat$', '\\.car$', '\\.metallib$'] },
       } });
       const app = path.join(out, 'mac-arm64/Aster Keychain Fixture.app');
-      assert.equal(hash(await fs.readFile(path.join(app, 'Contents/Resources/keychain/aster-keychain-v1'))), digest);
+      assert.equal(hash(await fs.readFile(path.join(app, 'Contents/Resources/keychain/aster-keychain-v1'))), manifest.sha256);
       await execute('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
       parents.push(app);
       if (version !== '0.0.3') await execute(path.join(app, 'Contents/MacOS/Aster Keychain Fixture'), [], { timeout: 30000 });
@@ -121,7 +132,7 @@ async function main() {
     await execute('/usr/libexec/PlistBuddy', ['-c', 'Delete :AsterKeychainProtocol', path.join(parents[1], 'Contents/Info.plist')]);
     await execute('/usr/bin/codesign', ['--force', '--sign', 'Aster Mail Local Signing', '--options', 'runtime', '--timestamp=none', '--preserve-metadata=entitlements,requirements', parents[1]]);
     await execute(path.join(parents[1], 'Contents/MacOS/Aster Keychain Fixture'), [], { env: { ...process.env, ASTER_DENIED_PROBE: '1' }, timeout: 30000 });
-    console.log('PASS: actual Keychain migration, immutable helper across different parent cdhashes, authenticated encryption and denied unsigned/legacy/injected/framework-downgrade callers');
+    console.log('PASS: frozen release helper ping, socket block boundaries, actual Keychain migration, immutable helper across parent cdhashes and denied unsigned/legacy/injected/framework-downgrade callers');
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }
 main().catch(error => { console.error(error); process.exit(1); });
