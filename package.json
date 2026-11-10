@@ -22,7 +22,7 @@
     "dist:win": "electron-builder --win nsis",
     "setup:mac-signing": "node scripts/setup-mac-signing.cjs",
     "test:ui": "electron scripts/test-release-ui.cjs",
-    "test:updates": "electron scripts/test-native-update-installer.cjs && electron scripts/test-update-ui.cjs",
+    "test:updates": "electron scripts/test-native-update-installer.cjs && node scripts/test-update-ui.cjs",
     "test:auto-replies": "electron scripts/test-auto-replies-ui.cjs",
     "test:quick-replies": "electron scripts/test-quick-replies-ui.cjs",
     "test:return-later": "electron scripts/test-mail-return-later-ui.cjs",
