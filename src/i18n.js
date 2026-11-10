@@ -1,6 +1,24 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "На macOS и Windows нажмите «Обновить и перезапустить». Настройки и аккаунт сохраняются. Для старых macOS-релизов без ZIP остаётся ручная установка DMG.": "On macOS and Windows, choose Update and restart. Your account and settings are preserved. Older macOS releases without a ZIP still require manual DMG installation.",
+    "Приложение на macOS пока без Developer ID и нотариализации; при первом переносе сохранённых данных возможен запрос Keychain. На Windows возможны системные запросы разрешения на установку.": "The macOS app does not yet use Developer ID or notarization; migrating saved data for the first time may prompt for Keychain access. Windows may ask for installation permission.",
+    "Обновление с перезапуском доступно в установленном приложении": "Restart updates are available in the installed app",
+
+    "Обновить и перезапустить": "Update and restart",
+    "Подготавливаем обновление…": "Preparing update…",
+    "Обновление подготовлено. Оно установится при выходе из приложения.": "The update is prepared. It will be installed when you quit the app.",
+    "Кнопка «Обновить и перезапустить» скачает и проверит обновление, затем перезапустит Aster. Перед выходом приложение проверит несохранённые изменения.": "Update and restart downloads and verifies the update, then restarts Aster. The app checks for unsaved changes before quitting.",
+    "На macOS нажмите «Обновить и перезапустить». Для старых релизов без ZIP остаётся ручная установка DMG. На Windows откройте EXE и следуйте установщику. Настройки и аккаунт сохраняются.": "On macOS, choose Update and restart. Older releases without a ZIP still require manual DMG installation. On Windows, open the EXE and follow the installer. Your account and settings are preserved.",
+    "На macOS обновление проверяется по постоянной подписи Aster, без Developer ID и нотариализации. Системные запросы Keychain после обновления пока возможны. На Windows установщик без подписи издателя.": "On macOS, updates are verified using the permanent Aster signature, without Developer ID or notarization. Keychain prompts may still appear after updates. The Windows installer has no publisher signature.",
+    "Перезапустите приложение перед другим обновлением": "Restart the app before preparing another update",
+    "Для обновления нужна установленная версия с постоянной подписью Aster": "Updating requires an installed version with the permanent Aster signature",
+    "Обновление не подготовлено": "The update was not prepared",
+    "Подготовка обновления не завершена. Перезапустите приложение.": "Update preparation did not finish. Restart the app.",
+    "Дождитесь завершения отправки или сохранения": "Wait for sending or saving to finish",
+    "Обновление с перезапуском доступно в установленном приложении macOS": "Restart updates are available in the installed macOS app",
+    "Приложение завершает работу": "The app is quitting",
+
     "Создать встречу из письма": "Create a meeting from this email",
     "Исходное письмо:": "Source email:",
     "Автор исходного письма:": "Source email sender:",

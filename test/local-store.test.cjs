@@ -96,8 +96,15 @@ test('tampered ciphertext fails closed without replacing it with plaintext', asy
 
 test('cancellation during an atomic save removes its temporary ciphertext and logout removes crash leftovers', async t => {
   const { store, directory } = await setup(t);
-  await store.load('alice'); let checks = 0;
-  await assert.rejects(store.save({ values: { 'aster-signature': 'secret' } }, () => { if (++checks === 4) throw new Error('Session closed during write'); }), /Session closed/);
+  await store.load('alice'); let active = true;
+  const write = fs.writeFile;
+  fs.writeFile = async (file, ...args) => {
+    const result = await write(file, ...args);
+    if (path.dirname(file) === directory && file.endsWith('.tmp')) active = false;
+    return result;
+  };
+  try { await assert.rejects(store.save({ values: { 'aster-signature': 'secret' } }, () => { if (!active) throw new Error('Session closed during write'); }), /Session closed/); }
+  finally { fs.writeFile = write; }
   assert.deepEqual(await fs.readdir(directory), []);
   await fs.writeFile(path.join(directory, 'local-data.enc.1234-abcd.tmp'), 'old encrypted bytes');
   await fs.writeFile(path.join(directory, 'unrelated.txt'), 'keep');
@@ -155,4 +162,41 @@ test('login profiles reject corrupted ciphertext and discard plaintext leftovers
   bytes[bytes.length - 1] ^= 1; await fs.writeFile(file, bytes);
   await assert.rejects(new LocalStore(directory, provider).loadLoginHint());
   await store.clear();
+});
+
+test('asynchronous Keychain migration replaces legacy files atomically and preserves them if encryption fails', async t => {
+  const legacy = encryption(), modern = encryption(), { store, directory } = await setup(t, legacy);
+  const credentials = { username: 'fictional', password: 'fictional-secret' };
+  await store.saveCredentials(credentials, guard);
+  await store.load('fictional'); await store.save({ values: { 'aster-theme': 'dark' } }, guard);
+  await store.saveLoginHint({ server: 'https://fictional.invalid', username: 'fictional' }, guard);
+  const file = path.join(directory, 'account.enc'), original = await fs.readFile(file);
+  let fail = true;
+  const provider = {
+    isEncryptionAvailable: async () => true,
+    needsMigration: bytes => bytes.subarray(0, 5).toString() !== 'ASTK1',
+    decryptString: async bytes => bytes.subarray(0, 5).toString() === 'ASTK1' ? modern.decryptString(bytes.subarray(5)) : legacy.decryptString(bytes),
+    encryptString: async value => { if (fail) throw new Error('Keychain unavailable'); return Buffer.concat([Buffer.from('ASTK1'), modern.encryptString(value)]); },
+  };
+  const migrated = new LocalStore(directory, provider);
+  await assert.rejects(migrated.loadCredentials(), /Keychain unavailable/);
+  assert.deepEqual(await fs.readFile(file), original);
+  fail = false; assert.deepEqual(await migrated.loadCredentials(), credentials);
+  const converted = await fs.readFile(file); assert.equal(converted.subarray(0, 5).toString(), 'ASTK1');
+  assert.equal(converted.includes(Buffer.from('fictional-secret')), false);
+  assert.deepEqual(await new LocalStore(directory, provider).loadCredentials(), credentials);
+  await migrated.migrate();
+  for (const name of ['account.enc', 'login-hint.enc', 'local-data.enc']) assert.equal((await fs.readFile(path.join(directory, name))).subarray(0, 5).toString(), 'ASTK1');
+  assert.equal((await migrated.load('fictional')).values['aster-theme'], 'dark');
+});
+
+test('session retirement during asynchronous encryption cannot publish a late write', async t => {
+  const base = encryption(); let finish, began;
+  const started = new Promise(resolve => { began = resolve; });
+  const { store, directory } = await setup(t, { ...base, encryptString: async value => { began(); await new Promise(resolve => { finish = resolve; }); return base.encryptString(value); } });
+  let active = true;
+  const saving = store.saveCredentials({ username: 'fictional', password: 'never-persist' }, () => { if (!active) throw new Error('Retired'); });
+  await started; active = false; const clearing = store.clear(); finish();
+  await assert.rejects(saving, /Retired/); await clearing;
+  assert.deepEqual(await fs.readdir(directory), []);
 });

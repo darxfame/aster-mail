@@ -1,7 +1,7 @@
 const i18n = require('../src/i18n.js');
 const tr = i18n.text;
 const errorMessage = require('../src/errors.js').message;
-const { app, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor } = require('electron');
+const { app, autoUpdater, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
@@ -14,12 +14,12 @@ let attachmentFiles, attachmentPreviews;
 const { AttachmentPreviews } = require('./attachment-previews.cjs');
 const { writeAttachment } = require('./attachment-trust.cjs');
 let attachmentCleanupError = '';
-let updates;
+let updates, macUpdates, windowsUpdates, localEncryption, activeServerWrites = 0;
 const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
 const { fetchContentImage } = require('./content-images.cjs');
-let localStore, connection, accountEpoch = 0;
+let localStore, connection, accountEpoch = 0, connectAttempt = 0;
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences, mailAlert } = require('./notifications.cjs');
 const { httpsURL, meetingLink, upcomingMeetings, nearestMeetings, countdown, pollingRange } = require('./meetings.cjs');
@@ -101,6 +101,22 @@ function confirmDiscardChanges() {
   if (response !== 1) return false;
   unsavedChanges = false;
   return true;
+}
+
+// Squirrel closes windows before before-quit. Run the same guards before calling it.
+function confirmQuit() {
+  if (activeServerWrites || [...(composeWindows?.entries.values() || [])].some(entry => entry.busy)) {
+    dialog.showMessageBoxSync(window, { type: 'info', message: tr('Дождитесь завершения отправки или сохранения'), buttons: [tr('Остаться')] });
+    return false;
+  }
+  if (!confirmDiscardChanges() || composeWindows && !composeWindows.confirmAll()) return false;
+  try { attachmentFiles?.clearSync(); } catch {
+    return dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Временные вложения не удалены'), detail: tr('Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.'), buttons: [tr('Остаться'), tr('Выйти')], defaultId: 0, cancelId: 0 }) === 1;
+  }
+  return true;
+}
+function retireForQuit() {
+  quitting = true; moduleHost?.closeAll(); moduleProfile?.retire(); attachmentPreviews?.closeAll(); composeWindows?.destroyAll(); connection?.controller.abort();
 }
 async function resetLocalData() {
   if (client || connection || resettingLocalData) throw new Error(tr('Сначала завершите подключение к аккаунту'));
@@ -257,7 +273,9 @@ async function connect(data, remember, restoring = false) {
   if (resettingLocalData) throw new Error(tr('Дождитесь завершения сброса локальных данных'));
   if (typeof data.username !== 'string' || !data.username.trim() || typeof data.password !== 'string' || !data.password) throw new Error(tr('Укажите логин и пароль'));
   const credentials = { server: normalizeServer(data.server), username: data.username.trim(), password: data.password };
-  if (remember) localStore.requireEncryption();
+  const attempt = ++connectAttempt, startingEpoch = accountEpoch;
+  if (remember) await localStore.requireEncryption();
+  if (attempt !== connectAttempt || startingEpoch !== accountEpoch || resettingLocalData || quitting) throw new Error(tr('Сессия аккаунта завершена'));
   if (composeWindows && !composeWindows.confirmAll()) throw new Error(tr('Закрытие писем отменено'));
   const epoch = ++accountEpoch;
   const retired = retireAccount();
@@ -308,6 +326,7 @@ async function installModuleBundle(bundle, guard) {
 }
 
 const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const serverWrites = new Set(['send', 'draft', 'editDraft', 'mailBatch', 'folderOperation', 'change', 'move', 'createEvent', 'updateEvent', 'respond', 'createContact', 'createMailRule', 'saveAutoReplies']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
@@ -319,9 +338,12 @@ function validate(operation, data) {
 }
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.astermail.desktop');
+  localEncryption = process.platform === 'darwin' && app.isPackaged
+    ? new (require('./keychain.cjs').KeychainEncryption)({ resourcesPath: process.resourcesPath, legacy: safeStorage })
+    : safeStorage;
   const { ModuleHost } = require('./module-host.cjs');
   const packages = path.join(app.getPath('userData'), 'modules');
-  moduleProfile = new (require('./module-profile.cjs').ModuleProfile)(path.join(app.getPath('userData'), 'module-profile'), packages, safeStorage, () => localStore?.data.modules || []);
+  moduleProfile = new (require('./module-profile.cjs').ModuleProfile)(path.join(app.getPath('userData'), 'module-profile'), packages, localEncryption, () => localStore?.data.modules || []);
   moduleHost = new ModuleHost({ electron: require('electron'), directory: packages,
     scope: () => connection && !client ? null : moduleProfile.scope(),
     save: (records, sessionId) => moduleProfile.save(records, sessionId),
@@ -361,11 +383,38 @@ app.whenReady().then(async () => {
   try { await attachmentFiles.clear(); } catch (error) { attachmentCleanupError = error.message; }
   updates = new Updates({ directory: path.join(app.getPath('userData'), 'updates'), installed: app.getVersion(),
     // Node fetch has no access to Electron OWA cookies and supports manual redirects.
-    fetch: (url, options) => globalThis.fetch(url, options), open: (file, signal) => openInstallerFile(file, shell, { signal }),
+    fetch: (url, options) => globalThis.fetch(url, options),
+    open: async (file, signal, asset, handle) => {
+      if (!asset.restart) return openInstallerFile(file, shell, { signal });
+      if (windowsUpdates) { await windowsUpdates.install(file, signal); return ''; }
+      if (!macUpdates) throw new Error(tr('Обновление с перезапуском доступно в установленном приложении'));
+      await macUpdates.install(handle, asset, signal);
+      return '';
+    },
     changed: value => { if (window && !window.isDestroyed()) window.webContents.send('aster-update', value); },
   });
+  if (process.platform === 'win32' && app.isPackaged) {
+    windowsUpdates = new (require('./windows-updates.cjs').WindowsUpdates)({
+      prepare: () => { if (!confirmQuit()) return false; quitting = true; return true; },
+      cancelled: () => { quitting = false; },
+      quit: () => { retireForQuit(); app.quit(); },
+    });
+  }
+  if (process.platform === 'darwin' && app.isPackaged) {
+    const { MacUpdates, applicationPath } = require('./mac-updates.cjs');
+    macUpdates = new MacUpdates({ autoUpdater, appPath: applicationPath(process.resourcesPath),
+      staged: () => updates.publish({ staged: true, status: 'ready' }),
+      restart: signal => {
+        signal.throwIfAborted();
+        if (!confirmQuit()) return;
+        signal.throwIfAborted();
+        // Prevent new writes and close guards from asking twice after approval.
+        retireForQuit(); autoUpdater.quitAndInstall();
+      },
+    });
+  }
   await updates.initialize();
-  localStore = new LocalStore(app.getPath('userData'), safeStorage);
+  localStore = new LocalStore(app.getPath('userData'), localEncryption);
   await fs.rm(settingsFile(), { force: true }); // Remove legacy plaintext notification settings.
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
@@ -381,7 +430,7 @@ app.whenReady().then(async () => {
     window.loadFile(page);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());
-    window.webContents.on('will-prevent-unload', event => { if (confirmDiscardChanges()) event.preventDefault(); });
+    window.webContents.on('will-prevent-unload', event => { if (quitting || confirmDiscardChanges()) event.preventDefault(); });
     window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     window.on('close', event => {
       if (!quitting && client) { event.preventDefault(); window.hide(); }
@@ -393,12 +442,15 @@ app.whenReady().then(async () => {
     if (event.sender === window?.webContents && event.senderFrame === window.webContents.mainFrame && typeof value === 'boolean') unsavedChanges = value;
   });
   ipcMain.handle('aster', async (event, operation, data) => {
-    let composeEntry, composeWrite = false;
+    let composeEntry, composeWrite = false, serverWrite = false;
     const debugErrors = notificationSettings.debugErrors;
     try {
       if (composeWindows.entries.has(event.sender)) composeEntry = composeWindows.authorize(event.sender, event.senderFrame, operation, data?.sessionId);
       else if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
       validate(operation, data);
+      if (quitting) throw new Error(tr('Приложение завершает работу'));
+      serverWrite = serverWrites.has(operation) && !(operation === 'editDraft' && data.action === 'read');
+      if (serverWrite) activeServerWrites++;
       if (composeEntry) {
         if (!composeEntry.demo && (!client || client.syncId !== composeEntry.sessionId)) throw new Error(tr('Сессия аккаунта завершена'));
         if (operation === 'composeContext') return { ok: true, value: composeEntry.context };
@@ -480,6 +532,9 @@ app.whenReady().then(async () => {
       if (operation === 'restore') {
         if (client && account) return { ok: true, value: { server: account.server, username: account.username, sessionId: client.syncId, localData: localStore.data.values || {}, notifications: notificationSettings } };
         const epoch = accountEpoch;
+        const guard = () => { if (epoch !== accountEpoch || quitting || resettingLocalData) throw new Error(tr('Сессия аккаунта завершена')); };
+        await Promise.allSettled([localStore.migrate(guard), moduleProfile.store.migrate(guard)]);
+        guard();
         const saved = await localStore.loadCredentials(() => { if (epoch !== accountEpoch) throw new Error(tr('Сессия аккаунта завершена')); });
         if (!saved) return { ok: true, value: null };
         return { ok: true, value: await connect(saved, false, true) };
@@ -654,7 +709,7 @@ app.whenReady().then(async () => {
       }
       return { ok: true, value };
     } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: debugErrors }), userFacing: true, connectionError: error.connectionError === true }; }
-    finally { if (composeWrite) composeEntry.busy = false; }
+    finally { if (composeWrite) composeEntry.busy = false; if (serverWrite) activeServerWrites--; }
   });
   createWindow();
   ipcMain.handle('aster-widget', async (event, operation, data) => {
@@ -708,12 +763,9 @@ app.whenReady().then(async () => {
   app.on('activate', () => { reveal(); void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
 });
 app.on('before-quit', event => {
-  if (!confirmDiscardChanges() || composeWindows && !composeWindows.confirmAll()) { event.preventDefault(); return; }
-  try { attachmentFiles?.clearSync(); } catch {
-    const answer = dialog.showMessageBoxSync(window, { type: 'warning', message: tr('Временные вложения не удалены'), detail: tr('Закройте файлы во внешних приложениях и повторите выход. Если выйти сейчас, удаление будет повторено при следующем запуске Aster.'), buttons: [tr('Остаться'), tr('Выйти')], defaultId: 0, cancelId: 0 });
-    if (answer !== 1) { event.preventDefault(); return; }
-  }
-  quitting = true; moduleHost?.closeAll(); moduleProfile?.retire(); attachmentPreviews?.closeAll(); composeWindows?.destroyAll(); connection?.controller.abort();
+  if (quitting) return;
+  if (!confirmQuit()) { event.preventDefault(); return; }
+  retireForQuit();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => { try { attachmentFiles?.clearSync(); } catch { /* The user has acknowledged locked copies before quitting; retry at startup. */ } });
+app.on('will-quit', () => { localEncryption?.close?.(); try { attachmentFiles?.clearSync(); } catch { /* The user has acknowledged locked copies before quitting; retry at startup. */ } });
