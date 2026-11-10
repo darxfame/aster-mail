@@ -71,7 +71,7 @@ async function main() {
       const restarted = await fs.readFile(path.join(directory, 'restarted.json'), 'utf8').catch(() => '');
       if (restarted) {
         assert.equal(JSON.parse(restarted).version, '0.0.2');
-        assert.equal(path.normalize(JSON.parse(restarted).executable).toLowerCase(), path.normalize(executable).toLowerCase());
+        assert.equal((await fs.realpath(JSON.parse(restarted).executable)).toLowerCase(), (await fs.realpath(executable)).toLowerCase());
         console.log('PASS: real NSIS preserves windows on cancellation, waits for graceful exit, replaces the fixture and relaunches 0.0.2 with settings');
         return;
       }
