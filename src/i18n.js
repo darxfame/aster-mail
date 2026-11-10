@@ -1,6 +1,16 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Создать встречу из письма": "Create a meeting from this email",
+    "Исходное письмо:": "Source email:",
+    "Автор исходного письма:": "Source email sender:",
+    "Дата исходного письма:": "Source email date:",
+    "Открыть исходное письмо в OWA:": "Open the source email in OWA:",
+    "Встреча подготовлена из письма. Проверьте время, участников и текст перед отправкой. Вложения не переносятся.": "Meeting prepared from an email. Review the time, attendees and text before sending. Attachments are not copied.",
+    "Ссылка на исходное письмо относится к вашему ящику; у других участников может не быть доступа.": "The source link points to your mailbox; other attendees may not have access.",
+    "Адрес аккаунта не определён. Добавьте участников вручную.": "Your account address could not be determined. Add attendees manually.",
+    "Некоторые адреса недоступны. Проверьте список участников.": "Some addresses are unavailable. Check the attendee list.",
+    "Текст письма сокращён до 16000 символов.": "The email text was shortened to 16000 characters.",
     "Фильтры поиска писем": "Mail search filters",
     "Поиск писем": "Search mail",
     "Условия применяются на сервере ко всем письмам, включая ещё не загруженные.": "Filters are applied on the server to all mail, including messages not yet loaded.",

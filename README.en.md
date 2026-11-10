@@ -77,6 +77,19 @@ The new scoped mail FindItem/AQS search has not been verified against corporate
 Exchange or on Windows; completeness depends on the server search index.
 [Filter example](docs/mail-search.jpg).
 
+Create meeting in the reader prepares a new meeting with the email subject and
+plain text. Suggested attendees come from From, To and Cc, excluding known own
+addresses, duplicates and Bcc. If your address is unknown, add attendees manually.
+Quoted text is limited to 16000 characters with a visible truncation notice;
+attachments are not copied. The description includes a link to the message in
+your OWA mailbox. Other attendees may lack access, and compatibility of that link
+with your Exchange configuration is unverified. The default start is the next
+half-hour boundary with a 30-minute duration. Review time, attendees and content
+before explicitly sending. Preparation does not change the source email or saved
+events and sends no invitation. A failed send preserves the form. Tested with
+fictional data on macOS; Windows and real Exchange remain unverified for this flow.
+[Meeting example](docs/mail-to-meeting.jpg).
+
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,
