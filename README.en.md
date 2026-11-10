@@ -90,6 +90,33 @@ events and sends no invitation. A failed send preserves the form. Tested with
 fictional data on macOS; Windows and real Exchange remain unverified for this flow.
 [Meeting example](docs/mail-to-meeting.jpg).
 
+The **Remind me later** bell in the message reader saves a local reminder.
+The optional **Mark as unread now and return to the message list** checkbox updates
+Exchange when saving, using a fresh ChangeKey. The timer never changes the mailbox
+or moves messages. Saving the schedule and marking unread have separate outcomes;
+an uncertain unread write is reported without retrying it. Drafts are unsupported.
+Open **Mail reminders** in the folder menu to view deadlines, open the original or
+delete a reminder. Set a different time through the bell in the original message.
+
+Up to 30 reminders persist in the encrypted account profile: message ID, UTC time,
+schedule token and trigger timestamp, without subjects, bodies or recipients.
+The local list and deletion work without an Exchange read; subjects load separately
+into memory. A moved or deleted original can become unavailable without preventing
+you from deleting its reminder. Demo reminders stay in memory with no OS alerts.
+
+Reminders run every 15 seconds while Aster is open with an account connected, even
+if subsequent mail or calendar reads fail. Missed deadlines coalesce into one alert
+after wake or launch and account connection. Privacy mode defers alerts until it
+ends. Explicit reminders are independent of new-mail notification settings and
+honor common sound and privacy settings. Notifications contain no email subjects
+or bodies and open the reminder list without replacing an editor or other dialog.
+Restarting preserves schedules; signing out deletes them and other accounts never
+receive them. The trigger is saved before OS handoff to prevent replay on restart;
+a crash between these steps can suppress the popup, but its entry stays in the list.
+Display also depends on OS permissions. Unsupported notifications leave reminders
+pending in the list. Tested with fictional macOS data; real Exchange and Windows
+have not been verified for this feature. [Example](docs/mail-reminders.jpg).
+
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,

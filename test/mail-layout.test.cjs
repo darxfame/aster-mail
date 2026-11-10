@@ -57,7 +57,7 @@ test('short reader windows collapse attachments without overriding a user expans
 test('reader actions collapse by available width or height and preserve a manually opened menu', () => {
   const actions = { dataset: {}, open: true };
   let collapsed;
-  const toolbar = { clientWidth: 700, classList: { toggle: (name, value) => { assert.equal(name, 'compact-actions'); collapsed = value; } }, querySelector: () => actions };
+  const toolbar = { clientWidth: 700, scrollWidth: 640, classList: { toggle: (name, value) => { assert.equal(name, 'compact-actions'); collapsed = value; } }, querySelector: () => actions };
   const context = vm.createContext({ window: { innerHeight: 800 }, document: { querySelectorAll: () => [], querySelector: () => toolbar } });
   vm.runInContext(source.slice(source.indexOf('function applyReaderDensity('), source.indexOf('function renderSignaturePreview(')), context);
   context.applyReaderDensity(); assert.equal(collapsed, false); assert.equal(actions.open, true);

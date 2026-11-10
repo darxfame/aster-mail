@@ -372,6 +372,7 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 #reader .reader-replies { display:flex; flex:0 0 auto; flex-wrap:nowrap; margin-left:auto; gap:5px; }
 #reader .reader-position { white-space:nowrap; flex-shrink:0; }
 #reader .reader-more-actions,#reader .reader-mail-actions { display:contents; }
+#reader .reader-more-actions::details-content { display:contents; }
 #reader .reader-more-actions>summary { display:none; }
 #reader .compact-actions .reader-position { display:none; }
 #reader .compact-actions .reader-more-actions { display:block; position:relative; flex-shrink:0; }

@@ -19,6 +19,7 @@ const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
 const { WaitingReplies } = require('./waiting-replies.cjs');
+const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.cjs');
 const { fetchContentImage } = require('./content-images.cjs');
 let localStore, connection, accountEpoch = 0, connectAttempt = 0;
 const { normalizeServer } = require('./protocol.cjs');
@@ -192,8 +193,8 @@ async function showWidget() {
   if (!widgetWindow.webContents.isLoading()) { refreshWidget(); widgetWindow.show(); widgetWindow.focus(); }
 }
 function notify(kind, title, body, navigation) {
-  if (privacyHidden()) return;
-  if (!Notification.isSupported()) { lastPollError = tr('Системные уведомления недоступны'); return; }
+  if (privacyHidden()) return false;
+  if (!Notification.isSupported()) { lastPollError = tr('Системные уведомления недоступны'); return false; }
   // Play our sound explicitly; system notification audio can be suppressed independently.
   const notification = new Notification({ title, body, silent: true,
     timeoutType: kind === 'mail' ? 'never' : 'default', groupId: `aster-${kind}`, icon: path.join(__dirname, '../assets/icon.png'),
@@ -201,21 +202,35 @@ function notify(kind, title, body, navigation) {
   if (activeNotifications.size >= 20) { const oldest = activeNotifications.values().next().value; oldest.close(); activeNotifications.delete(oldest); }
   activeNotifications.add(notification);
   notification.asterNavigation = navigation;
-  notification.on('click', () => reveal(navigation));
+  notification.on('click', () => { if (!navigation?.sessionId || navigation.sessionId === client?.syncId) reveal(navigation); });
   notification.on('close', () => activeNotifications.delete(notification));
   notification.on('failed', () => { activeNotifications.delete(notification); lastPollError = tr('macOS не показала уведомление. Проверьте разрешение для Aster Mail в настройках системы.'); });
   notification.show();
   if (notificationSettings.sounds) {
+    const soundKind = kind === 'mail-reminder' ? 'mail' : kind;
     if (process.platform === 'darwin') {
-      const sound = app.isPackaged ? path.join(process.resourcesPath, `aster-${kind}.wav`) : path.join(__dirname, `../assets/sounds/aster-${kind}.wav`);
+      const sound = app.isPackaged ? path.join(process.resourcesPath, `aster-${soundKind}.wav`) : path.join(__dirname, `../assets/sounds/aster-${soundKind}.wav`);
       const player = spawn('/usr/bin/afplay', [sound], { stdio: 'ignore' });
       player.on('error', () => { lastPollError = tr('Не удалось воспроизвести звук уведомления'); });
       player.on('exit', code => { if (code) lastPollError = tr('Не удалось воспроизвести звук уведомления'); });
-    } else if (window && !window.isDestroyed()) window.webContents.send('aster-sound', kind);
+    } else if (window && !window.isDestroyed()) window.webContents.send('aster-sound', soundKind);
   }
+  return true;
+}
+function closeMailReminderAlerts() {
+  for (const alert of activeNotifications) if (alert.asterNavigation?.mailReminders) { alert.close(); activeNotifications.delete(alert); }
+}
+async function pollMailReminders() {
+  const active = client;
+  if (!active?.mailReminders || quitting) return;
+  try {
+    await refreshPrivacy();
+    if (client !== active || quitting) return;
+    await active.mailReminders.tick();
+  } catch { /* Local reminders must never interrupt mail, calendar or login. */ }
 }
 async function pollNotifications() {
-  void pollMail();
+  void pollMail(); void pollMailReminders();
   if (!client || polling) return;
   polling = true;
   const active = client;
@@ -307,6 +322,15 @@ async function connect(data, remember, restoring = false) {
     assertCurrent();
     candidate.syncId = crypto.randomUUID(); client = candidate;
     candidate.waitingReplies = new WaitingReplies(candidate, localStore, () => { if (client !== candidate || quitting || current.controller.signal.aborted) throw new Error(tr('Сессия аккаунта завершена')); });
+    candidate.mailReminders = new MailReminders(localStore, {
+      guard: () => { if (client !== candidate || quitting || current.controller.signal.aborted) throw new Error(tr('Сессия аккаунта завершена')); },
+      available: () => !privacyHidden() && Notification.isSupported(),
+      deliver: count => {
+        if (client !== candidate || quitting || privacyHidden()) return false;
+        try { return notify('mail-reminder', tr('Напоминание о письме'), count === 1 ? tr('Пора вернуться к письму. Откройте список напоминаний в Aster.') : `${tr('Писем к напоминанию:')} ${count}. ${tr('Откройте список напоминаний в Aster.')}`, { view: 'mail', mailReminders: true, sessionId: candidate.syncId }); }
+        catch { return false; }
+      },
+    });
     notificationSettings = preferences({ ...saved.notifications, language: saved.notifications?.language || i18n.language });
     i18n.setLanguage(notificationSettings.language);
     updateTrayMenu();
@@ -639,6 +663,20 @@ app.whenReady().then(async () => {
         return { ok: true, value: catalog.map(item => ({ ...item, sessionId: moduleHost.current().sessionId })) };
       }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
+      if (['mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder'].includes(operation)) {
+        const reminders = activeClient.mailReminders;
+        if (operation === 'setMailReminder') { const value = await reminders.set(data); closeMailReminderAlerts(); return { ok: true, value }; }
+        if (operation === 'removeMailReminder') { await reminders.remove(data); closeMailReminderAlerts(); return { ok: true, value: true }; }
+        const entries = reminders.entries();
+        if (operation === 'mailReminderSubjects') {
+          let titles = [], error = '';
+          try { titles = await reminderSubjects(activeClient, entries); }
+          catch (failure) { error = errorMessage(failure, { operation: 'mailReminderSubjects' }); }
+          if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+          return { ok: true, value: { titles, error } };
+        }
+        return { ok: true, value: { entries, error: reminders.error, supported: Notification.isSupported(), privacyActive: privacyHidden() } };
+      }
       if (['waitingReplies', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply'].includes(operation)) {
         const waiting = activeClient.waitingReplies;
         if (operation === 'waitForReply') { await waiting.track(data); return { ok: true, value: true }; }
@@ -769,7 +807,7 @@ app.whenReady().then(async () => {
   const privacyTimer = setInterval(() => { void refreshPrivacy(); }, 2000); privacyTimer.unref();
   void refreshPrivacy();
   const widgetTimer = setInterval(refreshWidget, 15000); widgetTimer.unref();
-  const mailTimer = setInterval(() => { void pollMail(); }, 15000); mailTimer.unref();
+  const mailTimer = setInterval(() => { void pollMail(); void pollMailReminders(); }, 15000); mailTimer.unref();
   powerMonitor.on('resume', () => { sharingPrivacy.active = null; syncNotificationPrivacy(); void refreshPrivacy(); void pollNotifications(); if (app.isPackaged) void updates.checkAutomatically(); });
   const timer = setInterval(() => { void pollNotifications(); }, 60000); timer.unref();
   if (app.isPackaged) {
