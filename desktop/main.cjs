@@ -581,6 +581,11 @@ app.whenReady().then(async () => {
         return { ok: true, value: catalog.map(item => ({ ...item, sessionId: moduleHost.current().sessionId })) };
       }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
+      if (['autoReplies', 'saveAutoReplies'].includes(operation)) {
+        const guard = () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); };
+        const replies = require('./auto-replies.cjs');
+        return { ok: true, value: await (operation === 'autoReplies' ? replies.read(activeClient, guard) : replies.save(activeClient, data, guard)) };
+      }
       if (operation === 'saveMeetingReminders') {
         const normalized = require('./notifications.cjs').meetingReminders([{ id: data.ref?.id, start: data.start, minutes: data.minutes }]);
         if (normalized.length !== 1 || typeof data.custom !== 'boolean') throw new Error(tr('Некорректное напоминание'));

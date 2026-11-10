@@ -9,7 +9,7 @@ An open-source **Microsoft Exchange OWA/EWS desktop client** for
 app, connected directly to your server, with no Aster cloud or telemetry.
 
 [![Release](https://img.shields.io/github/v/release/darxfame/aster-mail?cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
-[![Checks](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
+[![Build and tests](https://github.com/darxfame/aster-mail/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/darxfame/aster-mail/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [User guide (Russian)](docs/USER-GUIDE.md) ·
@@ -29,7 +29,7 @@ depends on your server configuration. The app is at an early stage.
 | --- | --- |
 | Platforms | macOS on Apple Silicon; Windows x64 |
 | Connection | An HTTPS OWA URL; your corporate VPN if required |
-| EWS access | Required for sending, editing drafts, and some calendar and contact operations |
+| EWS access | Required for sending, editing drafts, automatic replies, and some calendar and contact operations |
 | Authentication | SSO/MFA through a separate domain is not supported yet |
 | Offline use | No offline database yet |
 | Interface language | Russian and English; choose Settings → General → Interface language |
@@ -40,6 +40,17 @@ Working OWA access does not guarantee that every feature is available.
 Universal Exchange or Microsoft 365 compatibility is not claimed. Verify the
 workflows you need on a test Exchange account before using your primary mailbox.
 See the [detailed limitations (Russian)](docs/USER-GUIDE.md#ограничения-01).
+
+Settings → Automatic replies reads Exchange out-of-office settings and lets you
+turn replies off, enable them indefinitely or schedule a period, with separate
+internal and external messages. Exchange policy limits external recipients.
+Use the dedicated save button; Exchange sends replies even when Aster is closed.
+Unchanged OWA HTML is preserved; edited replies are saved without formatting.
+Failed writes are never retried automatically: reload settings before saving again.
+Aster rereads settings before saving and rejects detected OWA changes. EWS has no
+atomic version check for this operation, so avoid editing in two clients at once.
+Requires EWS GetUserOofSettings/SetUserOofSettings; this feature has not yet been
+verified against corporate Exchange or on Windows. [UI example](docs/auto-replies.jpg).
 
 ## What you can do
 

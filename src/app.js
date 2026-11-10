@@ -700,6 +700,10 @@ function contactModal() {
 }
 function selectSettingsTab(selected) {
   const form = selected.closest('form');
+  const autoRepliesSave = form.querySelector('#auto-replies-save');
+  const settingsSave = form.querySelector('.settings-footer [type="submit"]');
+  if (autoRepliesSave) autoRepliesSave.hidden = selected.id !== 'settings-tab-auto-replies';
+  if (settingsSave) settingsSave.hidden = selected.id === 'settings-tab-auto-replies';
   for (const tab of form.querySelectorAll('[role="tab"]')) {
     const active = tab === selected;
     tab.setAttribute('aria-selected', String(active));
@@ -714,7 +718,7 @@ async function settingsModal() {
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal(tr('Настройки Aster'), tr('Спокойное пространство, настроенное под вас.'), `<form id="settings-form">
     <div class="settings-tabs" role="tablist" aria-label="${tr("Разделы настроек")}">
-      ${[['general', tr('Общие')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
+      ${[['general', tr('Общие')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
     </div>
     <div class="settings-panels">
     <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
@@ -730,6 +734,7 @@ async function settingsModal() {
     <label class="field"><span>${tr("Расположение меню")}</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>${tr("Слева · под папками, над аккаунтом")}</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>${tr("Внизу окна · горизонтальная панель")}</option></select></label>
     </section>
     <section id="settings-panel-modules" role="tabpanel" aria-labelledby="settings-tab-modules" tabindex="0" hidden>${moduleSettingsMarkup()}</section>
+    <section id="settings-panel-auto-replies" role="tabpanel" aria-labelledby="settings-tab-auto-replies" tabindex="0" hidden>${autoRepliesMarkup()}</section>
     <section id="settings-panel-signature" role="tabpanel" aria-labelledby="settings-tab-signature" tabindex="0" hidden>
     <h3 class="settings-section-title">${tr("Подпись в письмах")}</h3>
     ${checkbox('syncSignature', tr('Использовать подпись из OWA'), syncSignature)}
@@ -769,8 +774,9 @@ async function settingsModal() {
     <button class="secondary" type="button" data-action="updates">${tr("Обновления Aster Mail")}</button>
     </section>
     </div>
-    <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
+    <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
+  setupAutoReplies($('#settings-panel-auto-replies'));
   void refreshModuleList().catch(showError);
   $('#settings-form').addEventListener('keydown', event => {
     if (!event.target.matches('[role="tab"]')) return;
@@ -792,7 +798,7 @@ async function submitForm(form, operation) {
   if (modalBusy) return;
   const active = document.activeElement;
   modalBusy = true; form.classList.add('busy'); form.inert = true; form.setAttribute('aria-busy', 'true');
-  const errorBox = form.querySelector('.form-error[role="alert"]');
+  const errorBox = form.querySelector(form.id === 'settings-form' ? '.settings-footer .form-error[role="alert"]' : '.form-error[role="alert"]');
   errorBox.textContent = '';
   try { await operation(Object.fromEntries(new FormData(form))); }
   catch (error) { errorBox.textContent = errorText(error); }
@@ -1142,7 +1148,9 @@ document.addEventListener('submit', event => {
   if (form.id === 'module-github-form') { void installModuleFromGitHub(form).catch(showError); return; }
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
+    if (!form.querySelector('#settings-panel-auto-replies').hidden) { form.querySelector('#auto-replies-save').click(); return; }
     submitForm(form, async data => {
+      if (form.querySelector('#settings-panel-auto-replies').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните автоответы отдельной кнопкой или загрузите их заново.'));
       const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       T.zone(next.timeZone);
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };

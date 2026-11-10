@@ -12,7 +12,7 @@
 [![Релиз](https://img.shields.io/github/v/release/darxfame/aster-mail?style=flat&label=%D0%A0%D0%B5%D0%BB%D0%B8%D0%B7&labelColor=30263f&color=8b64cb&cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
 [![Скачивания](https://img.shields.io/github/downloads/darxfame/aster-mail/total?style=flat&label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/releases)
 [![Звёзды](https://img.shields.io/github/stars/darxfame/aster-mail?style=flat&label=%D0%97%D0%B2%D1%91%D0%B7%D0%B4%D1%8B&labelColor=30263f&color=8b64cb)](https://github.com/darxfame/aster-mail/stargazers)
-[![Проверки](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
+[![Сборка и тесты](https://github.com/darxfame/aster-mail/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/darxfame/aster-mail/actions/workflows/release.yml)
 
 [Руководство](docs/USER-GUIDE.md) · [План развития](docs/OWA-TODO.md) ·
 [Сообщить об ошибке](https://github.com/darxfame/aster-mail/issues/new/choose) ·
@@ -30,13 +30,25 @@
 | --- | --- |
 | Компьютер | macOS на Apple Silicon или Windows x64 |
 | Подключение | HTTPS-адрес OWA; корпоративный VPN, если он требуется |
-| Полный набор функций | Отправка, редактирование черновиков и часть операций календаря и контактов требуют EWS |
+| Полный набор функций | Отправка, редактирование черновиков, автоответы и часть операций календаря и контактов требуют EWS |
 | Авторизация | SSO/MFA через отдельный домен пока не поддерживается |
 | Работа без сети | Офлайн-базы пока нет |
 | Язык интерфейса | Русский и английский; выбор в Настройки → Общие → Язык интерфейса |
 
 Есть демо с вымышленными данными: интерфейс можно оценить без подключения
 корпоративной почты. [Запуск браузерного демо](#демо-без-exchange).
+
+В «Настройки → Автоответы» можно загрузить серверные настройки отсутствия,
+выключить автоответы, включить постоянно или на период, задать ответы сотрудникам
+и внешним отправителям. Внешняя аудитория ограничена политикой Exchange.
+Автоответы сохраняются отдельной кнопкой; их отправляет Exchange даже при закрытом
+Aster. Неизменённое HTML-оформление OWA сохраняется, отредактированные ответы
+сохраняются без оформления. После ошибки записи сначала загрузите настройки заново;
+операция автоматически не повторяется. Перед сохранением Aster повторно читает
+настройки и отклоняет замеченные изменения в OWA; EWS не предоставляет атомарной
+проверки версии, поэтому одновременное редактирование в двух клиентах не рекомендуется.
+Требуются EWS GetUserOofSettings/SetUserOofSettings; реальная корпоративная OWA
+и Windows для этой функции пока не проверены. [Пример интерфейса](docs/auto-replies.jpg).
 
 ## Почему Aster Mail
 

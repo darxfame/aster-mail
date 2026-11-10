@@ -78,7 +78,9 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .settings-dialog .modal-header{flex-shrink:0}
 .settings-dialog .modal-body{flex:1;min-height:0;display:flex;padding-bottom:0}
 #settings-form{display:flex;flex-direction:column;min-width:0;width:100%}
-.settings-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);flex-shrink:0}
+.settings-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);flex-shrink:0;overflow-x:auto}
+#auto-replies-fields{border:0;padding:0;margin:0;min-width:0}
+#auto-replies-fields:disabled{opacity:.6}
 .settings-tabs [role="tab"]{flex:1;padding:13px 8px;border-radius:8px 8px 0 0;border-bottom:2px solid transparent;font-size:12px;color:var(--muted);white-space:nowrap}
 .settings-tabs [role="tab"]:hover{background:var(--surface2);color:var(--text)}
 .settings-tabs [aria-selected="true"]{background:var(--accent-bg);color:var(--accent);border-bottom-color:var(--accent)}

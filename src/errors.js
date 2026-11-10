@@ -24,7 +24,7 @@
     else if (/\b(?:ENOENT|EACCES|EPERM)\b/.test(raw)) text = tr('Не удалось получить доступ к локальному файлу. Проверьте права и доступность папки.');
     else text = tr('Не удалось выполнить действие: сервер вернул ошибку.');
     // Retain write uncertainty even when a protocol error is replaced by plain language.
-    const writing = ['send', 'draft', 'editDraft', 'move', 'change', 'mailBatch', 'folderOperation', 'createMailRule', 'createEvent', 'updateEvent', 'respond', 'eventMessage'].includes(operation);
+    const writing = ['send', 'draft', 'editDraft', 'move', 'change', 'mailBatch', 'folderOperation', 'createMailRule', 'createEvent', 'updateEvent', 'respond', 'eventMessage', 'saveAutoReplies'].includes(operation);
     if (/неизвестен|не повторялась|перед повтор|unknown|not retried|before retry/i.test(raw) || writing && (native || status >= 500 || !status && !code && !/^Invalid /.test(raw))) {
       text += ` ${tr('Результат операции может быть неизвестен. Проверьте OWA перед повтором.')}`;
     }
