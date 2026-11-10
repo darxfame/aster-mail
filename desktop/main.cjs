@@ -581,6 +581,20 @@ app.whenReady().then(async () => {
         return { ok: true, value: catalog.map(item => ({ ...item, sessionId: moduleHost.current().sessionId })) };
       }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
+      if (['quickReplies', 'saveQuickReplies'].includes(operation)) {
+        const normalize = require('../src/quick-replies.js').normalize;
+        if (operation === 'saveQuickReplies') {
+          const replies = normalize(data.replies);
+          if (activeClient.quickRepliesSaving || data.revision !== (activeClient.quickRepliesRevision || 0)) throw new Error(tr('Шаблоны изменились в другом окне. Обновите список перед сохранением.'));
+          activeClient.quickRepliesSaving = true;
+          try {
+            await localStore.save({ quickReplies: replies }, () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); });
+            if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+            activeClient.quickRepliesRevision = (activeClient.quickRepliesRevision || 0) + 1;
+          } finally { activeClient.quickRepliesSaving = false; }
+        }
+        return { ok: true, value: { replies: normalize(localStore.data.quickReplies || []), revision: activeClient.quickRepliesRevision || 0 } };
+      }
       if (['autoReplies', 'saveAutoReplies'].includes(operation)) {
         const guard = () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); };
         const replies = require('./auto-replies.cjs');

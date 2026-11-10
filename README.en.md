@@ -52,6 +52,15 @@ atomic version check for this operation, so avoid editing in two clients at once
 Requires EWS GetUserOofSettings/SetUserOofSettings; this feature has not yet been
 verified against corporate Exchange or on Windows. [UI example](docs/auto-replies.jpg).
 
+Expand Quick replies in the composer to search saved snippets and insert plain text
+at the cursor. New template and Template editor let you create, edit and delete
+replies. Inserting a reply preserves the message, recipients, signature and
+attachments; sending remains a separate action. Up to 30 templates are stored
+encrypted for the current account and removed on sign-out. Detached composers are
+supported; demo templates stay in memory only. Conflicting edits from another
+window are rejected. Templates do not sync between devices yet.
+[UI example](docs/quick-replies.jpg).
+
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,

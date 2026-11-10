@@ -1,6 +1,6 @@
 // Compose windows share the active transport, never credentials or account switching.
 const path = require('node:path');
-const allowed = new Set(['composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft']);
+const allowed = new Set(['composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft', 'quickReplies', 'saveQuickReplies']);
 class ComposeWindows {
   constructor({ BrowserWindow, dialog, page, tr }) {
     Object.assign(this, { BrowserWindow, dialog, page, tr });

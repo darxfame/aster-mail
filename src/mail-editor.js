@@ -68,7 +68,15 @@
       else { const div = document.createElement('div'); div.textContent = event.clipboardData.getData('text/plain'); command('insertHTML', div.innerHTML.replace(/\r\n?|\n/g, '<br>')); }
     });
     editor.addEventListener('drop', event => event.preventDefault());
-    return { read() { return { body: editor.innerText, bodyHtml: `<div style="white-space: ${whiteSpace}">${clean(editor.innerHTML)}</div>` }; } };
+    return {
+      insertText(value) {
+        if (!range) { range = document.createRange(); range.selectNodeContents(editor); range.collapse(false); }
+        const div = document.createElement('div'); div.textContent = value;
+        command('insertHTML', div.innerHTML.replace(/\r\n?|\n/g, '<br>'));
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+      },
+      read() { return { body: editor.innerText, bodyHtml: `<div style="white-space: ${whiteSpace}">${clean(editor.innerHTML)}</div>` }; },
+    };
   }
   root.asterMailEditor = { mount };
 })(window);

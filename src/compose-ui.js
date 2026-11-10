@@ -19,7 +19,7 @@ async function detachCompose(mode) {
     if (generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
     await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true }, snapshot: {
       mode, fields: Object.fromEntries(new FormData(form)), data, files, body: editor.read(), history: historyEditor?.read(),
-      selected: composeMessageSnapshot(state.selected), dirty: modalDirty,
+      selected: composeMessageSnapshot(state.selected), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
     } });
     setModalDirty(false); $('#modal').close();
   } catch (error) { form.querySelector('[role="alert"]').textContent = errorText(error); }
@@ -31,6 +31,7 @@ async function bootComposeWindow() {
   const { snapshot, preferences = {} } = context;
   applyLanguage(context.language);
   state.account = context.account; state.demo = context.demo; state.selected = snapshot.selected;
+  if (state.demo) demoQuickReplies = window.asterQuickReplies.normalize(snapshot.quickReplies || []);
   notificationPreferences.debugErrors = preferences.debugErrors === true;
   state.theme = preferences.theme || 'light'; timeZone = preferences.timeZone || 'system';
   document.body.classList.toggle('dark', state.theme === 'dark');

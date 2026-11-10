@@ -680,6 +680,7 @@ async function compose(mode = 'new', contact = null, snapshot = null) {
     addComposeFiles([]);
   }
   // File drops inside the script-free preview frame do not bubble to the dialog.
+  mountQuickReplies($('#compose-form'), composeData);
   for (const frame of $('#compose-form').querySelectorAll('iframe')) {
     frame.addEventListener('load', () => {
       frame.contentDocument?.addEventListener('dragover', dialog.ondragover);
