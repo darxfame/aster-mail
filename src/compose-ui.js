@@ -8,7 +8,7 @@ async function detachCompose(mode) {
   const form = $('#compose-form'), generation = state.generation;
   modalBusy = true; form.inert = true;
   try {
-    const { editor, historyEditor, attachments, ...data } = composeData;
+    const { editor, historyEditor, attachments, sourceMessage, ...data } = composeData;
     closeAttachmentPreview();
     if (data.draftOriginal) data.draftOriginal = composeMessageSnapshot(data.draftOriginal);
     const files = await Promise.all(attachments.map(file => new Promise((resolve, reject) => {
@@ -19,7 +19,7 @@ async function detachCompose(mode) {
     if (generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
     await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true }, snapshot: {
       mode, fields: Object.fromEntries(new FormData(form)), data, files, body: editor.read(), history: historyEditor?.read(),
-      selected: composeMessageSnapshot(state.selected), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
+      selected: composeMessageSnapshot(sourceMessage || state.selected), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
     } });
     setModalDirty(false); $('#modal').close();
   } catch (error) { form.querySelector('[role="alert"]').textContent = errorText(error); }

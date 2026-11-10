@@ -117,6 +117,32 @@ Display also depends on OS permissions. Unsupported notifications leave reminder
 pending in the list. Tested with fictional macOS data; real Exchange and Windows
 have not been verified for this feature. [Example](docs/mail-reminders.jpg).
 
+**Waiting for reply** now shows the number of pending waits; entries with a detected
+reply are excluded. The badge updates after saves, removal and inbox checks without
+replacing open editors. **Follow up** opens a normal reply-all draft for the original
+sent message with editable polite text, the subject, thread reference and signature.
+The original sender and known own addresses are excluded; Bcc is not copied.
+Unresolved recipients stop preparation with an explanation. Creating a follow-up
+never sends it, removes the wait or extends its deadline. Detached editors retain
+the correct source message and exclude pending image loads from their snapshots.
+
+Contact cards opened from mail or people now include **Correspondence history**
+and **Refresh details** for the Exchange directory. Directory details and history
+load independently, so a failure does not remove other information or actions.
+History reuses server search for From, To and Cc, then verifies the full SMTP
+address against EWS GetItem headers without fetching bodies or attachments.
+Display names, address mentions in text, similar addresses and Bcc are excluded;
+alternative addresses are not merged automatically. Results stay in memory only.
+Click a message to load and open its original without marking it read.
+
+Paging preserves displayed results on errors and removes duplicates. Viewing is
+limited to the first 200 server search candidates before exact-address filtering,
+within the existing primary-mailbox search excluding deleted items. Completeness
+depends on Exchange indexing; no results does not prove no correspondence exists.
+Late responses cannot update a closed card or another contact/account. Tested with
+fictional data in Electron on macOS at 100%/200% and narrow widths; real Exchange
+and Windows remain unverified for this feature. [Example](docs/contact-history.jpg).
+
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,

@@ -31,7 +31,7 @@ test('parallel compose windows isolate payloads, acknowledge readiness and restr
     assert.equal(child.options.webPreferences.sandbox, true);
     assert.deepEqual(wc.openHandler(), { action: 'deny' });
     assert.equal(child.loaded.options.hash, 'compose');
-    for (const operation of ['connect', 'restore', 'disconnect', 'saveLocalData', 'downloadUpdate', 'detachCompose', 'waitingReplies', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply', 'mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder']) assert.throws(() => f.windows.authorize(wc, wc.mainFrame, operation, 'alice'));
+    for (const operation of ['connect', 'restore', 'disconnect', 'saveLocalData', 'downloadUpdate', 'detachCompose', 'waitingReplies', 'waitingRepliesCount', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply', 'contactHistory', 'mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder']) assert.throws(() => f.windows.authorize(wc, wc.mainFrame, operation, 'alice'));
     assert.throws(() => f.windows.authorize(wc, {}, 'send', 'alice'));
     assert.throws(() => f.windows.authorize(wc, wc.mainFrame, 'send', 'bob'));
     for (const operation of ['quickReplies', 'saveQuickReplies']) {

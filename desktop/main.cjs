@@ -68,6 +68,13 @@ function publishConnectionHealth(active) {
   if (client !== active || connection?.client !== active || !active.syncId || !connection.health) return;
   if (window && !window.isDestroyed()) window.webContents.send('aster-connection', { sessionId: active.syncId, status: connection.health });
 }
+function publishWaitingReplyCount(active) {
+  if (active !== client || !active?.syncId) return;
+  try {
+    const count = active.waitingReplies.entries().filter(entry => !entry.replyId).length;
+    if (window && !window.isDestroyed()) window.webContents.send('aster-waiting-replies', { sessionId: active.syncId, count });
+  } catch { /* A badge must never affect successful mail reads or local saves. */ }
+}
 async function pollMail() {
   if (!client || mailPolling) return;
   mailPolling = true;
@@ -80,7 +87,7 @@ async function pollMail() {
     if (active !== client || revision !== active.mailCache.generation) return;
     if (window && !window.isDestroyed()) window.webContents.send('aster-inbox', { sessionId: active.syncId, page, inbox });
     lastMailPoll = new Date().toISOString(); lastMailError = '';
-    void active.waitingReplies?.scan(page.items).catch(() => {});
+    void active.waitingReplies?.scan(page.items).then(() => publishWaitingReplyCount(active)).catch(() => {});
     const fresh = tracker.newMail(page.items);
     if (!notificationSettings.mail) return;
     await refreshPrivacy();
@@ -663,6 +670,11 @@ app.whenReady().then(async () => {
         return { ok: true, value: catalog.map(item => ({ ...item, sessionId: moduleHost.current().sessionId })) };
       }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
+      if (operation === 'contactHistory') {
+        const guard = () => { if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена')); };
+        const value = await require('./contact-history.cjs').read(activeClient, data, guard); guard();
+        return { ok: true, value };
+      }
       if (['mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder'].includes(operation)) {
         const reminders = activeClient.mailReminders;
         if (operation === 'setMailReminder') { const value = await reminders.set(data); closeMailReminderAlerts(); return { ok: true, value }; }
@@ -677,10 +689,11 @@ app.whenReady().then(async () => {
         }
         return { ok: true, value: { entries, error: reminders.error, supported: Notification.isSupported(), privacyActive: privacyHidden() } };
       }
-      if (['waitingReplies', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply'].includes(operation)) {
+      if (['waitingReplies', 'waitingRepliesCount', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply'].includes(operation)) {
         const waiting = activeClient.waitingReplies;
-        if (operation === 'waitForReply') { await waiting.track(data); return { ok: true, value: true }; }
-        if (operation === 'removeWaitingReply') { await waiting.remove(data); return { ok: true, value: true }; }
+        if (operation === 'waitingRepliesCount') return { ok: true, value: waiting.entries().filter(entry => !entry.replyId).length };
+        if (operation === 'waitForReply') { await waiting.track(data); publishWaitingReplyCount(activeClient); return { ok: true, value: true }; }
+        if (operation === 'removeWaitingReply') { await waiting.remove(data); publishWaitingReplyCount(activeClient); return { ok: true, value: true }; }
         if (operation === 'refreshWaitingReplies') {
           const page = await activeClient.messages({ folder: 'inbox', offset: 0, refresh: true });
           if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));

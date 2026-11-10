@@ -253,7 +253,7 @@ function currentContactCard() {
 function contactCardBody(person, note = '') {
   const canWrite = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(person.email || '');
   const pinned = colleagues().some(value => value.email.toLowerCase() === person.email?.toLowerCase());
-  return `<div class="contact-detail">${avatar(person.name || person.email, 0, person.email)}<h2>${esc(person.name || person.email || tr('Контакт'))}</h2><p>${esc(person.email || tr('Email не указан в письме'))}</p><p data-contact-field="company" ${person.company ? '' : 'hidden'}>${esc(person.company || '')}</p><p data-contact-field="phone" ${person.phone ? '' : 'hidden'}>${esc(person.phone || '')}</p><p class="form-note" role="status" data-contact-field="status">${esc(note)}</p><div class="contact-card-actions"><button type="button" class="secondary" data-action="pin-card-contact" ${!canWrite || pinned ? 'disabled' : ''}>${icon('plus')}${pinned ? tr('В коллегах') : tr('Добавить в коллеги')}</button><button type="button" class="primary" data-action="write-card-contact" ${canWrite ? '' : 'disabled'}>${icon('mail')}${tr("Написать письмо")}</button></div></div>`;
+  return `<div class="contact-detail">${avatar(person.name || person.email, 0, person.email)}<h2>${esc(person.name || person.email || tr('Контакт'))}</h2><p>${esc(person.email || tr('Email не указан в письме'))}</p><p data-contact-field="company" ${person.company ? '' : 'hidden'}>${esc(person.company || '')}</p><p data-contact-field="phone" ${person.phone ? '' : 'hidden'}>${esc(person.phone || '')}</p><p class="form-note" role="status" data-contact-field="status">${esc(note)}</p><div class="contact-card-actions"><button type="button" class="secondary" data-action="pin-card-contact" ${!canWrite || pinned ? 'disabled' : ''}>${icon('plus')}${pinned ? tr('В коллегах') : tr('Добавить в коллеги')}</button><button type="button" class="primary" data-action="write-card-contact" ${canWrite ? '' : 'disabled'}>${icon('mail')}${tr("Написать письмо")}</button><button type="button" class="secondary" data-action="refresh-card-contact">${tr('Обновить сведения')}</button></div></div>${contactHistoryBody()}`;
 }
 async function openContactCard(person, lookup = false) {
   if (modalBusy) return;
@@ -261,6 +261,7 @@ async function openContactCard(person, lookup = false) {
   const base = { ...person, ...(local || {}) };
   modal(tr('Контакт'), '', contactCardBody(base, lookup ? tr('Загружаем сведения из справочника…') : ''));
   const context = contactCardContext = { person: base, account: state.account, generation: state.generation, modal: modalSequence };
+  mountContactHistory(context);
   if (!lookup) return;
   const query = person.email || person.name || '';
   const update = (value, note) => {

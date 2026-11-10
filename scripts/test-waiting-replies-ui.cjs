@@ -42,9 +42,38 @@ app.whenReady().then(async () => {
     await js(`document.querySelector('#waiting-reply-form').elements.due.value=T.wall(new Date(Date.now()+86400000),timeZone).slice(0,16);document.querySelector('#waiting-reply-form').requestSubmit()`);
     await waitFor('!modalBusy && !document.querySelector("#modal").open');
     assert.equal(await js('demoWaitingReplies.length'), 1);
+    await waitFor('state.waitingRepliesCount===1');
+    assert.equal(await js('document.querySelector("[data-waiting-count]").textContent'), '1');
     assert.equal(await js('JSON.stringify(demoWaitingReplies).includes("Согласование")'), false);
     await js('waitingRepliesModal()'); await waitFor('!modalBusy && Boolean(document.querySelector(".waiting-entry"))');
     assert.match(await js('document.querySelector(".waiting-entry").textContent'), /Ожидается ответ/);
+    await js(`state.folder='drafts';state.signature='Fixture signature';window.asterDemo.messages.find(message=>message.id==='demo-sent-waiting').bcc=[{email:'hidden@example.com'}];document.querySelector('[data-waiting-followup]').click()`);
+    await waitFor('Boolean(document.querySelector("#compose-form"))');
+    assert.equal(await js('document.querySelector("#compose-form").elements.to.value'), 'anna@example.com');
+    assert.equal(await js('document.querySelector("#compose-form").elements.bcc.value'), '');
+    assert.match(await js('document.querySelector("#compose-form").elements.subject.value'), /^Re:/);
+    assert.match(await js('document.querySelector("#compose-editor-field").textContent'), /Ответа на моё предыдущее письмо пока нет/);
+    assert.match(await js('document.querySelector("#compose-editor-field").textContent'), /Fixture signature/);
+    assert.equal(await js('composeData.reference.id'), 'demo-sent-waiting');
+    assert.equal(await js('modalDirty'), true); assert.equal(await js('state.waitingRepliesCount'), 1);
+    await js(`window.previousApi=api;window.previousBridge=window.aster;window.aster={};api=async(operation,data)=>{if(operation==='detachCompose'){window.followupSnapshot=data.snapshot;return true;}return [];};composeData.sourceMessage.contentImages=Promise.resolve({images:{}});state.selected=structuredClone(window.asterDemo.messages.find(message=>message.folder==='inbox'));detachCompose('reply-all')`);
+    await waitFor('!modalBusy && Boolean(window.followupSnapshot)');
+    assert.equal(await js('followupSnapshot.selected.id'), 'demo-sent-waiting');
+    assert.equal(await js('followupSnapshot.selected.contentImages'), undefined);
+    assert.equal(await js('followupSnapshot.data.sourceMessage'), undefined);
+    await js(`state.selected=followupSnapshot.selected;compose(followupSnapshot.mode,null,followupSnapshot)`);
+    assert.match(await js('document.querySelector("#compose-editor-field").textContent'), /Ответа на моё предыдущее письмо пока нет/);
+    assert.equal(await js('composeData.reference.id'), 'demo-sent-waiting');
+    await js(`api=previousApi;window.aster=previousBridge`);
+    await js(`setModalDirty(false);document.querySelector('#modal').close();waitingRepliesModal()`);
+    await waitFor('!modalBusy && Boolean(document.querySelector(".waiting-entry"))');
+    await js(`document.querySelector('#modal').close();state.demo=false;state.account={sessionId:'followup-fixture'};window.beforeFollowupApi=api;api=async(operation)=>{if(operation==='waitingReplies')return {entries:demoWaitingReplies.map(entry=>({...entry,subject:'Fictional sent message'}))};if(operation==='message')return structuredClone(window.asterDemo.messages.find(message=>message.id==='demo-sent-waiting'));if(operation==='identity')return new Promise(resolve=>{window.finishFollowupIdentity=resolve;});return 1;};waitingRepliesModal()`);
+    await waitFor('!modalBusy && Boolean(document.querySelector("[data-waiting-followup]"))');
+    await js(`document.querySelector('[data-waiting-followup]').click()`); await waitFor('Boolean(window.finishFollowupIdentity)');
+    await js(`document.querySelector('#modal').close();modal('Other','','<p id="followup-preserved">Keep me</p>');finishFollowupIdentity({emails:['you@example.com']})`);
+    assert.equal(await js('Boolean(document.querySelector("#followup-preserved")) && !document.querySelector("#compose-form")'), true);
+    await js(`document.querySelector('#modal').close();state.demo=true;state.account=null;api=beforeFollowupApi;waitingRepliesModal()`);
+    await waitFor('!modalBusy && Boolean(document.querySelector(".waiting-entry"))');
     for (const [width, scale] of [[1280, 1], [1280, 2], [640, 1]]) {
       window.setSize(width, 850); window.webContents.setZoomFactor(scale); await new Promise(resolve => setTimeout(resolve, 100));
       assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'), true);
@@ -56,6 +85,8 @@ app.whenReady().then(async () => {
     await waitFor('!modalBusy && Boolean(document.querySelector(".waiting-overdue"))');
     await js(`window.asterDemo.messages.push({id:'fictional-reply',folder:'inbox',subject:'Unrelated subject',from:{name:'Anna',email:'anna@example.com'},to:[],cc:[],attachments:[],date:new Date(Date.now()+1000).toISOString(),inReplyTo:'<demo-sent-waiting@example.com>',isFromMe:false,isDraft:false,itemClass:'IPM.Note',read:false,text:'Fictional reply'});document.querySelector('[data-waiting-refresh]').click()`);
     await waitFor('!modalBusy && Boolean(document.querySelector("[data-waiting-open=fictional-reply]"))');
+    assert.equal(await js('state.waitingRepliesCount'), 0);
+    assert.equal(await js('document.querySelector("[data-waiting-count]").hidden'), true);
     assert.match(await js('document.querySelector(".waiting-entry").textContent'), /Найден ответ/);
     await js(`document.querySelector('[data-waiting-open=fictional-reply]').click()`);
     await waitFor('!modalBusy && state.selected?.id==="fictional-reply"');
@@ -78,5 +109,5 @@ app.whenReady().then(async () => {
     await js(`document.querySelector('#modal').close();applyLanguage('en');waitingRepliesModal()`);
     await waitFor('!modalBusy'); assert.match(await js('document.querySelector("#modal").textContent'), /Waiting for reply/);
     console.log('PASS: sent-only action, deadlines, metadata-only demo storage, overdue/reply statuses, original/reply navigation, removal, RU/EN and 100%/200%/narrow layout.');
-  } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true }); }
+  } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

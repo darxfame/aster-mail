@@ -388,3 +388,11 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .waiting-entry { display:grid; gap:8px; min-width:0; padding:12px; border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
 .waiting-entry-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .waiting-overdue { color:var(--danger); }
+
+.contact-history { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); min-width:0; }
+.contact-history h3 { margin:0 0 12px; }
+.contact-history-items { display:grid; gap:8px; margin:12px 0; }
+.contact-history-message { display:grid; gap:5px; width:100%; padding:12px; text-align:left; border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
+.contact-history-message:hover { background:var(--accent-bg); }
+.contact-history-message span,.contact-history-message small { color:var(--muted); font-size:12px; }
+.contact-history-actions { display:flex; flex-wrap:wrap; gap:8px; }
