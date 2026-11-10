@@ -18,6 +18,7 @@ let updates, macUpdates, windowsUpdates, localEncryption, activeServerWrites = 0
 const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
+const { WaitingReplies } = require('./waiting-replies.cjs');
 const { fetchContentImage } = require('./content-images.cjs');
 let localStore, connection, accountEpoch = 0, connectAttempt = 0;
 const { normalizeServer } = require('./protocol.cjs');
@@ -78,6 +79,7 @@ async function pollMail() {
     if (active !== client || revision !== active.mailCache.generation) return;
     if (window && !window.isDestroyed()) window.webContents.send('aster-inbox', { sessionId: active.syncId, page, inbox });
     lastMailPoll = new Date().toISOString(); lastMailError = '';
+    void active.waitingReplies?.scan(page.items).catch(() => {});
     const fresh = tracker.newMail(page.items);
     if (!notificationSettings.mail) return;
     await refreshPrivacy();
@@ -261,7 +263,7 @@ function retireAccount() {
   connection = null; client = null; account = null;
   if (previous) {
     previous.controller.abort(); previous.account.password = '';
-    previous.client?.mailCache.clear(); previous.client?.photoCache?.clear();
+    previous.client?.mailCache.clear(); previous.client?.photoCache?.clear(); previous.client?.waitingReplies?.cache.clear();
   }
   mailAlerts = []; publishMailAlerts();
   tracker = new NotificationTracker(); lastPoll = null; lastPollError = ''; lastMailPoll = null; lastMailError = '';
@@ -304,6 +306,7 @@ async function connect(data, remember, restoring = false) {
     await localStore.saveLoginHint(credentials, assertCurrent);
     assertCurrent();
     candidate.syncId = crypto.randomUUID(); client = candidate;
+    candidate.waitingReplies = new WaitingReplies(candidate, localStore, () => { if (client !== candidate || quitting || current.controller.signal.aborted) throw new Error(tr('Сессия аккаунта завершена')); });
     notificationSettings = preferences({ ...saved.notifications, language: saved.notifications?.language || i18n.language });
     i18n.setLanguage(notificationSettings.language);
     updateTrayMenu();
@@ -636,6 +639,19 @@ app.whenReady().then(async () => {
         return { ok: true, value: catalog.map(item => ({ ...item, sessionId: moduleHost.current().sessionId })) };
       }
       if (!client) throw new Error(tr('Сначала подключите аккаунт OWA'));
+      if (['waitingReplies', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply'].includes(operation)) {
+        const waiting = activeClient.waitingReplies;
+        if (operation === 'waitForReply') { await waiting.track(data); return { ok: true, value: true }; }
+        if (operation === 'removeWaitingReply') { await waiting.remove(data); return { ok: true, value: true }; }
+        if (operation === 'refreshWaitingReplies') {
+          const page = await activeClient.messages({ folder: 'inbox', offset: 0, refresh: true });
+          if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+          await waiting.scan(page.items);
+        }
+        const value = await waiting.list();
+        if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+        return { ok: true, value };
+      }
       if (['quickReplies', 'saveQuickReplies'].includes(operation)) {
         const normalize = require('../src/quick-replies.js').normalize;
         if (operation === 'saveQuickReplies') {

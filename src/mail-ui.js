@@ -17,7 +17,7 @@ function applyReaderDensity() {
   }
   const toolbar = document.querySelector('#reader .reader-toolbar');
   if (!toolbar) return;
-  const collapsed = compact || toolbar.clientWidth < 520;
+  const collapsed = compact || toolbar.clientWidth < 580;
   toolbar.classList.toggle('compact-actions', collapsed);
   const actions = toolbar.querySelector('.reader-more-actions');
   if (actions && actions.dataset.compact !== String(collapsed)) {

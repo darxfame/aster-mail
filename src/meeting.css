@@ -381,3 +381,9 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 #reader .compact-actions .reader-more-actions:not([open])>.reader-mail-actions { display:none; }
 #reader .compact-actions .reader-more-actions[open]>.reader-mail-actions { display:grid; grid-template-columns:repeat(3,33px); gap:8px; padding:10px; position:absolute; top:100%; left:0; z-index:20; background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); }
 #reader .compact-actions .toolbar-divider { display:none; }
+
+.waiting-folder { width:100%; display:flex; align-items:center; gap:12px; margin-top:12px; }
+.waiting-list { display:grid; gap:12px; margin-bottom:16px; }
+.waiting-entry { display:grid; gap:8px; min-width:0; padding:12px; border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
+.waiting-entry-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.waiting-overdue { color:var(--danger); }

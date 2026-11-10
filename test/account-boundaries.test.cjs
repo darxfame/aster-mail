@@ -9,7 +9,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
     connectedModules: [{ id: 'private-module' }], loadModuleContributions: async () => {}, closeAttachmentPreview() {}, applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
     state: { account: { sessionId: 'old' }, generation: 1, selected: { html: 'private mail' }, messages: ['private'], contacts: ['private'], events: ['private'], signature: 'private' },
-    localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
+    demoWaitingReplies: [{ id: 'old-wait' }], localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },
     messageOpenSequence: 1, readingMessages: new Map([['mail', Promise.resolve()]]),
     mailSelection: new Set(['private-mail-id']), mailSelectionScope: 'old-account',
@@ -23,6 +23,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
   assert.equal(context.state.account, null); assert.equal(context.state.signature, ''); assert.equal(context.state.selected, null);
   for (const key of ['messages', 'contacts', 'events', 'folders']) assert.equal(context.state[key].length, 0);
   for (const key of ['serverSignature', 'composeData', 'activeMeeting', 'meetingEdit', 'moveRuleContext', 'mailDrag']) assert.equal(context[key], null);
+  assert.equal(context.demoWaitingReplies.length, 0);
   assert.equal(context.readingMessages.size, 0); assert.equal(Object.keys(context.localValues).length, 0);
   assert.equal(context.mailSelection.size, 0); assert.equal(context.mailSelectionScope, '');
   assert.equal(nodes['#search'].value, ''); assert.equal(nodes['#people-search-suggestions'].cleared, true);
@@ -56,7 +57,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     }
     authenticate() { return new Promise(resolve => { this.finish = resolve; }); }
   }
-  const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
+  const context = vm.createContext({ WaitingReplies: require('../desktop/waiting-replies.cjs').WaitingReplies, tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
     moduleHost: undefined, moduleProfile: undefined, composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, connectAttempt: 0, quitting: false, resettingLocalData: false, AbortController,
     attachmentPreviews: undefined, attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
