@@ -67,6 +67,16 @@ The folder is unchanged and no timed reminder is scheduled. If saving fails,
 the reader remains open and the write is never retried automatically.
 [UI example](docs/mail-return-later.jpg).
 
+Mail search filters next to the search box combine sender, To recipient, received
+date range (UTC), folder and attachment conditions. Text is optional when filters
+are set. Entire-mailbox searches use ExecuteSearch; selecting a folder uses OWA
+FindItem/AQS without subfolders. Unread and flagged filters run on the server,
+and paging retains the conditions. Ordinary search still combines mail, meetings
+and contacts. Demo filters use fictional data and treat text as a plain phrase.
+The new scoped mail FindItem/AQS search has not been verified against corporate
+Exchange or on Windows; completeness depends on the server search index.
+[Filter example](docs/mail-search.jpg).
+
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,

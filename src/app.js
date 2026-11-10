@@ -260,14 +260,15 @@ async function loadView(append = false) {
   try {
     if (state.view === 'mail') {
       const offset = append ? state.offset : 0;
+      const criteria = state.mailSearch?.query === state.query ? state.mailSearch.criteria : null;
       let result;
       if (state.demo) {
-        result = state.query ? demoMailSearch(state.query) : { items: structuredClone(window.asterDemo.messages.filter(message => message.folder === state.folder)), more: false };
-      } else result = state.query ? await searchMailbox(state.query, state.filter, offset) : await api('messages', { folder: state.folder, filter: state.filter, offset });
+        result = criteria ? { items: structuredClone(window.asterDemo.messages.filter(message => window.asterMailSearch.matches(message, criteria))), more: false } : state.query ? demoMailSearch(state.query) : { items: structuredClone(window.asterDemo.messages.filter(message => message.folder === state.folder)), more: false };
+      } else result = state.query ? await searchMailbox(state.query, state.filter, offset, criteria) : await api('messages', { folder: state.folder, filter: state.filter, offset });
       if (generation !== state.generation) return;
       if (state.filter !== 'all' && result.related) result.related = result.related.mail?.error ? { mail: result.related.mail } : null;
-      state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = (append ? state.offset : 0) + result.items.length;
-      if (!append) { state.selected = null; state.searchObjects = state.query ? result.related : null; }
+      state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = Number.isSafeInteger(result.nextOffset) ? result.nextOffset : (append ? state.offset : 0) + result.items.length;
+      if (!append) { state.selected = null; state.searchObjects = state.query ? result.related || null : null; }
       state.mailViewKey = JSON.stringify([state.folder, state.query, state.filter]);
       renderMail();
       if (!state.demo && !state.query && !append) void refreshMailFolders(generation);
@@ -300,7 +301,7 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}${tr("» · весь ящик")}`) : tr('Всё важное — на своём месте')}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все письма')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1>${esc(title)}</h1><small>${state.query ? esc(`«${state.query}» · ${mailSearchScope()}`) : tr('Всё важное — на своём месте')}</small></div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все письма')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
   applyMailListWidth();
   renderMessages();
   if (state.selected) renderReader(); else $('#reader').innerHTML = `<div class="empty">${icon('mail')}<h2>${tr("Место для ваших мыслей")}</h2><p>${tr("Выберите письмо, чтобы прочитать его, или напишите новое.")}</p></div>`;
@@ -879,6 +880,10 @@ async function handleAction(button) {
   if (action.startsWith('meeting-')) return handleMeetingAction(button);
   if (action === 'back-to-list') return returnToMailList();
   if (action === 'return-later') return returnToMessageLater(button);
+  if (action === 'search-filters') return mailSearchFilters();
+  if (action === 'clear-search-filters') {
+    state.mailSearch = null; state.query = ''; state.filter = 'all'; $('#search').value = ''; $('#modal').close(); return loadView();
+  }
   if (action === 'toggle-sidebar') {
     sidebarCollapsed = !document.body.classList.contains('sidebar-collapsed');
     compactSidebarExpanded = !sidebarCollapsed && window.innerWidth <= 900;
@@ -1141,7 +1146,17 @@ document.addEventListener('change', event => {
 document.addEventListener('change', event => { if (event.target.name === 'syncSignature') refreshSignatureField().catch(showError); });
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target;
-  if (form.id === 'search-form') { state.query = $('#search').value.trim(); if (state.view === 'calendar') renderCalendar(); else loadView(); return; }
+  if (form.id === 'search-form') { state.mailSearch = null; state.query = $('#search').value.trim(); if (state.view === 'calendar') renderCalendar(); else loadView(); return; }
+  if (form.id === 'mail-search-form') {
+    const account = state.account, generation = state.generation;
+    void submitForm(form, async data => {
+      const criteria = window.asterMailSearch.normalize(data), query = window.asterMailSearch.query(criteria);
+      if (!query) throw new Error(tr('Введите текст или задайте хотя бы одно условие поиска.'));
+      if (account !== state.account || generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
+      state.mailSearch = { criteria, query }; state.query = query; state.filter = 'all'; state.view = 'mail';
+      $('#search').value = query; $('#modal').close(); await loadView();
+    }); return;
+  }
   if (form.id === 'meeting-reminder-form') { submitMeetingReminder(form); return; }
   if (form.id === 'meeting-local-reminders-form') { submitLocalMeetingReminders(form); return; }
   if (form.id === 'meeting-message-form') { submitMeetingMessage(form); return; }
@@ -1197,6 +1212,7 @@ function applyAccount(value) {
   loginHint = value ? { server: value.server, username: value.username } : null;
   connectionState = { status: value ? 'connected' : 'disconnected' };
   state.recoverView = null; state.recoverMessage = null;
+  state.mailSearch = null;
   window.asterMailFind?.reset();
   state.generation++; messageOpenSequence++; readingMessages.clear();
   connectedModules = [];

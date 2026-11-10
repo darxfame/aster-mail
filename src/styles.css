@@ -88,6 +88,10 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .quick-reply-actions{display:flex;flex-wrap:wrap;gap:8px}
 .quick-replies [data-quick-manage]{margin-top:14px}
 .quick-reply-error{color:#c76565;font-size:11px;line-height:1.7;white-space:pre-wrap}
+.mail-search-filters{display:none}
+.mail-view .mail-search-filters{display:inline-flex}
+.mail-list .list-heading>div{min-width:0}
+.mail-list .list-heading small{overflow-wrap:anywhere}
 .settings-tabs [role="tab"]{flex:1;padding:13px 8px;border-radius:8px 8px 0 0;border-bottom:2px solid transparent;font-size:12px;color:var(--muted);white-space:nowrap}
 .settings-tabs [role="tab"]:hover{background:var(--surface2);color:var(--text)}
 .settings-tabs [aria-selected="true"]{background:var(--accent-bg);color:var(--accent);border-bottom-color:var(--accent)}
