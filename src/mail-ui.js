@@ -17,11 +17,14 @@ function applyReaderDensity() {
   }
   const toolbar = document.querySelector('#reader .reader-toolbar');
   if (!toolbar) return;
-  const collapsed = compact || toolbar.clientWidth < 580;
+  const actions = toolbar.querySelector('.reader-more-actions'), wasOpen = actions?.open;
+  toolbar.classList.toggle('compact-actions', false);
+  if (actions) actions.open = true;
+  const collapsed = compact || toolbar.scrollWidth > toolbar.clientWidth;
   toolbar.classList.toggle('compact-actions', collapsed);
-  const actions = toolbar.querySelector('.reader-more-actions');
-  if (actions && actions.dataset.compact !== String(collapsed)) {
-    actions.dataset.compact = String(collapsed); actions.open = !collapsed;
+  if (actions) {
+    actions.open = actions.dataset.compact === String(collapsed) ? wasOpen : !collapsed;
+    actions.dataset.compact = String(collapsed);
   }
 }
 function renderSignaturePreview(target, signature) {
