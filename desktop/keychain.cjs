@@ -59,7 +59,13 @@ class KeychainEncryption {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.fail(), this.timeout);
       this.pending.set(id, { resolve, reject, timer });
-      try { this.child.stdin.write(JSON.stringify({ id, operation, ...(data ? { data: data.toString('base64') } : {}) }) + '\n'); }
+      try {
+        const frame = Buffer.from(JSON.stringify({ id, operation, ...(data ? { data: data.toString('base64') } : {}) }));
+        // macOS 15 FileHandle fills its 4096-byte read on libuv's socketpair.
+        // JSON whitespace completes that read without changing the frozen broker.
+        const padding = Buffer.alloc((4096 - (frame.length + 1) % 4096) % 4096, 32);
+        this.child.stdin.write(Buffer.concat([frame, padding, Buffer.from('\n')]));
+      }
       catch { this.fail(); }
     });
   }

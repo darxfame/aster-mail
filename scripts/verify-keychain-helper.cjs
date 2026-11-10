@@ -37,6 +37,7 @@ module.exports = async context => {
   for (const key of [O.EnableEmbeddedAsarIntegrityValidation, O.OnlyLoadAppFromAsar]) if (fuses[key] !== 49) throw new Error('ASAR integrity is required for Keychain access');
   await stampFramework(application);
   await verify(path.join(application, 'Contents/Resources/keychain', manifest.file));
+  await require('./verify-macos-compatibility.cjs').verify(application);
   console.log('Verified frozen Keychain helper and hardened Electron entry points');
 };
 module.exports.verify = verify;

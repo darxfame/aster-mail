@@ -27,7 +27,7 @@ depends on your server configuration. The app is at an early stage.
 
 | Requirement or limitation | Current support |
 | --- | --- |
-| Platforms | macOS on Apple Silicon; Windows x64 |
+| Platforms | macOS 13 Ventura or later on Apple Silicon; Windows x64 |
 | Connection | An HTTPS OWA URL; your corporate VPN if required |
 | EWS access | Required for sending, editing drafts, automatic replies, and some calendar and contact operations |
 | Authentication | SSO/MFA through a separate domain is not supported yet |

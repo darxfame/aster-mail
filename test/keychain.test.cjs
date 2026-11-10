@@ -17,6 +17,7 @@ async function fixture(t, options = {}) {
   child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.kill = () => { child.killed = true; };
   child.stdin.on('data', frame => {
     if (child.stall) return;
+    assert.equal(frame.length % 4096, 0, 'Each request must complete the frozen macOS 15 socket read');
     const request = JSON.parse(frame.toString()); let result;
     try {
       if (request.operation === 'ping') result = '1';
@@ -49,6 +50,12 @@ test('only the frozen binary runs; ciphertext uses authenticated encryption and 
   assert.equal(await f.encryption.decryptString(Buffer.from('old-format')), 'legacy fictional value');
   assert.equal(f.legacyReads(), 1); assert.equal(f.launches(), 1);
   f.encryption.close(); await assert.rejects(f.encryption.decryptString(bytes));
+});
+test('socket framing preserves UTF-8 payloads across read-block boundaries', async t => {
+  const f = await fixture(t);
+  for (const value of ['', 'я', 'x'.repeat(3000), 'я'.repeat(4096), 'x'.repeat(65536)]) {
+    assert.equal(await f.encryption.decryptString(await f.encryption.encryptString(value)), value);
+  }
 });
 test('helper tampering, oversized input, a crash and malformed replies fail closed', async t => {
   const tampered = await fixture(t); await fs.writeFile(tampered.file, 'changed executable');
