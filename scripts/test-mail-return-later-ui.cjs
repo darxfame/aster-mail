@@ -31,8 +31,12 @@ app.whenReady().then(async () => {
       await waitFor('Boolean(document.querySelector("[data-action=return-later]"))');
       assert.equal(await js('state.selected.read'), true);
       assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'), true);
+      assert.equal(await js(`(() => {const bar=document.querySelector('#reader .reader-toolbar');const buttons=[...bar.querySelectorAll('button')].filter(button=>button.getBoundingClientRect().width>0);return buttons.every(button=>button.title && button.getAttribute('aria-label')) && new Set(buttons.map(button=>Math.round(button.getBoundingClientRect().top))).size===1 && bar.scrollWidth<=bar.clientWidth;})()`), true, 'Visible reader actions must fit one row and have tooltips/accessibility labels');
+      assert.equal(await js('document.querySelectorAll("#reader [data-action=unread]").length'), 0, 'Do not duplicate the unread/revisit action');
       await new Promise(resolve => setTimeout(resolve, 100));
       await fs.writeFile(path.join(output, `reader-${width}-${scale * 100}.jpg`), (await window.webContents.capturePage()).toJPEG(85));
+      await js(`(() => {const button=document.querySelector('[data-action=return-later]');const menu=button.closest('details');if(!menu.open)menu.querySelector('summary').click();})()`);
+      assert.equal(await js(`document.querySelector('[data-action=return-later]').getBoundingClientRect().width>0`), true, 'Revisit action must be reachable through the compact menu');
       await js('document.querySelector("[data-action=return-later]").click()');
       await waitFor('state.selected===null');
       assert.equal(await js('state.messages.find(message=>message.id===fixtureId).read'), false);

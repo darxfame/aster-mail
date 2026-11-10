@@ -365,3 +365,19 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .module-confirm-note { color:var(--text); }
 .module-update { flex-basis:100%; min-width:0; }
 .module-update .primary { width:100%; }
+
+/* Reader actions stay on one row; narrow readers expose secondary actions in a menu. */
+#reader .reader-toolbar { flex-wrap:nowrap; min-height:50px; height:50px; padding:8px 12px; flex-shrink:0; }
+#reader .reader-toolbar .icon-button { flex:0 0 33px; }
+#reader .reader-replies { display:flex; flex:0 0 auto; flex-wrap:nowrap; margin-left:auto; gap:5px; }
+#reader .reader-position { white-space:nowrap; flex-shrink:0; }
+#reader .reader-more-actions,#reader .reader-mail-actions { display:contents; }
+#reader .reader-more-actions>summary { display:none; }
+#reader .compact-actions .reader-position { display:none; }
+#reader .compact-actions .reader-more-actions { display:block; position:relative; flex-shrink:0; }
+#reader .compact-actions .reader-more-actions>summary { display:grid; place-items:center; width:33px; height:33px; font-size:23px; line-height:1; cursor:pointer; list-style:none; border-radius:7px; }
+#reader .compact-actions .reader-more-actions>summary::-webkit-details-marker { display:none; }
+#reader .compact-actions .reader-more-actions>summary:hover { background:var(--accent-bg); }
+#reader .compact-actions .reader-more-actions:not([open])>.reader-mail-actions { display:none; }
+#reader .compact-actions .reader-more-actions[open]>.reader-mail-actions { display:grid; grid-template-columns:repeat(3,33px); gap:8px; padding:10px; position:absolute; top:100%; left:0; z-index:20; background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); }
+#reader .compact-actions .toolbar-divider { display:none; }

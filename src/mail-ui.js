@@ -10,10 +10,18 @@ function mailAttachments(message) {
 }
 function applyReaderDensity() {
   const compact = window.innerHeight <= 650;
-  for (const details of document.querySelectorAll('.mail-attachments-details,.reader-more-actions')) {
+  for (const details of document.querySelectorAll('.mail-attachments-details')) {
     if (details.dataset.compact === String(compact)) continue;
     details.dataset.compact = String(compact);
     details.open = !compact;
+  }
+  const toolbar = document.querySelector('#reader .reader-toolbar');
+  if (!toolbar) return;
+  const collapsed = compact || toolbar.clientWidth < 520;
+  toolbar.classList.toggle('compact-actions', collapsed);
+  const actions = toolbar.querySelector('.reader-more-actions');
+  if (actions && actions.dataset.compact !== String(collapsed)) {
+    actions.dataset.compact = String(collapsed); actions.open = !collapsed;
   }
 }
 function renderSignaturePreview(target, signature) {
