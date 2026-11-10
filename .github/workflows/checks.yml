@@ -30,3 +30,6 @@ jobs:
         run: npm run test:module-sdk
       - name: Verify native installer opening
         run: npm run test:updates
+      - name: Verify native Windows restart updates
+        if: runner.os == 'Windows'
+        run: npm run test:windows-updates
