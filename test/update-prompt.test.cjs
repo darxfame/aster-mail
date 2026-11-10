@@ -89,3 +89,20 @@ test('closing the prompt during installer activation sends cancellation to the b
   f.dialog.open = false; f.listeners.close(); finish({ ...available, status: 'ready' }); await opening;
   assert.deepEqual(calls, ['openUpdateInstaller', 'cancelUpdateInstall']);
 });
+
+test('restart updates expose the macOS action in settings and disable duplicate actions while preparing', async () => {
+  const calls = [];
+  const f = fixture(async name => { calls.push(name); return { ...available, status: 'ready', available: { ...available.available, restart: true } }; });
+  f.context.receiveUpdate({ ...available, available: { ...available.available, restart: true } }); f.context.enableUpdatePrompts();
+  assert.match(f.shown[0].body, /Обновить и перезапустить/);
+  f.panel.dataset.installFlow = '';
+  f.context.renderUpdates(); assert.match(f.panel.innerHTML, /data-update="installUpdate"/);
+  await f.listeners.click({ target: { closest: () => ({ dataset: { update: 'installUpdate' } }) } });
+  assert.deepEqual(calls, ['downloadUpdate', 'openUpdateInstaller']);
+  f.context.receiveUpdate({ ...available, status: 'ready', installing: true, available: { ...available.available, restart: true } });
+  assert.match(f.panel.innerHTML, /Подготавливаем обновление/);
+  assert.match(f.panel.innerHTML, /data-update="installUpdate" disabled/);
+  f.context.receiveUpdate({ ...available, status: 'ready', staged: true });
+  assert.match(f.panel.innerHTML, /установится при выходе/);
+  assert.match(f.panel.innerHTML, /data-update="checkUpdates" disabled/);
+});

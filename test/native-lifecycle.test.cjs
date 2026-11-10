@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
 function guards(overrides = {}) {
-  const context = vm.createContext({ tr: value => value, unsavedChanges: false, moduleHost: undefined, moduleProfile: { clear: async () => {}, retire() {} }, resettingLocalData: false, attachmentPreviews: undefined, composeWindows: undefined, client: null, connection: null, window: {}, accountEpoch: 0, localStore: { clear: async () => {} }, attachmentFiles: { clear: async () => {}, clearSync() {} }, attachmentCleanupError: '', dialog: {}, ...overrides });
+  const context = vm.createContext({ tr: value => value, activeServerWrites: 0, unsavedChanges: false, moduleHost: undefined, moduleProfile: { clear: async () => {}, retire() {} }, resettingLocalData: false, attachmentPreviews: undefined, composeWindows: undefined, client: null, connection: null, window: {}, accountEpoch: 0, localStore: { clear: async () => {} }, attachmentFiles: { clear: async () => {}, clearSync() {} }, attachmentCleanupError: '', dialog: {}, ...overrides });
   vm.runInContext(source.slice(source.indexOf('function confirmDiscardChanges()'), source.indexOf('\nfunction reveal(')), context);
   return context;
 }
@@ -38,6 +38,20 @@ test('cancelled Quit keeps account requests alive and an accepted Quit aborts th
   assert.equal(prevented, 1); assert.equal(aborted, 0); assert.equal(context.quitting, false);
   answer = 1; beforeQuit({ preventDefault() { assert.fail('Accepted quit must proceed'); } });
   assert.equal(aborted, 1); assert.equal(context.quitting, true);
+});
+test('normal and update quits block active writes and preserve detached editors and locked attachments on cancellation', () => {
+  let cleared = 0, confirmed = 0, destroyed = 0, answer = 0;
+  const entry = { busy: true };
+  const context = guards({ activeServerWrites: 1, composeWindows: { entries: new Map([[1, entry]]), confirmAll() { confirmed++; return true; }, destroyAll() { destroyed++; } },
+    attachmentFiles: { clearSync() { cleared++; throw new Error('Locked'); } }, dialog: { showMessageBoxSync: () => answer } });
+  assert.equal(context.confirmQuit(), false); assert.equal(confirmed, 0); assert.equal(cleared, 0);
+  context.activeServerWrites = 0;
+  assert.equal(context.confirmQuit(), false); assert.equal(confirmed, 0);
+  entry.busy = false;
+  assert.equal(context.confirmQuit(), false); assert.equal(confirmed, 1); assert.equal(destroyed, 0);
+  answer = 1;
+  assert.equal(context.confirmQuit(), true); assert.equal(destroyed, 0);
+  context.retireForQuit(); assert.equal(destroyed, 1); assert.equal(context.quitting, true);
 });
 test('pre-login recovery never clears without confirmation and blocks concurrent authentication', async () => {
   let cleared = 0, answer = 0, finish;

@@ -46,10 +46,23 @@ test('interface scale validates bounds and uses native zoom without changing mes
 
 test('short reader windows collapse attachments without overriding a user expansion on every resize', () => {
   const details = { dataset: {}, open: true };
-  const context = vm.createContext({ window: { innerHeight: 450 }, document: { querySelectorAll: () => [details] } });
+  const context = vm.createContext({ window: { innerHeight: 450 }, document: { querySelectorAll: () => [details], querySelector: () => null } });
   vm.runInContext(source.slice(source.indexOf('function applyReaderDensity('), source.indexOf('function renderSignaturePreview(')), context);
   context.applyReaderDensity(); assert.equal(details.open, false);
   details.open = true; context.applyReaderDensity(); assert.equal(details.open, true);
   context.window.innerHeight = 800; context.applyReaderDensity(); assert.equal(details.open, true);
   context.window.innerHeight = 450; context.applyReaderDensity(); assert.equal(details.open, false);
+});
+
+test('reader actions collapse by available width or height and preserve a manually opened menu', () => {
+  const actions = { dataset: {}, open: true };
+  let collapsed;
+  const toolbar = { clientWidth: 700, classList: { toggle: (name, value) => { assert.equal(name, 'compact-actions'); collapsed = value; } }, querySelector: () => actions };
+  const context = vm.createContext({ window: { innerHeight: 800 }, document: { querySelectorAll: () => [], querySelector: () => toolbar } });
+  vm.runInContext(source.slice(source.indexOf('function applyReaderDensity('), source.indexOf('function renderSignaturePreview(')), context);
+  context.applyReaderDensity(); assert.equal(collapsed, false); assert.equal(actions.open, true);
+  toolbar.clientWidth = 400; context.applyReaderDensity(); assert.equal(collapsed, true); assert.equal(actions.open, false);
+  actions.open = true; context.applyReaderDensity(); assert.equal(actions.open, true);
+  toolbar.clientWidth = 700; context.applyReaderDensity(); assert.equal(collapsed, false);
+  context.window.innerHeight = 450; context.applyReaderDensity(); assert.equal(collapsed, true); assert.equal(actions.open, false);
 });

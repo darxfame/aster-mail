@@ -68,10 +68,36 @@ test('check, stream, verify and explicitly open installer; persist preference', 
   assert.deepEqual(await fs.readFile(path.join(directory, updater.state.available.name)), payload);
   assert.equal(changes.some(value => value.status === 'downloading'), true);
   await updater.check(); assert.equal(updater.state.status, 'ready');
-  await updater.openInstaller(); assert.equal(opened.length, 1);
+  const openedState = await updater.openInstaller(); assert.equal(opened.length, 1);
+  assert.equal(openedState.installing, false);
   await updater.preferences(false);
   const restored = new Updates({ directory, installed: '0.1.8' }); await restored.initialize(); assert.equal(restored.state.autoCheck, false);
   await assert.rejects(updater.preferences('false'));
+});
+test('macOS prefers a strictly validated restart ZIP and keeps legacy DMG and Windows installers', async t => {
+  const zip = release('0.1.9', 'mac-arm64.zip');
+  zip.assets.push(...release().assets);
+  assert.equal(releaseInfo(zip, '0.1.8', 'darwin', 'arm64').restart, true);
+  assert.match(releaseInfo(zip, '0.1.8', 'darwin', 'arm64').name, /\.zip$/);
+  assert.equal(releaseInfo(release(), '0.1.8', 'darwin', 'arm64').restart, undefined);
+  assert.equal(releaseInfo(release('0.1.9', 'windows-x64.exe'), '0.1.8', 'win32', 'x64').restart, true);
+  const invalid = structuredClone(zip); delete invalid.assets[0].digest;
+  assert.throws(() => releaseInfo(invalid, '0.1.8', 'darwin', 'arm64'), /SHA-256/);
+  const { updater, opened } = await fixture(t, async url => url === apiURL ? new Response(JSON.stringify(zip)) : new Response(payload), {
+    open: async (_file, _signal, asset, handle) => {
+      assert.equal(asset.restart, true);
+      const chunks = [];
+      for await (const chunk of handle.createReadStream({ start: 0, autoClose: false })) chunks.push(chunk);
+      assert.deepEqual(Buffer.concat(chunks), payload);
+      updater.publish({ staged: true });
+      return '';
+    },
+  });
+  await updater.check(); await updater.download(); await updater.openInstaller();
+  assert.equal(updater.state.staged, true); assert.equal(updater.state.installing, false);
+  updater.fetch = () => assert.fail('A staged native update must not be replaced by a different release');
+  await updater.check(); await updater.download();
+  assert.deepEqual(opened, []);
 });
 test('tampered cached installer cannot be launched', async t => {
   const { updater, directory, opened } = await fixture(t); await updater.check(); await updater.download();

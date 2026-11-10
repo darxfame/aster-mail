@@ -57,7 +57,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     authenticate() { return new Promise(resolve => { this.finish = resolve; }); }
   }
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
-    moduleHost: undefined, moduleProfile: undefined, composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, resettingLocalData: false, AbortController,
+    moduleHost: undefined, moduleProfile: undefined, composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, connectAttempt: 0, quitting: false, resettingLocalData: false, AbortController,
     attachmentPreviews: undefined, attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },
@@ -77,6 +77,15 @@ test('a superseded login cannot publish a client or credentials after another ac
   assert.notEqual(attempts[0].transport.session.id, attempts[1].transport.session.id);
   assert.equal(await attempts[1].cookieToken(), sessions[2].id);
   assert.throws(() => attempts[0].clearCookies(), /Сессия аккаунта завершена/);
+  // A delayed Keychain check must not resurrect an older login after a newer one.
+  let finishEncryption;
+  context.localStore.requireEncryption = () => new Promise(resolve => { finishEncryption = resolve; });
+  const delayed = context.connect({ server: 'https://mail.example.com', username: 'charlie', password: 'fictional-C' }, true);
+  const replacement = context.connect({ server: 'https://mail.example.com', username: 'dave', password: 'fictional-D' }, false);
+  await new Promise(resolve => setImmediate(resolve));
+  attempts[2].finish(); await replacement;
+  finishEncryption(); await assert.rejects(delayed, /Сессия аккаунта завершена/);
+  assert.equal(context.client.account.username, 'dave'); assert.equal(attempts.length, 3);
 });
 
 test('recreated main windows restore the live account without reading credentials or reconnecting', async () => {
@@ -86,7 +95,8 @@ test('recreated main windows restore the live account without reading credential
   const context = vm.createContext({ tr: value => value, operation: 'restore', accountEpoch: 1,
     account: { server: 'https://mail.example.com', username: 'alice', password: 'never-expose' },
     client: { syncId: 'still-running' }, notificationSettings: { preview: false },
-    localStore: { data: { values: { 'aster-theme': 'dark' } }, loadCredentials: async () => { reads++; return null; } },
+    quitting: false, resettingLocalData: false, moduleProfile: { store: { migrate: async () => { throw new Error('Fictional module profile failure'); } } },
+    localStore: { data: { values: { 'aster-theme': 'dark' } }, migrate: async () => {}, loadCredentials: async () => { reads++; return null; } },
     connect() { throw new Error('Must not reconnect'); },
   });
   const run = () => vm.runInContext(`(async () => { ${block} })()`, context);

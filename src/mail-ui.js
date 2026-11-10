@@ -10,10 +10,18 @@ function mailAttachments(message) {
 }
 function applyReaderDensity() {
   const compact = window.innerHeight <= 650;
-  for (const details of document.querySelectorAll('.mail-attachments-details,.reader-more-actions')) {
+  for (const details of document.querySelectorAll('.mail-attachments-details')) {
     if (details.dataset.compact === String(compact)) continue;
     details.dataset.compact = String(compact);
     details.open = !compact;
+  }
+  const toolbar = document.querySelector('#reader .reader-toolbar');
+  if (!toolbar) return;
+  const collapsed = compact || toolbar.clientWidth < 520;
+  toolbar.classList.toggle('compact-actions', collapsed);
+  const actions = toolbar.querySelector('.reader-more-actions');
+  if (actions && actions.dataset.compact !== String(collapsed)) {
+    actions.dataset.compact = String(collapsed); actions.open = !collapsed;
   }
 }
 function renderSignaturePreview(target, signature) {
@@ -21,6 +29,31 @@ function renderSignaturePreview(target, signature) {
   if (!signature.html) { target.textContent = signature.text; return; }
   window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', title: tr('Подпись OWA'), loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
   if (Object.keys(signature.errors || {}).length) { const note = document.createElement('p'); note.className = 'form-error'; note.textContent = tr('Не все картинки подписи доступны. Обновите подпись перед отправкой.'); target.append(note); }
+}
+const pendingReturnLater = new WeakSet();
+async function returnToMessageLater(button) {
+  const message = state.selected;
+  if (!message || isDraftMessage(message) || pendingReturnLater.has(message)) return;
+  const account = state.account, generation = state.generation, sequence = messageOpenSequence;
+  const folder = state.query ? null : state.folder;
+  const current = () => account === state.account && generation === state.generation;
+  pendingReturnLater.add(message); button.disabled = true;
+  try {
+    if (readingMessages.has(message.id)) await readingMessages.get(message.id);
+    if (!current() || sequence !== messageOpenSequence || state.selected !== message) return;
+    if (!state.demo) {
+      const updated = await api('change', { ref: ref(message), field: 'IsRead', value: false });
+      if (!current()) return;
+      message.changeKey = updated.changeKey || message.changeKey;
+    }
+    applyMessageRead(message, false, folder);
+    if (sequence === messageOpenSequence && state.selected === message && !document.querySelector('dialog[open]')) {
+      returnToMailList();
+      toast(tr('Письмо оставлено непрочитанным. Вернитесь к нему позже.'));
+    } else renderMessages();
+    renderSidebar();
+  } catch (error) { if (current()) throw error; }
+  finally { pendingReturnLater.delete(message); if (button.isConnected) button.disabled = false; }
 }
 function navigateMailMessage(event) {
   if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
@@ -254,13 +287,14 @@ async function openContactCard(person, lookup = false) {
 }
 
 // Each result group has its own paging and error state; mail-only actions stay mail-only.
-async function searchMailbox(query, filter, offset = 0) {
-  const kinds = filter === 'all' && offset === 0 ? ['mail', 'calendar', 'contacts'] : ['mail'];
-  const settled = await Promise.allSettled(kinds.map(kind => api('search', { kind, query: kind === 'mail' && filter === 'unread' ? `(${query}) AND read:no` : query, offset })));
+async function searchMailbox(query, filter, offset = 0, criteria = null) {
+  const kinds = !criteria && filter === 'all' && offset === 0 ? ['mail', 'calendar', 'contacts'] : ['mail'];
+  const constraint = filter === 'unread' ? criteria?.folder ? 'isread:false' : 'read:no' : filter === 'flagged' ? 'isflagged:true' : '';
+  const settled = await Promise.allSettled(kinds.map(kind => api('search', { kind, query: kind === 'mail' && constraint ? query === '*' ? constraint : `(${query}) AND ${constraint}` : query, offset, ...(kind === 'mail' && criteria?.folder ? { folder: criteria.folder } : {}) })));
   const groups = {};
   for (let i = 0; i < kinds.length; i++) groups[kinds[i]] = settled[i].status === 'fulfilled' ? settled[i].value : { items: [], more: false, error: settled[i].reason.message, connectionError: settled[i].reason.connectionError === true };
   if (settled.every(result => result.status === 'rejected')) throw settled[0].reason;
-  return { ...groups.mail, related: offset === 0 ? groups : null };
+  return { ...groups.mail, related: !criteria && offset === 0 ? groups : null };
 }
 function demoMailSearch(query) {
   const contains = value => String(value || '').toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru'));

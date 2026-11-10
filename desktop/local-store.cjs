@@ -9,8 +9,8 @@ class LocalStore {
     this.directory = directory; this.encryption = encryption; this.platform = platform;
     this.owner = null; this.data = {}; this.queue = Promise.resolve();
   }
-  requireEncryption() {
-    if (!this.encryption.isEncryptionAvailable() || this.platform === 'linux' && this.encryption.getSelectedStorageBackend() === 'basic_text') throw new Error(tr('Защищённое хранилище недоступно. Данные не сохранены.'));
+  async requireEncryption() {
+    if (!await this.encryption.isEncryptionAvailable() || this.platform === 'linux' && this.encryption.getSelectedStorageBackend() === 'basic_text') throw new Error(tr('Защищённое хранилище недоступно. Данные не сохранены.'));
   }
   run(action) {
     const task = this.queue.then(action);
@@ -18,8 +18,8 @@ class LocalStore {
     return task;
   }
   async write(name, value, guard) {
-    guard(); this.requireEncryption();
-    const encrypted = this.encryption.encryptString(JSON.stringify(value));
+    guard(); await this.requireEncryption(); guard();
+    const encrypted = await this.encryption.encryptString(JSON.stringify(value)); guard();
     await fs.mkdir(this.directory, { recursive: true, mode: 0o700 }); guard();
     const temporary = path.join(this.directory, `${name}.${crypto.randomUUID()}.tmp`);
     try {
@@ -27,13 +27,38 @@ class LocalStore {
       guard(); await fs.rename(temporary, path.join(this.directory, name));
     } finally { await fs.rm(temporary, { force: true }); }
   }
+  async read(name, guard) {
+    const bytes = await fs.readFile(path.join(this.directory, name)); guard();
+    await this.requireEncryption(); guard();
+    const value = JSON.parse(await this.encryption.decryptString(bytes)); guard();
+    // Replace one file atomically only after successful decryption and while its
+    // original session is still current. Failure leaves the legacy file intact.
+    if (this.encryption.needsMigration?.(bytes)) await this.write(name, value, guard);
+    return value;
+  }
+  migrate(guard = () => {}) {
+    return this.run(async () => {
+      if (!this.encryption.needsMigration) return;
+      guard();
+      try { await fs.lstat(path.join(this.directory, 'logout.pending')); return; }
+      catch (error) { if (error.code !== 'ENOENT') return; }
+      // Migrate healthy legacy files during the first restore, including settings
+      // that cannot otherwise be read until Exchange reconnects. A damaged file
+      // keeps its original bytes and is reported by its ordinary read operation.
+      for (const name of ['account.enc', 'login-hint.enc', 'local-data.enc']) {
+        guard();
+        try {
+          const bytes = await fs.readFile(path.join(this.directory, name)); guard();
+          if (this.encryption.needsMigration(bytes)) await this.read(name, guard);
+        } catch { guard(); }
+      }
+    });
+  }
   load(owner, guard = () => {}) {
     return this.run(async () => {
       guard(); this.owner = owner; this.data = {};
       try {
-        const bytes = await fs.readFile(path.join(this.directory, 'local-data.enc')); guard();
-        this.requireEncryption();
-        const saved = JSON.parse(this.encryption.decryptString(bytes));
+        const saved = await this.read('local-data.enc', guard);
         if (saved.owner === owner) this.data = saved.data || {};
         else await fs.rm(path.join(this.directory, 'local-data.enc'), { force: true });
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -56,8 +81,7 @@ class LocalStore {
       try { await fs.lstat(path.join(this.directory, 'logout.pending')); return null; }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       try {
-        const bytes = await fs.readFile(path.join(this.directory, 'account.enc')); guard();
-        this.requireEncryption(); return JSON.parse(this.encryption.decryptString(bytes));
+        return await this.read('account.enc', guard);
       } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
     });
   }
@@ -87,9 +111,7 @@ class LocalStore {
       try {
         try { await fs.lstat(path.join(this.directory, 'logout.pending')); return null; }
         catch (error) { if (error.code !== 'ENOENT') throw error; }
-        const bytes = await fs.readFile(path.join(this.directory, 'login-hint.enc')); guard();
-        this.requireEncryption();
-        const value = this.loginHint(JSON.parse(this.encryption.decryptString(bytes)));
+        const value = this.loginHint(await this.read('login-hint.enc', guard));
         guard(); return value;
       } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
     });

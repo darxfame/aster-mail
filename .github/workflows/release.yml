@@ -18,7 +18,9 @@ jobs:
           - os: macos-latest
             target: mac-arm64
             command: npm run dist:mac -- --publish never
-            artifact: release/*.dmg
+            artifact: |
+              release/*.dmg
+              release/*.zip
           - os: windows-latest
             target: windows-x64
             command: npm run dist:win -- --x64 --publish never
@@ -89,6 +91,15 @@ jobs:
           app="release/mac-arm64/Aster Mail.app"
           codesign --verify --deep --strict "$app"
           codesign --display --requirements - "$app" 2>&1 | grep -F 'certificate leaf = H"94449af39dabd49526a09ae19047190ec2d165e8"'
+      - name: Verify immutable Keychain broker
+        if: runner.os == 'macOS'
+        run: npm run test:keychain
+      - name: Verify native Windows restart updates
+        if: runner.os == 'Windows'
+        run: npm run test:windows-updates
+      - name: Verify signed macOS restart updates
+        if: runner.os == 'macOS'
+        run: npm run test:mac-updates
       - name: Remove macOS signing identity
         if: always() && runner.os == 'macOS'
         timeout-minutes: 1
@@ -131,10 +142,12 @@ jobs:
           shopt -s nullglob
           dmg=(installers/*.dmg)
           exe=(installers/*.exe)
+          zip=(installers/*.zip)
           test "${#dmg[@]}" -eq 1
           test "${#exe[@]}" -eq 1
+          test "${#zip[@]}" -eq 1
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Aster Mail $TAG" --notes-file .github/RELEASE_NOTES.md
           fi
-          gh release upload "$TAG" "${dmg[0]}" "${exe[0]}" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" "${dmg[0]}" "${zip[0]}" "${exe[0]}" --repo "$GITHUB_REPOSITORY" --clobber
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

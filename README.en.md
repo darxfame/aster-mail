@@ -9,7 +9,7 @@ An open-source **Microsoft Exchange OWA/EWS desktop client** for
 app, connected directly to your server, with no Aster cloud or telemetry.
 
 [![Release](https://img.shields.io/github/v/release/darxfame/aster-mail?cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
-[![Checks](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml/badge.svg)](https://github.com/darxfame/aster-mail/actions/workflows/checks.yml)
+[![Build and tests](https://github.com/darxfame/aster-mail/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/darxfame/aster-mail/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [User guide (Russian)](docs/USER-GUIDE.md) ·
@@ -29,7 +29,7 @@ depends on your server configuration. The app is at an early stage.
 | --- | --- |
 | Platforms | macOS on Apple Silicon; Windows x64 |
 | Connection | An HTTPS OWA URL; your corporate VPN if required |
-| EWS access | Required for sending, editing drafts, and some calendar and contact operations |
+| EWS access | Required for sending, editing drafts, automatic replies, and some calendar and contact operations |
 | Authentication | SSO/MFA through a separate domain is not supported yet |
 | Offline use | No offline database yet |
 | Interface language | Russian and English; choose Settings → General → Interface language |
@@ -40,6 +40,55 @@ Working OWA access does not guarantee that every feature is available.
 Universal Exchange or Microsoft 365 compatibility is not claimed. Verify the
 workflows you need on a test Exchange account before using your primary mailbox.
 See the [detailed limitations (Russian)](docs/USER-GUIDE.md#ограничения-01).
+
+Settings → Automatic replies reads Exchange out-of-office settings and lets you
+turn replies off, enable them indefinitely or schedule a period, with separate
+internal and external messages. Exchange policy limits external recipients.
+Use the dedicated save button; Exchange sends replies even when Aster is closed.
+Unchanged OWA HTML is preserved; edited replies are saved without formatting.
+Failed writes are never retried automatically: reload settings before saving again.
+Aster rereads settings before saving and rejects detected OWA changes. EWS has no
+atomic version check for this operation, so avoid editing in two clients at once.
+Requires EWS GetUserOofSettings/SetUserOofSettings; this feature has not yet been
+verified against corporate Exchange or on Windows. [UI example](docs/auto-replies.jpg).
+
+Expand Quick replies in the composer to search saved snippets and insert plain text
+at the cursor. New template and Template editor let you create, edit and delete
+replies. Inserting a reply preserves the message, recipients, signature and
+attachments; sending remains a separate action. Up to 30 templates are stored
+encrypted for the current account and removed on sign-out. Detached composers are
+supported; demo templates stay in memory only. Conflicting edits from another
+window are rejected. Templates do not sync between devices yet.
+[UI example](docs/quick-replies.jpg).
+
+Revisit later marks the open message unread in Exchange and returns to the list,
+keeping keyboard focus on that message. It appears in the Unread filter again.
+The folder is unchanged and no timed reminder is scheduled. If saving fails,
+the reader remains open and the write is never retried automatically.
+[UI example](docs/mail-return-later.jpg).
+
+Mail search filters next to the search box combine sender, To recipient, received
+date range (UTC), folder and attachment conditions. Text is optional when filters
+are set. Entire-mailbox searches use ExecuteSearch; selecting a folder uses OWA
+FindItem/AQS without subfolders. Unread and flagged filters run on the server,
+and paging retains the conditions. Ordinary search still combines mail, meetings
+and contacts. Demo filters use fictional data and treat text as a plain phrase.
+The new scoped mail FindItem/AQS search has not been verified against corporate
+Exchange or on Windows; completeness depends on the server search index.
+[Filter example](docs/mail-search.jpg).
+
+Create meeting in the reader prepares a new meeting with the email subject and
+plain text. Suggested attendees come from From, To and Cc, excluding known own
+addresses, duplicates and Bcc. If your address is unknown, add attendees manually.
+Quoted text is limited to 16000 characters with a visible truncation notice;
+attachments are not copied. The description includes a link to the message in
+your OWA mailbox. Other attendees may lack access, and compatibility of that link
+with your Exchange configuration is unverified. The default start is the next
+half-hour boundary with a 30-minute duration. Review time, attendees and content
+before explicitly sending. Preparation does not change the source email or saved
+events and sends no invitation. A failed send preserves the form. Tested with
+fictional data on macOS; Windows and real Exchange remain unverified for this flow.
+[Meeting example](docs/mail-to-meeting.jpg).
 
 ## What you can do
 

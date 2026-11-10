@@ -1,4 +1,4 @@
-let updateSnapshot = { installed: '0.2.8', status: 'idle', autoCheck: true, available: null, error: '' };
+let updateSnapshot = { installed: '0.2.9', status: 'idle', autoCheck: true, available: null, error: '' };
 const promptedUpdateVersions = new Set();
 let updatePromptsReady = false;
 let updateInstallAttempt = 0, updateOpening = false;
@@ -8,11 +8,13 @@ function maybePromptUpdate() {
   const dialog = document.querySelector('#modal');
   if (document.visibilityState === 'hidden' || dialog.open || modalBusy || modalDirty) return;
   promptedUpdateVersions.add(value.available.version);
-  modal(tr('Доступно обновление Aster Mail'), `${tr('Установлена версия')} ${value.installed} · ${tr('Доступна версия')} ${value.available.version}`, `<p class="form-note">${tr('Кнопка «Обновить приложение» скачает, проверит и откроет установщик. Завершите установку по его инструкциям; приложение не закрывается автоматически.')}</p><div id="updates-panel" data-install-flow="true"></div><div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr('Позже')}</button></div>`);
+  modal(tr('Доступно обновление Aster Mail'), `${tr('Установлена версия')} ${value.installed} · ${tr('Доступна версия')} ${value.available.version}`, `<p class="form-note">${tr(value.available.restart ? 'Кнопка «Обновить и перезапустить» скачает и проверит обновление, затем перезапустит Aster. Перед выходом приложение проверит несохранённые изменения.' : 'Кнопка «Обновить приложение» скачает, проверит и откроет установщик. Завершите установку по его инструкциям; приложение не закрывается автоматически.')}</p><div id="updates-panel" data-install-flow="true"></div><div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr('Позже')}</button></div>`);
   renderUpdates();
 }
 function enableUpdatePrompts() { updatePromptsReady = true; maybePromptUpdate(); }
 function updateStatus(value) {
+  if (value.installing) return tr('Подготавливаем обновление…');
+  if (value.staged) return tr('Обновление подготовлено. Оно установится при выходе из приложения.');
   if (value.status === 'checking') return tr('Проверяем GitHub…');
   if (value.status === 'downloading' && value.retryAt) return tr('Соединение прервалось. Повторяем загрузку…');
   if (value.status === 'downloading') return `${tr("Загрузка установщика ·")} ${value.progress}% · ${bytes(value.received || 0)} / ${bytes(value.available?.size || 0)}${value.speed ? ` · ${bytes(value.speed)}${tr('/с')}` : ''}`;
@@ -36,14 +38,14 @@ function receiveUpdate(value) {
 function renderUpdates() {
   const panel = document.querySelector('#updates-panel'); if (!panel) return;
   const focused = panel.contains?.(document.activeElement) ? document.activeElement.dataset.update : null;
-  const value = updateSnapshot, busy = ['checking', 'downloading'].includes(value.status);
+  const value = updateSnapshot, busy = updateOpening || value.installing || ['checking', 'downloading'].includes(value.status);
   panel.innerHTML = `<p class="update-status" role="status">${esc(updateStatus(value))}</p>
     ${value.lastChecked ? `<p class="form-note">${tr("Последняя проверка:")} ${esc(new Date(value.lastChecked).toLocaleString(window.asterI18n.locale))}</p>` : ''}
     ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="${tr("Загрузка обновления")}"></progress>` : ''}
     ${value.available?.notes ? `<details class="update-notes"><summary>${tr("Что нового в")} ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
     ${value.error ? `<p class="form-error" role="alert">${esc(errorText(value.error))}</p>` : ''}
-    <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
-    ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'paused' ? tr('Продолжить загрузку') : panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}
+    <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy || value.staged ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
+    ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow || value.available.restart ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'paused' ? tr('Продолжить загрузку') : value.available.restart ? tr('Обновить и перезапустить') : panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}
     ${value.status === 'downloading' ? `<button class="secondary" data-update="pauseUpdateDownload">${tr('Пауза')}</button>` : ''}
     ${['downloading', 'paused'].includes(value.status) ? `<button class="secondary" data-update="cancelUpdateDownload">${tr('Отменить загрузку')}</button>` : ''}</div>`;
   if (focused) (panel.querySelector(`[data-update="${focused}"]:not(:disabled)`) || panel.querySelector('[data-update="downloadUpdate"]:not(:disabled),[data-update="installUpdate"]:not(:disabled)'))?.focus({ preventScroll: true });
@@ -55,15 +57,15 @@ async function updatesModal() {
   if (updateSnapshot.available) promptedUpdateVersions.add(updateSnapshot.available.version);
   modal(tr('Обновления Aster Mail'), `${tr("Установлена версия")} ${updateSnapshot.installed}`, `<label class="checkbox"><input id="automatic-updates" type="checkbox" ${updateSnapshot.autoCheck ? 'checked' : ''} ${window.aster ? '' : 'disabled'}>${tr("Проверять при запуске и каждые 6 часов")}</label>
     <p class="form-note">${tr("Установщик загружается из GitHub Releases, его SHA-256 сверяется с данными GitHub. Загрузка и установка запускаются вами.")}</p>
-    <p class="form-note">${tr("На macOS откройте DMG, завершите Aster через ⌘Q и перенесите новую версию в «Программы». На Windows откройте EXE и следуйте установщику. Приложение не закрывается автоматически. Настройки и аккаунт остаются на компьютере.")}</p>
-    <p class="form-note">${tr("Установщики не подписаны Developer ID / сертификатом Windows. SHA-256 проверяет целостность файла и не заменяет подпись издателя. Версию 0.1.8 нужно один раз обновить вручную.")}</p>
+    <p class="form-note">${tr("На macOS и Windows нажмите «Обновить и перезапустить». Настройки и аккаунт сохраняются. Для старых macOS-релизов без ZIP остаётся ручная установка DMG.")}</p>
+    <p class="form-note">${tr("Приложение на macOS пока без Developer ID и нотариализации; при первом переносе сохранённых данных возможен запрос Keychain. На Windows возможны системные запросы разрешения на установку.")}</p>
     ${window.aster ? '<div id="updates-panel"></div>' : tr('<p class="form-note">Проверка и загрузка доступны в настольном приложении.</p>')}`);
   renderUpdates();
 }
 async function openDownloadedUpdate() {
-  updateOpening = true;
+  updateOpening = true; renderUpdates();
   try { return await api('openUpdateInstaller'); }
-  finally { updateOpening = false; }
+  finally { updateOpening = false; renderUpdates(); }
 }
 document.addEventListener('click', async event => {
   const button = event.target.closest('[data-update]'); if (!button || button.disabled) return;

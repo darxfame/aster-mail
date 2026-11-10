@@ -22,13 +22,14 @@ function releaseInfo(release, installed, platform, arch) {
   if (release.draft || release.prerelease) throw new Error(tr('Доступен только стабильный опубликованный релиз'));
   const number = String(release.tag_name || '').replace(/^v/, '');
   if (!newer(number, installed)) return null;
-  const target = platform === 'darwin' && arch === 'arm64' ? 'mac-arm64.dmg' : platform === 'win32' && arch === 'x64' ? 'windows-x64.exe' : null;
+  const zip = platform === 'darwin' && arch === 'arm64' && release.assets?.some(asset => asset.name === `Aster-Mail-${number}-mac-arm64.zip`);
+  const target = platform === 'darwin' && arch === 'arm64' ? `mac-arm64.${zip ? 'zip' : 'dmg'}` : platform === 'win32' && arch === 'x64' ? 'windows-x64.exe' : null;
   if (!target) throw new Error(tr('Для этой платформы пока нет установщика'));
   const name = `Aster-Mail-${number}-${target}`;
   const url = `https://github.com/${repository}/releases/download/v${number}/${name}`;
   const asset = release.assets?.find(asset => asset.name === name && asset.state === 'uploaded');
   if (!asset || asset.browser_download_url !== url || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > maxSize || !/^sha256:[a-f0-9]{64}$/.test(asset.digest || '')) throw new Error(tr('У релиза нет подходящего установщика с SHA-256'));
-  return { version: number, name, url, size: asset.size, sha256: asset.digest.slice(7), notes: String(release.body || '').slice(0, 12000) };
+  return { version: number, name, url, size: asset.size, sha256: asset.digest.slice(7), notes: String(release.body || '').slice(0, 12000), ...(zip || platform === 'win32' ? { restart: true } : {}) };
 }
 function allowedURL(value) {
   const url = new URL(value);
@@ -114,7 +115,7 @@ class Updates {
     return this.check();
   }
   async check() {
-    if (this.busy) return this.snapshot();
+    if (this.busy || this.state.staged) return this.snapshot();
     this.busy = true;
     const previous = this.state.status;
     this.publish({ status: 'checking', error: '' });
@@ -149,7 +150,7 @@ class Updates {
     return this.snapshot();
   }
   async download() {
-    if (this.busy) return this.snapshot();
+    if (this.busy || this.state.staged) return this.snapshot();
     const asset = this.state.available;
     if (!asset) throw new Error(tr('Сначала проверьте обновления'));
     this.busy = true;
@@ -254,7 +255,7 @@ class Updates {
       await fs.rename(partial, final);
       this.partialAsset = null;
       // Only old installers in this dedicated cache may be removed.
-      for (const name of await fs.readdir(this.directory)) if (name !== asset.name && /^Aster-Mail-\d+\.\d+\.\d+-(mac-arm64\.dmg|windows-x64\.exe)(\.part)?$/.test(name)) await fs.rm(path.join(this.directory, name), { force: true });
+      for (const name of await fs.readdir(this.directory)) if (name !== asset.name && /^Aster-Mail-\d+\.\d+\.\d+-(mac-arm64\.(?:dmg|zip)|windows-x64\.exe)(\.part)?$/.test(name)) await fs.rm(path.join(this.directory, name), { force: true });
       return this.publish({ status: 'ready', progress: 100, received: asset.size, speed: 0, retryAt: null });
     } catch (error) {
       if (handle) await handle.close().catch(() => {});
@@ -269,20 +270,24 @@ class Updates {
     const asset = this.state.available, file = path.join(this.directory, asset.name);
     const controller = this.openController = new AbortController();
     this.busy = true;
+    this.publish({ installing: true, error: '' });
     try {
       const stat = await fs.lstat(file);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== asset.size) throw new Error(tr('Установщик изменён; скачайте его заново'));
-      const handle = await fs.open(file, 'r');
-      let digest;
-      try { const hash = crypto.createHash('sha256'); for await (const chunk of handle.createReadStream()) hash.update(chunk); digest = hash.digest('hex'); }
-      finally { await handle.close(); }
-      if (digest !== asset.sha256) throw new Error(tr('Установщик изменён; скачайте его заново'));
-      controller.signal.throwIfAborted();
-      const error = await this.open(file, controller.signal);
-      if (error) throw new Error(error);
-      return this.snapshot();
-    } catch (error) { if (!controller.signal.aborted) this.publish({ status: 'available', error: error.message }); throw error; }
-    finally { this.openController = null; this.busy = false; }
+      const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+      try {
+        const opened = await handle.stat();
+        if (opened.ino !== stat.ino || opened.dev !== stat.dev || opened.size !== asset.size) throw new Error(tr('Установщик изменён; скачайте его заново'));
+        const hash = crypto.createHash('sha256');
+        for await (const chunk of handle.createReadStream({ autoClose: false })) { controller.signal.throwIfAborted(); hash.update(chunk); }
+        if (hash.digest('hex') !== asset.sha256) throw new Error(tr('Установщик изменён; скачайте его заново'));
+        controller.signal.throwIfAborted();
+        const error = await this.open(file, controller.signal, asset, handle);
+        if (error) throw new Error(error);
+      } finally { await handle.close(); }
+    } catch (error) { if (!controller.signal.aborted) this.publish({ status: this.state.staged ? 'ready' : 'available', error: error.message }); throw error; }
+    finally { this.openController = null; this.busy = false; this.publish({ installing: false }); }
+    return this.snapshot();
   }
 }
 module.exports = { Updates, newer, releaseInfo, allowedURL, request, apiURL, openInstallerFile };

@@ -11,6 +11,10 @@ function reader(api) {
   let focused;
   const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, esc: value => value, state, api, messageOpenSequence: 0, readingMessages: new Map(), ref: m => ({ id: m.id, changeKey: m.changeKey }), document: { body: { classList: { add() {} } }, querySelectorAll: () => state.messages.map(message => ({ dataset: { id: message.id }, focus() { focused = message.id; } })) }, $: key => nodes[key] || {}, icon: () => '', clearError() { errors.length = 0; }, renderMail() { nodes['#reader'].innerHTML = 'Message list'; }, renderMessages() {}, renderReader() {}, renderSidebar() {}, showError: error => errors.push(error.message) });
   vm.runInContext(functions, context);
+  context.document.querySelector = () => null;
+  context.toast = () => {};
+  const mailUI = fs.readFileSync(require.resolve('../src/mail-ui.js'), 'utf8');
+  vm.runInContext(mailUI.slice(mailUI.indexOf('const pendingReturnLater'), mailUI.indexOf('function navigateMailMessage(')), context);
   return { context, state, errors, nodes, get focused() { return focused; }, open: id => context.openMessage(id) };
 }
 test('back navigation remains available in failed and reconnecting reader states', async () => {
@@ -99,4 +103,52 @@ test('rapid keyboard-style opens discard an older detail response without markin
   pending.get('a')({ ...r.state.messages[0], text: 'stale' }); await first;
   assert.equal(r.state.selected.id, 'b'); assert.equal(r.state.selected.text, 'latest');
   assert.deepEqual(changes, ['b']); assert.equal(r.state.messages[0].read, false);
+});
+
+test('revisit later waits for mark-read, uses the fresh key and restores unread count and filter position', async () => {
+  let finishRead; const calls = [];
+  const r = reader(async (operation, data) => {
+    if (operation === 'message') return { ...r.state.messages[0] };
+    calls.push(data);
+    return data.value ? new Promise(resolve => { finishRead = resolve; }) : { changeKey: 'unread-key' };
+  });
+  const opening = r.open('a');
+  while (!finishRead) await new Promise(resolve => setImmediate(resolve));
+  const button = { isConnected: true };
+  const returning = r.context.returnToMessageLater(button);
+  finishRead({ changeKey: 'read-key' }); await opening; await returning;
+  assert.deepEqual(calls.map(call => call.value), [true, false]);
+  assert.equal(calls[1].ref.changeKey, 'read-key');
+  assert.equal(r.state.messages[0].read, false); assert.equal(r.state.messages[0].changeKey, 'unread-key');
+  assert.equal(r.state.folders[0].unread, 2); assert.equal(r.state.offset, 2);
+  assert.equal(r.state.selected, null); assert.equal(r.focused, 'a'); assert.equal(button.disabled, false);
+});
+test('revisit later never closes a newer reader or an open composer and never changes another account', async () => {
+  for (const scenario of ['reader', 'composer', 'account', 'folder']) {
+    let finish;
+    const r = reader(async (operation, data) => operation === 'message' ? { ...r.state.messages.find(message => message.id === data.id), read: true } : new Promise(resolve => { finish = resolve; }));
+    await r.open('a'); const message = r.state.selected;
+    const returning = r.context.returnToMessageLater({ isConnected: true });
+    if (scenario === 'reader') await r.open('b');
+    if (scenario === 'composer') r.context.document.querySelector = () => ({});
+    if (scenario === 'account') r.state.account = { sessionId: 'another-account' };
+    if (scenario === 'folder') r.state.generation++;
+    finish({ changeKey: 'unread-key' }); await returning;
+    assert.notEqual(r.state.selected, null);
+    assert.equal(r.state.selected.id, scenario === 'reader' ? 'b' : 'a');
+    assert.equal(message.read, scenario === 'account' || scenario === 'folder');
+  }
+});
+test('failed or duplicate revisit actions preserve the reader and do not retry the server write', async () => {
+  let fail; const calls = [];
+  const r = reader(async (operation, data) => {
+    if (operation === 'message') return { ...r.state.messages[0], read: true };
+    calls.push(data); return new Promise((_resolve, reject) => { fail = reject; });
+  });
+  await r.open('a'); const count = r.state.folders[0].unread;
+  const first = r.context.returnToMessageLater({ isConnected: true });
+  await r.context.returnToMessageLater({ isConnected: true });
+  fail(new Error('Unknown write result')); await assert.rejects(first, /Unknown/);
+  assert.equal(calls.length, 1); assert.equal(r.state.selected.id, 'a'); assert.equal(r.state.selected.read, true);
+  assert.equal(r.state.folders[0].unread, count);
 });

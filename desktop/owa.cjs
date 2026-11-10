@@ -257,24 +257,30 @@ class OWAClient {
   async draft(data) { return this.outgoing(data, true); }
   async editDraft(data) { return require('./mail-drafts.cjs').run(this, data); }
   async search(data) {
+    if (data.folder !== undefined && (typeof data.folder !== 'string' || data.folder.length > 16000 || /[\u0000-\u001f]/.test(data.folder) || data.folder && !data.folder.trim())) throw new Error(tr('Проверьте папку поиска.'));
+    if ((!data.kind || data.kind === 'mail') && data.folder) {
+      return this.searchObjects({ ...data, kind: 'mail' });
+    }
     if (data.kind && data.kind !== 'mail') return this.searchObjects(data);
     // Search sessions must not be ended while another request still uses them.
     const task = (this.searchQueue || Promise.resolve()).then(() => this.performSearch(data));
     this.searchQueue = task.catch(() => {});
     return task;
   }
-  async searchObjects({ query, kind, offset = 0 }) {
-    if (!['calendar', 'contacts'].includes(kind)) throw new Error(tr('Неизвестный тип объектов поиска'));
+  async searchObjects({ query, kind, offset = 0, folder }) {
+    if (!['calendar', 'contacts'].includes(kind) && !(kind === 'mail' && folder)) throw new Error(tr('Неизвестный тип объектов поиска'));
     if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error(tr('Проверьте поисковый запрос'));
     // Use the OWA JSON FindItem transport; no EWS connection or calendar date window.
-    const json = await this.call('FindItem', P.request('FindItem', {
+    const payload = kind === 'mail' ? P.findItems(folder, offset) : P.request('FindItem', {
       ParentFolderIds: [P.folder(kind)], Traversal: 'Shallow', Paging: P.paging(offset),
       ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties' }),
       QueryString: P.typed('QueryStringType', { Value: query.trim() }),
-    }, 'Exchange2016'));
+    }, 'Exchange2016');
+    if (kind === 'mail' && query.trim() !== '*') payload.Body.QueryString = P.typed('QueryStringType', { Value: query.trim() });
+    const json = await this.call('FindItem', payload);
     const root = P.walk(json, value => value.RootFolder)[0]?.RootFolder;
     if (!root || !Array.isArray(root.Items)) throw new Error(tr('OWA FindItem: неподдерживаемый формат результатов поиска'));
-    const items = root.Items.filter(value => value.ItemId?.Id).map(kind === 'calendar' ? calendarEvents.normalize : P.contact);
+    const items = root.Items.filter(value => value.ItemId?.Id).map(kind === 'mail' ? P.message : kind === 'calendar' ? calendarEvents.normalize : P.contact);
     const more = root.IncludesLastItemInRange === false;
     const nextOffset = Number(root.IndexedPagingOffset);
     if (more && (!items.length || Number.isFinite(nextOffset) && nextOffset <= offset)) throw new Error(tr('OWA FindItem: сервер не продвинул страницу поиска'));

@@ -34,6 +34,11 @@ test('parallel compose windows isolate payloads, acknowledge readiness and restr
     for (const operation of ['connect', 'restore', 'disconnect', 'saveLocalData', 'downloadUpdate', 'detachCompose']) assert.throws(() => f.windows.authorize(wc, wc.mainFrame, operation, 'alice'));
     assert.throws(() => f.windows.authorize(wc, {}, 'send', 'alice'));
     assert.throws(() => f.windows.authorize(wc, wc.mainFrame, 'send', 'bob'));
+    for (const operation of ['quickReplies', 'saveQuickReplies']) {
+      assert.equal(f.windows.authorize(wc, wc.mainFrame, operation, 'alice'), entry);
+      assert.throws(() => f.windows.authorize(wc, {}, operation, 'alice'));
+      assert.throws(() => f.windows.authorize(wc, wc.mainFrame, operation, 'bob'));
+    }
     entry.ready(); assert.equal(entry.context, undefined); assert.equal(child.visible, true);
   }
   await Promise.all([first, second]); f.windows.destroyAll(); assert.equal(f.windows.entries.size, 0);
