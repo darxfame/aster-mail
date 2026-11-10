@@ -1,6 +1,9 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Вернуться позже": "Revisit later",
+    "Пометить непрочитанным и закрыть письмо": "Mark as unread and close the message",
+    "Письмо оставлено непрочитанным. Вернитесь к нему позже.": "Message left unread. Come back to it later.",
     "Быстрые ответы": "Quick replies",
     "Редактор шаблона": "Template editor",
     "Личные шаблоны этого аккаунта. Вставляется только текст; письмо не отправляется.": "Personal templates for this account. Only text is inserted; no email is sent.",

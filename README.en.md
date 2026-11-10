@@ -61,6 +61,12 @@ supported; demo templates stay in memory only. Conflicting edits from another
 window are rejected. Templates do not sync between devices yet.
 [UI example](docs/quick-replies.jpg).
 
+Revisit later marks the open message unread in Exchange and returns to the list,
+keeping keyboard focus on that message. It appears in the Unread filter again.
+The folder is unchanged and no timed reminder is scheduled. If saving fails,
+the reader remains open and the write is never retried automatically.
+[UI example](docs/mail-return-later.jpg).
+
 ## What you can do
 
 - **Mail:** folders, search, replies and forwarding, rich-text composition,

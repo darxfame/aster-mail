@@ -22,6 +22,31 @@ function renderSignaturePreview(target, signature) {
   window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', title: tr('Подпись OWA'), loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
   if (Object.keys(signature.errors || {}).length) { const note = document.createElement('p'); note.className = 'form-error'; note.textContent = tr('Не все картинки подписи доступны. Обновите подпись перед отправкой.'); target.append(note); }
 }
+const pendingReturnLater = new WeakSet();
+async function returnToMessageLater(button) {
+  const message = state.selected;
+  if (!message || isDraftMessage(message) || pendingReturnLater.has(message)) return;
+  const account = state.account, generation = state.generation, sequence = messageOpenSequence;
+  const folder = state.query ? null : state.folder;
+  const current = () => account === state.account && generation === state.generation;
+  pendingReturnLater.add(message); button.disabled = true;
+  try {
+    if (readingMessages.has(message.id)) await readingMessages.get(message.id);
+    if (!current() || sequence !== messageOpenSequence || state.selected !== message) return;
+    if (!state.demo) {
+      const updated = await api('change', { ref: ref(message), field: 'IsRead', value: false });
+      if (!current()) return;
+      message.changeKey = updated.changeKey || message.changeKey;
+    }
+    applyMessageRead(message, false, folder);
+    if (sequence === messageOpenSequence && state.selected === message && !document.querySelector('dialog[open]')) {
+      returnToMailList();
+      toast(tr('Письмо оставлено непрочитанным. Вернитесь к нему позже.'));
+    } else renderMessages();
+    renderSidebar();
+  } catch (error) { if (current()) throw error; }
+  finally { pendingReturnLater.delete(message); if (button.isConnected) button.disabled = false; }
+}
 function navigateMailMessage(event) {
   if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
   if (state.view !== 'mail' || mailBatchBusy || document.querySelector('dialog[open]')) return;
