@@ -32,7 +32,7 @@ app.whenReady().then(async () => {
     await js('document.querySelector("[data-action=demo]").click()');
     await waitFor('state.demo && state.messages.length > 1');
     if (process.platform === 'darwin') {
-      await js("document.body.classList.add('desktop','mac');document.querySelector('.app-shell').prepend(document.querySelector('.topbar'))");
+      await js("document.body.classList.add('desktop','mac')");
       assert.deepEqual(window.getWindowButtonPosition(), { x: 22, y: 34 });
       assert.equal(window.getBounds().height, window.getContentBounds().height, 'No separate native title bar consumes content height');
       for (const zoom of [0.8, 1, 2]) {
@@ -42,10 +42,11 @@ app.whenReady().then(async () => {
           await js(`document.body.classList.toggle('sidebar-collapsed',${collapsed})`);
           const controlsBottom = (window.getWindowButtonPosition().y + 14) / zoom;
           assert.equal(await js(`document.querySelector('.wordmark').getBoundingClientRect().top>${controlsBottom}`), true, 'Brand stays below native controls at every scale');
-          assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${(window.getWindowButtonPosition().x + 70) / zoom}`), true, 'Toolbar stays clear of native controls with either sidebar width');
+          assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${(window.getWindowButtonPosition().x + 54) / zoom}`), true, 'Toolbar stays clear of the three native 14px controls and their 6px gaps');
           assert.equal(await js("getComputedStyle(document.querySelector('.topbar')).webkitAppRegion"), 'drag');
-          assert.equal(await js("document.querySelector('.sidebar').getBoundingClientRect().top>=document.querySelector('.topbar').getBoundingClientRect().bottom"), true, 'Sidebar starts below the shared toolbar');
-          assert.equal(await js("document.querySelector('.topbar').getBoundingClientRect().left<12"), true, 'Toolbar spans both sidebar and workspace');
+          assert.equal(await js("document.querySelector('.topbar').parentElement.tagName"), 'MAIN', 'Toolbar remains inside the workspace');
+          assert.equal(await js("document.querySelector('.topbar').getBoundingClientRect().left>=document.querySelector('.sidebar').getBoundingClientRect().right"), true, 'Toolbar does not consume the sidebar width');
+          assert.equal(await js("document.querySelector('.sidebar').getBoundingClientRect().top<document.querySelector('.topbar').getBoundingClientRect().bottom"), true, 'Sidebar retains the full window height');
           assert.equal(await js("getComputedStyle(document.querySelector('#quick-create')).webkitAppRegion"), 'no-drag');
         }
       }
