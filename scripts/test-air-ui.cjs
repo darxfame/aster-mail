@@ -24,11 +24,33 @@ async function screenshot(name) {
 app.whenReady().then(async () => {
   try {
     await fs.mkdir(output, { recursive: true });
-    window = new BrowserWindow({ width: 1920, height: 940, useContentSize: true, show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+    window = new BrowserWindow({ width: 1920, height: 940, useContentSize: true, show: false,
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 34 } } : {}),
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     window.webContents.session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/.test(details.url) }));
     await window.loadFile(path.join(root, 'src/index.html'));
     await js('document.querySelector("[data-action=demo]").click()');
     await waitFor('state.demo && state.messages.length > 1');
+    if (process.platform === 'darwin') {
+      await js("document.body.classList.add('desktop','mac')");
+      assert.deepEqual(window.getWindowButtonPosition(), { x: 12, y: 34 });
+      assert.equal(window.getBounds().height, window.getContentBounds().height, 'No separate native title bar consumes content height');
+      for (const zoom of [0.8, 1, 2]) {
+        window.webContents.setZoomFactor(zoom);
+        window.setWindowButtonPosition({ x: 12, y: Math.round(41 * zoom - 7) });
+        for (const collapsed of [false, true]) {
+          await js(`document.body.classList.toggle('sidebar-collapsed',${collapsed})`);
+          const controlsBottom = (window.getWindowButtonPosition().y + 14) / zoom;
+          assert.equal(await js(`document.querySelector('.wordmark').getBoundingClientRect().top>${controlsBottom}`), true, 'Brand stays below native controls at every scale');
+          assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${82 / zoom}`), true, 'Toolbar stays clear of native controls with either sidebar width');
+          assert.equal(await js("getComputedStyle(document.querySelector('.sidebar'),'::before').webkitAppRegion"), 'drag');
+          assert.equal(await js("getComputedStyle(document.querySelector('#quick-create')).webkitAppRegion"), 'no-drag');
+        }
+      }
+      window.webContents.setZoomFactor(1);
+      window.setWindowButtonPosition({ x: 12, y: 34 });
+      await js('renderSidebar()');
+    }
     await js(`window.fixtureMessages=structuredClone(state.messages).map(m=>({...m,read:true})); window.fixtureApi=api;void 0;`);
     await js('openMessage(state.messages[0].id)');
     assert.equal(await js(`Math.abs(document.querySelector('.reader-content').getBoundingClientRect().width-document.querySelector('.reader-scroll').clientWidth)<1`), true, 'Mail content must use the full reader width on a wide window');

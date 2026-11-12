@@ -4,6 +4,7 @@ window.addEventListener('beforeunload', event => {
   if (unsavedChanges) { event.preventDefault(); event.returnValue = ''; }
 });
 contextBridge.exposeInMainWorld('aster', {
+  platform: process.platform,
   setUnsavedChanges: value => {
     unsavedChanges = value === true;
     ipcRenderer.send('aster-unsaved-changes', unsavedChanges);

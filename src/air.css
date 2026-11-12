@@ -208,3 +208,15 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
   .sidebar, .sidebar-collapsed .sidebar { padding-top: 18px; }
   .sidebar .wordmark, .sidebar-collapsed .sidebar .wordmark { padding-bottom: 14px; }
 }
+/* Native macOS controls occupy the sidebar header, without a separate title bar. */
+body.mac:not(.compose-window) .sidebar { padding-top: 56px; }
+body.mac .sidebar .wordmark { -webkit-app-region: drag; }
+body.mac:not(.compose-window) .sidebar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  -webkit-app-region: drag;
+}

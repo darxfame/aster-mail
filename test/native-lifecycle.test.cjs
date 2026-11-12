@@ -22,7 +22,9 @@ test('preload blocks any unload only while the renderer has unsaved edits', () =
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../desktop/preload.cjs'), 'utf8'), {
     require: () => ({ contextBridge: { exposeInMainWorld(_name, value) { bridge = value; } }, ipcRenderer: { send: (...args) => sent.push(args) } }),
     window: { addEventListener: (name, callback) => { listeners[name] = callback; } },
+    process: { platform: 'darwin' },
   });
+  assert.equal(bridge.platform, 'darwin');
   let prevented = 0;
   const event = { preventDefault() { prevented++; } };
   listeners.beforeunload(event); assert.equal(prevented, 0);
@@ -65,10 +67,13 @@ test('pre-login recovery never clears without confirmation and blocks concurrent
   finish(); assert.equal(await resetting, true); assert.equal(cleared, 1); assert.equal(context.accountEpoch, 1); assert.equal(context.resettingLocalData, false);
   context.connection = {}; await assert.rejects(context.resetLocalData(), /завершите подключение/); assert.equal(cleared, 1);
 });
-test('window initial size and minimum fit the display work area in logical pixels', () => {
+for (const platform of ['darwin', 'win32']) test(`window fits the display and uses platform-appropriate chrome on ${platform}`, () => {
   let options;
-  const context = vm.createContext({ tr: value => value, screen: { getPrimaryDisplay: () => ({ workArea: { width: 960, height: 640 } }) }, BrowserWindow: function (value) { options = value; this.loadFile = () => {}; this.on = () => {}; this.webContents = { setWindowOpenHandler() {}, on() {}, session: { setPermissionRequestHandler() {} } }; }, path, __dirname: path.join(__dirname, '../desktop'), page: 'index.html' });
+  const context = vm.createContext({ process: { platform }, tr: value => value, screen: { getPrimaryDisplay: () => ({ workArea: { width: 960, height: 640 } }) }, BrowserWindow: function (value) { options = value; this.loadFile = () => {}; this.on = () => {}; this.webContents = { setWindowOpenHandler() {}, on() {}, session: { setPermissionRequestHandler() {} } }; }, path, __dirname: path.join(__dirname, '../desktop'), page: 'index.html' });
   const start = source.indexOf('  createWindow = () => {'), end = source.indexOf("  ipcMain.on('aster-unsaved-changes'", start);
   vm.runInContext(source.slice(start, end), context); context.createWindow();
   assert.equal(options.width, 960); assert.equal(options.height, 640); assert.equal(options.minWidth, 760); assert.equal(options.minHeight, 540);
+  assert.equal(options.titleBarStyle, platform === 'darwin' ? 'hiddenInset' : undefined);
+  assert.equal(options.trafficLightPosition?.x, platform === 'darwin' ? 12 : undefined);
+  assert.equal(options.trafficLightPosition?.y, platform === 'darwin' ? 34 : undefined);
 });

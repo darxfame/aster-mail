@@ -487,6 +487,7 @@ app.whenReady().then(async () => {
     const { width, height } = screen.getPrimaryDisplay().workArea;
     window = new BrowserWindow({ width: Math.min(1440, width), height: Math.min(940, height), minWidth: Math.min(760, width), minHeight: Math.min(540, height), title: 'Aster Mail',
       backgroundColor: '#f7f8fb',
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 34 } } : {}),
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
     window.loadFile(page);
@@ -531,6 +532,7 @@ app.whenReady().then(async () => {
       if (operation === 'setInterfaceScale') {
         if (typeof data.scale !== 'number' || !Number.isFinite(data.scale) || data.scale < 0.8 || data.scale > 2) throw new Error('Invalid interface scale');
         window.webContents.setZoomFactor(data.scale);
+        if (process.platform === 'darwin') window.setWindowButtonPosition({ x: 12, y: Math.round(41 * data.scale - 7) });
         for (const entry of composeWindows.entries.values()) entry.window.webContents.setZoomFactor(data.scale);
         notificationSettings.interfaceScale = data.scale;
         if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.setZoomFactor(data.scale);
