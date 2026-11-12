@@ -1,6 +1,18 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "ещё": "remaining",
+    "через": "in",
+    "Укажите рабочие дни и время окончания позже начала.": "Choose working days and an end time later than the start.",
+    "Сейчас": "Now",
+    "Далее": "Next",
+    "Войти в звонок": "Join call",
+    "Нерабочий день": "Non-working day",
+    "Рабочие дни и часы": "Working days and hours",
+    "Начало рабочего дня": "Working day starts",
+    "Конец рабочего дня": "Working day ends",
+    "Расписание ограничено рабочими часами и расширяется для встреч вне них. В виджете сегодня видны последние два часа и оставшаяся часть дня. Часы заданы в выбранном часовом поясе; настройки Exchange не изменяются.": "The schedule uses working hours and expands for meetings outside them. Today\u2019s widget shows the last two hours and the rest of the day. Hours use the selected time zone; Exchange settings are unchanged.",
+
     "Автоскрытие: вкл.": "Automatic privacy: on",
     "Презентация: до": "Presentation: until",
     "Презентация: включена": "Presentation: on",

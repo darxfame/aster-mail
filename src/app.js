@@ -723,7 +723,7 @@ function selectSettingsTab(selected) {
 async function settingsModal() {
   if (window.aster) notificationPreferences = await api('notificationSettings');
   const zones = [...new Set([T.zone(), T.zone(timeZone), 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
-  const p = notificationPreferences;
+  const p = notificationPreferences, work = window.asterWorkSchedule.normalize(p.workSchedule);
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal(tr('Настройки Aster'), tr('Спокойное пространство, настроенное под вас.'), `<form id="settings-form">
     <div class="settings-tabs" role="tablist" aria-label="${tr("Разделы настроек")}">
@@ -739,6 +739,10 @@ async function settingsModal() {
     <h3 class="settings-heading">${tr("Дата и время")}</h3>
     <label class="field"><span>${tr("Часовой пояс")}</span><select name="timeZone"><option value="system" ${timeZone === 'system' ? 'selected' : ''}>${tr("Как на компьютере ·")} ${esc(T.zone())}</option>${zones.map(zone => `<option value="${esc(zone)}" ${timeZone === zone ? 'selected' : ''}>${esc(zone.replaceAll('_', ' '))}</option>`).join('')}</select></label>
     <p class="form-note">${tr("Пояс применяется к календарю, письмам, виджету и времени создания встреч. Отсчёт до встречи не зависит от пояса отображения. «Как на компьютере» следует системным настройкам.")}</p>
+    <h3 class="settings-heading">${tr('Рабочие дни и часы')}</h3>
+    <div class="work-days">${[[1, tr('Пн')], [2, tr('Вт')], [3, tr('Ср')], [4, tr('Чт')], [5, tr('Пт')], [6, tr('Сб')], [0, tr('Вс')]].map(([day, label]) => `<label><input type="checkbox" name="workDay" value="${day}" ${work.days.includes(day) ? 'checked' : ''}>${label}</label>`).join('')}</div>
+    <div class="form-row"><label class="field"><span>${tr('Начало рабочего дня')}</span><input type="time" name="workStart" value="${work.start}" required></label><label class="field"><span>${tr('Конец рабочего дня')}</span><input type="time" name="workEnd" value="${work.end}" required></label></div>
+    <p class="form-note">${tr('Расписание ограничено рабочими часами и расширяется для встреч вне них. В виджете сегодня видны последние два часа и оставшаяся часть дня. Часы заданы в выбранном часовом поясе; настройки Exchange не изменяются.')}</p>
     <h3 class="settings-heading">${tr("Навигация")}</h3>
     <label class="field"><span>${tr("Расположение меню")}</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>${tr("Слева · под папками, над аккаунтом")}</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>${tr("Внизу окна · горизонтальная панель")}</option></select></label>
     </section>
@@ -1192,9 +1196,10 @@ document.addEventListener('submit', event => {
     submitForm(form, async data => {
       if (form.querySelector('#settings-panel-auto-replies').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните автоответы отдельной кнопкой или загрузите их заново.'));
       const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), privacyApps: [...form.querySelectorAll('[name="privacyApp"]:checked')].map(input => input.value), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
+      next.workSchedule = window.asterWorkSchedule.normalize({ days: [...form.querySelectorAll('[name="workDay"]:checked')].map(input => Number(input.value)), start: data.workStart, end: data.workEnd }, true);
       T.zone(next.timeZone);
       const nextPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
-      const repaint = next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
+      const repaint = state.view === 'calendar' && JSON.stringify(next.workSchedule) !== JSON.stringify(window.asterWorkSchedule.normalize(notificationPreferences.workSchedule)) || next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
       clearError();
       applyLanguage(next.language);

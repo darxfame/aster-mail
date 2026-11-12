@@ -9,7 +9,7 @@ header { padding:10px 12px; gap:8px; }
 header > div { flex:1; min-width:0; }
 header small { font-size:12px; }
 header button { flex:none; margin-left:0; width:32px; height:32px; }
-#privacy-toggle[aria-checked="true"] { background:#ffffff40; outline:2px solid #fff; }
+
 main { padding:10px; gap:10px; }
 .featured-meetings { flex:none; display:grid; gap:8px; max-height:min(330px,55vh); overflow:auto; padding:3px; margin:-3px; }
 .featured { padding:11px; border-radius:10px; min-width:0; }
@@ -35,9 +35,27 @@ footer { padding:8px 10px; font-size:11px; }
 @media(max-height:440px) { .featured-meetings { max-height:50vh; } .day-grid { min-height:130px; } header small,footer { display:none; } }
 @media(max-width:320px) { .actions { flex-wrap:wrap; } .actions .open { flex:1 1 130px; } }
 
-#privacy-toggle { width:auto; max-width:170px; font-size:12px; padding:4px 7px; }
-.privacy-controls { flex:none; padding:8px 12px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; }
-.privacy-controls select { margin-left:8px; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:5px; padding:3px; }
-#privacy-status { margin:6px 0 0; line-height:1.4; }
 .actions[hidden] { display:none; }
 .grid-event-main:disabled,.all-day button:disabled { opacity:1; cursor:default; }
+
+header { padding:6px 10px; }
+header .brand { font-size:23px; }
+header > strong { flex:1; font-size:13px; }
+header button { width:28px; height:28px; font-size:18px; }
+.featured.is-current { border-color:var(--live); }
+.focus-label { font-size:11px; color:var(--muted); margin-bottom:4px; }
+.is-current .focus-label { color:var(--live); }
+.featured-meetings { max-height:min(300px,52vh); }
+.featured .actions button { flex:1; }
+.featured .actions .dismiss { flex:none; width:26px; min-width:26px; padding:4px; }
+.day-toolbar strong small { display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:3px; }
+
+.featured:not(.mail-preview) .mail-preview-text { -webkit-line-clamp:1; margin:4px 0; font-size:12px; }
+@media(max-height:440px) {
+  .featured { padding:6px 8px; }
+  .focus-label { margin-bottom:2px; }
+  .featured-title { font-size:13px; }
+  .time { font-size:11px; margin-top:2px; }
+  .actions { margin-top:5px; }
+  .featured .open,.featured .join,.featured .dismiss { min-height:30px; padding:5px 6px; font-size:12px; }
+}

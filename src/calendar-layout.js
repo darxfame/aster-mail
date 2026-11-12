@@ -1,8 +1,8 @@
 (function (root) {
   const tr = typeof module !== 'undefined' ? require('./i18n.js').text : root.asterI18n.text;
   const C = typeof module !== 'undefined' ? require('./calendar.js') : root.asterCalendar;
-  function layout(events, day, timeZone = 'system') {
-    const { start, end } = C.range(day, 'day', timeZone), dayMinutes = (end - start) / 60000;
+  function layout(events, day, timeZone = 'system', bounds = C.range(day, 'day', timeZone)) {
+    const { start, end } = bounds, dayMinutes = (end - start) / 60000;
     const entries = events.filter(e => !e.allDay && Date.parse(e.start) < +end && Date.parse(e.end) > +start)
       .map(event => ({ event, top: (Math.max(Date.parse(event.start), +start) - start) / 60000, bottom: (Math.min(Date.parse(event.end), +end) - start) / 60000 }))
       .sort((a, b) => a.top - b.top || b.bottom - a.bottom);

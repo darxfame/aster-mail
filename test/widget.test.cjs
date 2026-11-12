@@ -8,7 +8,7 @@ test('widget keeps three readable cards and expands remaining simultaneous meeti
   const nodes = Object.fromEntries(['#connection', '#updated', '#error', '#meetings', '.day-scroll'].map(key => [key, { scrollTop: 100 }]));
   const handlers = {}, calls = [];
   const context = vm.createContext({ tr: value => value, Date: class extends Date { static now() { return now; } },
-    window: { asterTime: require('../src/time.js'), asterEvents: E, asterCalendarLayout: require('../src/calendar-layout.js'),
+    window: { asterWorkSchedule: require('../src/work-schedule.js'), asterTime: require('../src/time.js'), asterEvents: E, asterCalendarLayout: require('../src/calendar-layout.js'),
       asterI18n: { language: 'ru', setLanguage() {} }, asterWidget: { onUpdate() {}, state: () => new Promise(() => {}), action: async (...args) => { calls.push(args); return { ok: true }; } } },
     document: { querySelector: key => nodes[key], body: { classList: { toggle() {} } }, addEventListener: (type, callback) => { handlers[type] = callback; } }, setInterval() {},
   });

@@ -12,7 +12,7 @@ function meetingReminders(value) {
     .map(entry => ({ id: entry.id, start: new Date(entry.start).toISOString(), minutes: reminderMinutes(entry.minutes) }));
 }
 function preferences(value = {}) {
-  const result = { ...defaults };
+  const result = { ...defaults, workSchedule: require('../src/work-schedule.js').normalize(value.workSchedule) };
   for (const key of ['mail', 'meetings', 'sounds', 'preview', 'autoPrivacy', 'mailTextPreview', 'debugErrors']) if (typeof value[key] === 'boolean') result[key] = value[key];
   result.privacyApps = require('../src/privacy-apps.js').selected(value.privacyApps);
   if (typeof value.interfaceScale === 'number' && Number.isFinite(value.interfaceScale) && value.interfaceScale >= 0.8 && value.interfaceScale <= 2) result.interfaceScale = value.interfaceScale;

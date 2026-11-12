@@ -184,7 +184,7 @@ function widgetState() {
   const project = event => ({ id: event.id, title: hidden ? tr('Встреча') : event.title, preview: hidden ? '' : require('./protocol.cjs').mailPreview(event.preview || event.body || event.html || '', Boolean(!event.preview && !event.body && event.html)), start: event.start, end: event.end, allDay: event.allDay, cancelled: event.cancelled, response: event.response, isOrganizer: event.isOrganizer, joinUrl: !hidden && Boolean(meetingLink(event)) });
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(project);
   const events = upcomingMeetings(calendarEvents).slice(0, 5);
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, mailAlerts: hidden ? [] : mailAlerts.map(alert => ({ id: alert.id, title: alert.title, subject: alert.subject, date: alert.date, text: notificationSettings.mailTextPreview ? alert.body.split('\n').slice(1).join(' ') : '' })), dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, mailAlerts: hidden ? [] : mailAlerts.map(alert => ({ id: alert.id, title: alert.title, subject: alert.subject, date: alert.date, text: notificationSettings.mailTextPreview ? alert.body.split('\n').slice(1).join(' ') : '' })), dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), workSchedule: notificationSettings.workSchedule, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
 }
 function refreshWidget() {
   const state = widgetState();
@@ -269,19 +269,25 @@ async function pollNotifications() {
       try {
         const events = await active.calendar(pollingRange());
         if (active !== client) return;
-        const next = upcomingMeetings(events)[0];
-        if (next) {
-          const key = `${next.id}:${next.start}`;
-          if (!widgetDetail || widgetDetail.key !== key || Date.now() - widgetDetail.at > 300000) {
+        const focus = require('../src/events.js').focusMeetings(events, Date.now()).slice(0, 10);
+        const details = new Map(widgetDetail?.records || []), retained = [];
+        for (const next of focus) {
+          const key = `${next.id}:${next.start}:${next.changeKey || ''}`;
+          let detail = details.get(key);
+          if (!detail || Date.now() - detail.at > 300000) {
             try {
               const data = await active.event({ id: next.id, changeKey: next.changeKey });
               if (active !== client) return;
-              widgetDetail = { key, at: Date.now(), data };
+              detail = { at: Date.now(), data };
             } catch { /* The calendar preview and location remain available. */ }
           }
           if (active !== client) return;
-          if (widgetDetail?.key === key) Object.assign(next, { body: widgetDetail.data.body, joinUrl: widgetDetail.data.joinUrl || next.joinUrl, cancelled: widgetDetail.data.cancelled });
+          if (detail) {
+            retained.push([key, detail]);
+            Object.assign(next, { body: detail.data.body, html: detail.data.html, joinUrl: detail.data.joinUrl || next.joinUrl, cancelled: detail.data.cancelled });
+          }
         }
+        widgetDetail = { records: retained };
         widgetEvents = events;
         const keys = new Set(events.map(event => `${event.id}:${event.start}`));
         dismissedMeetings = new Set([...dismissedMeetings].filter(key => keys.has(key)));
@@ -554,6 +560,7 @@ app.whenReady().then(async () => {
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported(), ...privacyState() } };
       if (operation === 'togglePresentation') { setPresentation(data.enabled ?? !presentationMode, data.minutes ?? 30); return { ok: true, value: privacyState() }; }
       if (operation === 'saveNotifications') {
+        require('../src/work-schedule.js').normalize(data.workSchedule, true);
         require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings, next = preferences({ ...data, meetingReminders: notificationSettings.meetingReminders });
         if (client) {

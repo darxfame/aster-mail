@@ -419,3 +419,7 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .privacy-apps label { display:flex; align-items:center; gap:8px; }
 .presentation-toggle { flex:none; padding:6px 10px; font-size:12px; }
 [data-presentation-toggle][aria-checked="true"] { border-color:var(--accent); background:var(--soft); }
+
+.work-days { display:flex; flex-wrap:wrap; gap:12px; margin:14px 0; }
+.work-days label { display:flex; align-items:center; gap:5px; }
+.timeline-heading.non-working { color:var(--muted); background:var(--surface2); }

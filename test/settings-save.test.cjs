@@ -5,10 +5,10 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 function settings({ changed = {}, apiError, sync = true } = {}) {
   const calls = [], writes = [], form = { id: 'settings-form', querySelector: () => ({ hidden: true, dataset: {} }), querySelectorAll: () => [] };
-  const data = { notifyMail: 'on', notifyMeetings: 'on', notifySounds: 'on', autoPrivacy: 'on', interfaceScale: '1', minutes: '15', timeZone: 'system', theme: 'light', language: 'ru', navigationPlacement: 'sidebar', syncSignature: sync ? 'on' : undefined, signature: 'Edited local signature', debugErrors: 'on', ...changed };
+  const data = { workStart: '09:00', workEnd: '18:00', notifyMail: 'on', notifyMeetings: 'on', notifySounds: 'on', autoPrivacy: 'on', interfaceScale: '1', minutes: '15', timeZone: 'system', theme: 'light', language: 'ru', navigationPlacement: 'sidebar', syncSignature: sync ? 'on' : undefined, signature: 'Edited local signature', debugErrors: 'on', ...changed };
   let pending;
   const context = vm.createContext({ form, tr: value => value, state: { view: 'mail', account: { sessionId: 'fictional' }, theme: 'light', signature: 'Original signature' },
-    window: { aster: {}, asterI18n: { language: 'ru' } }, notificationPreferences: {}, timeZone: 'system', navigationPlacement: 'sidebar', syncSignature: sync,
+    window: { asterWorkSchedule: require('../src/work-schedule.js'), aster: {}, asterI18n: { language: 'ru' } }, notificationPreferences: {}, timeZone: 'system', navigationPlacement: 'sidebar', syncSignature: sync,
     T: { zone() {} }, submitForm(_form, operation) { pending = operation(data); }, api: async (operation, value) => { calls.push(operation); if (apiError) throw apiError; return value; },
     localPreferences: { setItem: (key, value) => writes.push([key, value]) }, localSave: Promise.resolve(), clearError() {}, applyLanguage() {}, applyInterfaceScale: async () => {},
     renderSidebar() {}, renderMail() { calls.push('renderMail'); }, renderCalendar() { calls.push('renderCalendar'); }, renderContacts() { calls.push('renderContacts'); },
