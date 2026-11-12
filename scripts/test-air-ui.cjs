@@ -37,6 +37,7 @@ app.whenReady().then(async () => {
     assert.equal(await js("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()"), '#7760d6');
     for (const selector of ['[data-mail-find]', '[data-mail-move]', '[data-action=archive]', '[data-action=delete]', '[data-action=reply]', '[data-action=reply-all]', '[data-action=forward]', '.mail-select', '.message-quick-actions', '.privacy-note', '.sender-detail']) assert.equal(await js(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), true, selector);
     assert.notEqual(await js("getComputedStyle(document.querySelector('.topbar')).backdropFilter"), 'none');
+    assert.equal(await js('Boolean(document.querySelector(".reader-toolbar .privacy-note[title]")) && !document.querySelector(".reader-content .privacy-note")'), true, 'Image policy belongs in a compact labelled toolbar indicator');
     // All reads below use manually released promises, with no artificial UI delay.
     await js(`state.demo=false;state.account={server:'https://mail.example.test',username:'fictional@example.test',sessionId:'air-fixture'};window.fixtureReads=[];
       api=async(operation,data={})=>{

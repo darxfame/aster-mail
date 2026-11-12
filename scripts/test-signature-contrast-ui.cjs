@@ -48,6 +48,9 @@ app.whenReady().then(async () => {
     assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('div').style.backgroundColor`), 'white', 'Mail keeps authored backgrounds');
     assert.equal(await js('state.messages[0].html'), html, 'Viewing must not rewrite the original message');
     await fs.writeFile(path.join(output,'dark-mail.png'),(await window.webContents.capturePage()).toPNG());
+    await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<p>Fictional image failure</p><img src="https://images.example.test/logo.png">',{dark:true,title:'Fictional image',loadImages:async()=>({images:{},errors:{'https://images.example.test/logo.png':'Неподдерживаемый адрес изображения'}}),openLink(){}})`);
+    await waitFor('Boolean(document.querySelector("#message-body iframe")?.contentDocument?.querySelector(".aster-image-unavailable"))');
+    assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('.aster-image-unavailable').title`), 'Неподдерживаемый адрес изображения', 'Blocked images retain their actual reason');
     console.log('PASS: dark signature contrast for hex/named/HSL/alpha/nested/legacy colors, preserved emphasis/transparency, light colors and original outgoing markup.');
   } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});
