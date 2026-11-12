@@ -9,6 +9,7 @@ without an Aster cloud or application telemetry.
 
 [![Release](https://img.shields.io/github/v/release/darxfame/aster-mail?cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/darxfame/aster-mail/total?cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases)
+[![Stars](https://img.shields.io/github/stars/darxfame/aster-mail?cacheSeconds=300)](https://github.com/darxfame/aster-mail/stargazers)
 [![Checks](https://github.com/darxfame/aster-mail/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/darxfame/aster-mail/actions/workflows/release.yml)
 
 ![Current Aster Mail Air Glass interface with fictional data](docs/screenshots/mail-light.png)
