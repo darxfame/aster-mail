@@ -15,7 +15,7 @@
   };
   const styleAllowed = (name, value) => !!styles[name]?.test(value.trim());
   if (typeof module !== 'undefined') { module.exports = { styleAllowed }; return; }
-  const darkSurface = [38, 39, 51];
+  const darkSurface = [41, 42, 46];
   const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
   function sanitize(html, { dark = false, images = false } = {}) {
     const safe = DOMPurify.sanitize(html, {
@@ -110,7 +110,7 @@
         resize();
       } catch (error) { if (frame.isConnected) body.querySelectorAll('img').forEach(img => unavailable(img, error.message)); }
     });
-    const background = dark ? `rgb(${darkSurface.join(',')})` : '#ffffff', text = dark ? '#e1dfee' : '#4d5063', line = dark ? '#49495b' : '#e4e4eb';
+    const background = dark ? `rgb(${darkSurface.join(',')})` : '#ffffff', text = dark ? '#eceef2' : '#4d5063', line = dark ? '#49494d' : '#e4e4eb';
     frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}html,body{background:${background};color:${text};margin:0}body{display:flow-root;font:13px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}body *{box-sizing:border-box;max-width:100%}a[href]{color:${dark ? '#c3a5ff' : '#7750bd'}!important;text-decoration:underline;cursor:pointer}img{max-width:100%;height:auto;object-fit:contain}.aster-image-unavailable{display:inline-block!important;font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif!important;letter-spacing:normal!important;word-spacing:normal!important;white-space:normal!important;color:${text}!important;background:${background}!important;padding:4px 8px!important;border:1px solid ${line}!important;border-radius:4px;max-width:100%}table{border-collapse:collapse;width:auto!important}td,th{padding:5px;border-color:${line}!important}p{margin:0 0 16px}pre{white-space:pre-wrap}blockquote{border-left:2px solid ${line};padding-left:14px}ul,ol{padding-left:24px}</style></head><body>${doc.body.innerHTML}</body></html>`;
     target.replaceChildren(frame);
   }

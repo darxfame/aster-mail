@@ -1,6 +1,8 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Загружаем почту…": "Loading mail…",
+    "Загружаем контакты…": "Loading contacts…",
     "ещё": "remaining",
     "через": "in",
     "Укажите рабочие дни и время окончания позже начала.": "Choose working days and an end time later than the start.",

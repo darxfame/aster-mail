@@ -42,7 +42,7 @@ test('message list becomes readable before a slow folder tree finishes loading',
   const source=fs.readFileSync(require.resolve('../src/app.js'),'utf8');
   let finish, rendered=false;
   const folders=new Promise(resolve=>{finish=resolve;});
-  const context=vm.createContext({ closeMailAttachmentPreview() {}, tr: value => value,state:{generation:0,view:'mail',folder:'inbox',filter:'all',query:'',account:{},messages:[]},$:()=>({}),ready:()=>true,renderSidebar(){},clearError(){},icon:()=>'',time:()=>'',api:async operation=>operation==='messages'?{items:[],more:false}:folders,renderMail(){rendered=true;},refreshMailFolders:()=>folders,showError(){}});
+  const context=vm.createContext({ closeMailAttachmentPreview() {}, window: { asterLoading: require('../src/loading-ui.js') }, tr: value => value,state:{generation:0,view:'mail',folder:'inbox',filter:'all',query:'',account:{},messages:[]},$:()=>({}),ready:()=>true,renderSidebar(){},clearError(){},icon:()=>'',time:()=>'',api:async operation=>operation==='messages'?{items:[],more:false}:folders,renderMail(){rendered=true;},refreshMailFolders:()=>folders,showError(){}});
   vm.runInContext(source.slice(source.indexOf('async function loadView('),source.indexOf('function filteredMessages(')),context);
   const loading=context.loadView(); await new Promise(resolve=>setImmediate(resolve));
   try {assert.equal(rendered,true);} finally {finish([]); await loading;}

@@ -85,7 +85,7 @@ test('a late conflict result cannot replace a newer meeting card', async () => {
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../src/meeting-ui.js'), 'utf8');
   const pending = [], target = { innerHTML: '' }, dialog = { open: false, dataset: {}, classList: { add() {} } };
-  const context = vm.createContext({ tr: value => value, meetingRequest: 0, activeMeeting: null,
+  const context = vm.createContext({ tr: value => value, meetingRequest: 0, activeMeeting: null, window: { asterLoading: require('../src/loading-ui.js') },
     state: { demo: false, events: [], view: 'mail' }, $: () => dialog, document: { querySelector: () => target }, ref: value => value,
     modal() { dialog.open = true; }, api: async (_operation, ref) => ({ id: ref.id, attachments: [] }), renderMeetingCard() {},
     loadMeetingConflicts: () => new Promise(resolve => pending.push(resolve)), meetingConflictMarkup: result => result.label });

@@ -256,7 +256,7 @@ async function loadView(append = false) {
   if (!ready()) return welcome();
   state.mailLoading = state.view === 'mail' ? generation : 0;
   const keepMail = state.view === 'mail' && state.mailViewKey === JSON.stringify([state.folder, state.query, state.filter]) && Boolean($('#messages'));
-  if (!append && !keepMail) $('#workspace').innerHTML = `<div class="loading">${icon('refresh')}${tr("Загружаем")} ${state.view === 'mail' ? tr('почту') : state.view === 'calendar' ? tr('календарь') : tr('контакты')}…</div>`;
+  if (!append && !keepMail) $('#workspace').innerHTML = window.asterLoading.markup(state.view, { mail: tr('Загружаем почту…'), calendar: tr('Загружаем календарь…'), contacts: tr('Загружаем контакты…') }[state.view], state.view === 'calendar' ? calendarMode() : undefined);
   $('#status').textContent = tr('Обновление…');
   try {
     if (state.view === 'mail') {
@@ -370,7 +370,7 @@ async function openMessage(id, generation = state.generation, { markRead = true 
   closeMailAttachmentPreview();
   const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
   state.selected = summary; document.body.classList.add('reader-open'); renderMessages();
-  $('#reader').innerHTML = readerNotice(`<div class="loading">${icon('refresh')}${tr("Открываем письмо…")}</div>`);
+  $('#reader').innerHTML = readerNotice(window.asterLoading.markup('reader', tr('Открываем письмо…')));
   try {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
     if (generation !== state.generation || sequence !== messageOpenSequence) return;

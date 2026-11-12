@@ -54,7 +54,7 @@ function demoMeeting(summary, scope = 'single') {
   return structuredClone({ ...source, body: source.body || source.preview || '', attendees: source.attendees || [], attachments: source.attachments || [], ref: ref(source), changeKey: source.changeKey || 'demo-version', reminder: source.reminder ?? 15, reminderSet: source.reminderSet !== false, showAs: source.showAs || 'Busy', sensitivity: source.sensitivity || 'Normal', canModify: true });
 }
 async function openMeeting(summary) {
-  modal(tr('Встреча'), tr('Загружаем сведения из календаря…'), tr('<div class="meeting-loading">Загрузка карточки…</div>'));
+  modal(tr('Встреча'), tr('Загружаем сведения из календаря…'), window.asterLoading.markup('reader', tr('Загрузка карточки…')));
   const request = ++meetingRequest;
   const dialog = $('#modal'); dialog.classList.add('meeting-dialog'); dialog.dataset.meetingCard = 'true'; dialog.dataset.eventId = summary.id;
   activeMeeting = null;
