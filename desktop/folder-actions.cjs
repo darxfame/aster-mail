@@ -1,6 +1,6 @@
 const tr = require('../src/i18n.js').text;
 const P = require('./protocol.cjs');
-const known = new Set(['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail', 'msgfolderroot']);
+const known = new Set(['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail', 'msgfolderroot', ...P.synchronizationFolders]);
 const reference = id => known.has(id) ? `<t:DistinguishedFolderId Id="${id}"/>` : `<t:FolderId Id="${P.escapeXML(id)}"/>`;
 async function run(client, data) {
   if (!['read', 'create', 'rename', 'trash'].includes(data.action) || typeof data.folder !== 'string' || !data.folder || data.folder.length > 16000 || /[\x00-\x1f]/.test(data.folder)) throw new Error(tr('Некорректная операция с папкой'));

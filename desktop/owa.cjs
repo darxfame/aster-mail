@@ -159,14 +159,17 @@ class OWAClient {
   async mailBatch(data) { return require('./mail-batch.cjs').run(this, data); }
   async folders(data = {}) { return this.mailCache.get('folders', () => this.fetchFolders(), { ttl: 60000, refresh: data.refresh === true }); }
   async fetchFolders() {
-    const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
+    const aliases = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail', ...P.synchronizationFolders];
     const known = await Promise.allSettled(aliases.map(async alias => {
       const result = await this.call('GetFolder', P.request('GetFolder', { FolderShape: P.typed('FolderResponseShape', { BaseShape: 'AllProperties' }), FolderIds: [P.folder(alias)] }));
       const folder = P.walk(result, o => o.FolderId?.Id && typeof o.DisplayName === 'string')[0];
       return folder ? { ...folder, wellKnown: alias } : null;
     }));
     const folders = new Map();
-    const systemIdentityKnown = known.every((result, index) => result.status === 'fulfilled' ? Boolean(result.value) : aliases[index] === 'archive' && /\bErrorFolderNotFound\b/.test(result.reason?.message || ''));
+    // Synchronization folders, like archive, may legitimately be absent. Failed
+    // identity reads must still prevent treating a system folder as user-owned.
+    const optional = new Set(['archive', ...P.synchronizationFolders]);
+    const systemIdentityKnown = known.every((result, index) => result.status === 'fulfilled' ? Boolean(result.value) : optional.has(aliases[index]) && /\bErrorFolderNotFound\b/.test(result.reason?.message || ''));
     for (const result of known) if (result.status === 'fulfilled' && result.value) folders.set(result.value.FolderId.Id, result.value);
     let offset = 0;
     while (offset < 1000) {

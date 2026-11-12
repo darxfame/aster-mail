@@ -1,14 +1,15 @@
 (function (root) {
   function tree(folders, defaults) {
+    const defaultAliases = new Set(defaults.map(([alias]) => alias));
     const known = new Map(folders.filter(f => f.wellKnown).map(f => [f.wellKnown, f]));
-    const ids = new Map(folders.map(f => [f.id, f.wellKnown || f.id]));
+    const ids = new Map(folders.map(f => [f.id, defaultAliases.has(f.wellKnown) ? f.wellKnown : f.id]));
     const nodes = new Map();
     for (const [alias, name, symbol] of defaults) {
       const folder = known.get(alias);
       nodes.set(alias, { ...folder, key: alias, name, symbol, children: [], parent: null });
     }
     for (const folder of folders) {
-      if (folder.wellKnown || nodes.has(folder.id)) continue;
+      if (defaultAliases.has(folder.wellKnown) || nodes.has(folder.id)) continue;
       nodes.set(folder.id, { ...folder, key: folder.id, symbol: 'folder', children: [], parent: ids.get(folder.parentId) || folder.parentId });
     }
     const roots = [];

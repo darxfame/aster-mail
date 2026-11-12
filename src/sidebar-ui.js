@@ -39,7 +39,8 @@ function showFolderMenu(button, x, y) {
   const account = state.account, demo = state.demo;
   const entries = [['read', tr('Прочитать всё')], ['create', tr('Создать подпапку…')], ['root', tr('Новая папка в корне…')], ['rename', tr('Переименовать…')], ['trash', tr('Переместить в корзину…')], ['refresh', tr('Обновить папки')]];
   folderMenu = document.createElement('div'); folderMenu.opener = button; folderMenu.className = 'folder-context-menu'; folderMenu.setAttribute('role', 'menu'); folderMenu.setAttribute('aria-label', `${tr("Папка:")} ${folder.name}`);
-  folderMenu.innerHTML = entries.map(([action, text]) => `<button type="button" role="menuitem" tabindex="-1" data-folder-operation="${action}" ${folder.wellKnown && ['rename', 'trash'].includes(action) ? tr('disabled title="Системная папка"') : ''}>${esc(text)}</button>`).join('');
+  const protectedReason = folder.wellKnown ? tr('Системная папка') : !demo && folder.systemIdentityKnown !== true ? tr('Не удалось определить системные папки. Обновите список перед изменением папки.') : '';
+  folderMenu.innerHTML = entries.map(([action, text]) => `<button type="button" role="menuitem" tabindex="-1" data-folder-operation="${action}" ${protectedReason && ['rename', 'trash'].includes(action) ? `disabled title="${esc(protectedReason)}"` : ''}>${esc(text)}</button>`).join('');
   document.body.append(folderMenu);
   const bounds = folderMenu.getBoundingClientRect();
   folderMenu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
@@ -60,6 +61,10 @@ function showFolderMenu(button, x, y) {
 async function performFolderAction(edit, name) {
   if (folderTask) return;
   if (state.account !== edit.account || state.demo !== edit.demo) throw new Error(tr('Аккаунт изменился. Откройте меню папки заново.'));
+  if (['rename', 'trash'].includes(edit.action)) {
+    if (edit.folder.wellKnown) throw new Error(tr('Системную папку нельзя переименовать или переместить в корзину'));
+    if (!state.demo && edit.folder.systemIdentityKnown !== true) throw new Error(tr('Не удалось определить системные папки. Обновите список перед изменением папки.'));
+  }
   if (['create', 'rename'].includes(edit.action) && (typeof name !== 'string' || !name.trim() || name.trim().length > 255 || /[\x00-\x1f]/.test(name))) throw new Error(tr('Укажите название папки от 1 до 255 символов'));
   folderTask = true;
   try {

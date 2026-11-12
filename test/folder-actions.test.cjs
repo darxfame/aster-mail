@@ -101,3 +101,51 @@ test('an explicitly absent optional archive permits custom folder mutations', as
   await client.folderOperation({action:'trash',folder:'custom'});
   assert.deepEqual(writes,['GetFolder','MoveFolder']);
 });
+
+const syncAliases = ['syncissues', 'conflicts', 'localfailures', 'serverfailures'];
+function synchronizationFixture(failure) {
+  const writes = [], lookups = [];
+  const client = new OWAClient({server:'https://mail.example.test'}, async (_url, options) => {
+    if (options.headers.SOAPAction) {
+      const action = options.headers.SOAPAction.match(/\/([^/]+)"$/)[1];
+      if (action === 'GetFolder') return {status:200,text:soap('<Folder><FolderId Id="custom" ChangeKey="fresh"/></Folder>')};
+      writes.push(action); return {status:200,text:soap('')};
+    }
+    const body = JSON.parse(options.body).Body;
+    if (options.headers.Action === 'GetFolder') {
+      const alias = body.FolderIds[0].Id; lookups.push(body.FolderIds[0]);
+      if (syncAliases.includes(alias) && failure) {
+        if (failure === 'absent') return {status:200,text:JSON.stringify({Body:{ResponseCode:'ErrorFolderNotFound'}})};
+        throw new Error('Fictional failed identity read');
+      }
+      return {status:200,text:JSON.stringify({Body:{Folders:[{FolderId:{Id:`real-${alias}`,ChangeKey:'fresh'},ParentFolderId:{Id:alias==='syncissues'?'root':'real-syncissues'},DisplayName:`Localized ${alias}`}]}})};
+    }
+    const folders = syncAliases.map(alias => ({FolderId:{Id:`real-${alias}`,ChangeKey:'fresh'},ParentFolderId:{Id:alias==='syncissues'?'root':'real-syncissues'},DisplayName:`Localized ${alias}`,FolderClass:'IPF.Note'}));
+    folders.push({FolderId:{Id:'custom',ChangeKey:'fresh'},DisplayName:'Ошибки синхронизации',FolderClass:'IPF.Note'});
+    return {status:200,text:JSON.stringify({Body:{RootFolder:{IncludesLastItemInRange:true,Folders:failure==='absent'?folders.slice(-1):folders}}})};
+  },async ()=>'canary');
+  client.canary='canary';
+  return {client,writes,lookups};
+}
+test('synchronization system folders are protected by actual identity before any mutation', async () => {
+  const {client,writes,lookups}=synchronizationFixture();
+  const folders=await client.folders();
+  for (const alias of syncAliases) {
+    assert.equal(folders.find(folder=>folder.id===`real-${alias}`).wellKnown,alias);
+    assert.ok(lookups.some(folder=>folder.Id===alias && folder.__type==='DistinguishedFolderId:#Exchange'));
+    for (const action of ['rename','trash']) for (const folder of [alias,`real-${alias}`]) await assert.rejects(client.folderOperation({action,folder,name:'New'}),/Системную папку/);
+  }
+  assert.equal(writes.length,0);
+  await client.folderOperation({action:'trash',folder:'custom'});
+  assert.deepEqual(writes,['MoveFolder'],'A custom folder with a system-looking name remains mutable');
+});
+test('absent optional synchronization folders allow custom writes; unresolved identities fail closed', async () => {
+  const absent=synchronizationFixture('absent');
+  await absent.client.folderOperation({action:'trash',folder:'custom'});
+  assert.deepEqual(absent.writes,['MoveFolder']);
+  const failed=synchronizationFixture('failed');
+  const folders=await failed.client.folders();
+  assert.ok(folders.some(folder=>folder.id==='custom'));
+  await assert.rejects(failed.client.folderOperation({action:'trash',folder:'custom'}),/определить системные папки/);
+  assert.equal(failed.writes.length,0);
+});

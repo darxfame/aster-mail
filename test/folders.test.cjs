@@ -15,6 +15,13 @@ test('cyclic and missing folder parents remain visible without recursion', () =>
   const roots = tree([{ id: 'a', parentId: 'b', name: 'A' }, { id: 'b', parentId: 'a', name: 'B' }, { id: 'c', parentId: 'unknown', name: 'C' }], defaults);
   assert.equal(roots.length, 9);
 });
+test('additional system folders stay visible with their identity and nested children', () => {
+  const roots=tree([{id:'sync',wellKnown:'syncissues',name:'Ошибки синхронизации'},{id:'local',parentId:'sync',wellKnown:'localfailures',name:'Локальные ошибки'},{id:'custom',parentId:'local',name:'Custom'}],defaults);
+  const sync=roots.find(folder=>folder.id==='sync');
+  assert.equal(sync.wellKnown,'syncissues');
+  assert.equal(sync.children[0].wellKnown,'localfailures');
+  assert.equal(sync.children[0].children[0].id,'custom');
+});
 test('server folder identities, parents and paged results are retained despite a missing archive', async () => {
   const client = new OWAClient({ server: 'https://mail.example.com' }, async (_url, options) => {
     const request = JSON.parse(options.body);

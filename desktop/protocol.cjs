@@ -3,7 +3,8 @@ const tr = require('../src/i18n.js').text;
 const { XMLParser, XMLValidator } = require('fast-xml-parser');
 const T = require('../src/time.js');
 const typed = (name, fields = {}) => ({ __type: `${name}:#Exchange`, ...fields });
-const folder = id => typed(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive', 'contacts', 'calendar', 'msgfolderroot'].includes(id) ? 'DistinguishedFolderId' : 'FolderId', { Id: id });
+const synchronizationFolders = Object.freeze(['syncissues', 'conflicts', 'localfailures', 'serverfailures']);
+const folder = id => typed(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive', 'contacts', 'calendar', 'msgfolderroot', ...synchronizationFolders].includes(id) ? 'DistinguishedFolderId' : 'FolderId', { Id: id });
 const item = ref => typed('ItemId', { Id: ref.id, ...(ref.changeKey ? { ChangeKey: ref.changeKey } : {}) });
 const property = FieldURI => typed('PropertyUri', { FieldURI });
 const target = id => typed('TargetFolderId', { BaseFolderId: folder(id) });
@@ -150,4 +151,4 @@ function eventSOAP(data) {
 }
 const normalizeServer = require('../src/server.js').normalize;
 
-module.exports = { contact, typed, folder, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };
+module.exports = { contact, typed, folder, synchronizationFolders, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };
