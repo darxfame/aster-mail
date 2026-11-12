@@ -100,7 +100,7 @@ async function refreshSignatureField() {
     renderSignaturePreview($('#signature-preview'), signature);
     status.textContent = signature.text || signature.html ? tr('Подпись загружена из OWA. Форматирование сохранится при отправке; настройки OWA для новых писем и ответов учитываются.') : tr('На сервере сохранена пустая подпись.');
   } catch (error) {
-    checkbox.checked = false; input.readOnly = false; input.value = state.signature;
+    // A failed read must not silently disable the user's signature preference.
     status.textContent = `${tr("Не удалось получить подпись:")} ${errorText(error)}`;
   }
 }
@@ -718,6 +718,7 @@ function selectSettingsTab(selected) {
     tab.tabIndex = active ? 0 : -1;
     form.querySelector(`#${tab.getAttribute('aria-controls')}`).hidden = !active;
   }
+  if (selected.id === 'settings-tab-signature' && form.elements.syncSignature.checked && !serverSignature) void refreshSignatureField();
 }
 async function settingsModal() {
   if (window.aster) notificationPreferences = await api('notificationSettings');
@@ -800,7 +801,7 @@ async function settingsModal() {
     selectSettingsTab(tabs[next]);
     tabs[next].focus();
   });
-  if (syncSignature) await refreshSignatureField();
+  if (syncSignature && serverSignature) renderSignaturePreview($('#signature-preview'), serverSignature);
 }
 async function submitForm(form, operation) {
   if (modalBusy) return;
@@ -1173,6 +1174,7 @@ document.addEventListener('submit', event => {
   if (form.id === 'meeting-reminder-form') { submitMeetingReminder(form); return; }
   if (form.id === 'meeting-local-reminders-form') { submitLocalMeetingReminders(form); return; }
   if (form.id === 'meeting-message-form') { submitMeetingMessage(form); return; }
+  if (form.id === 'meeting-removal-form') { submitMeetingRemoval(form); return; }
   if (form.id === 'event-form' && form.dataset.editing === 'true') { submitMeetingEdit(form); return; }
   if (form.id === 'directory-form') { searchDirectory(form); return; }
   if (form.id === 'module-github-form') { void installModuleFromGitHub(form).catch(showError); return; }
@@ -1183,15 +1185,16 @@ document.addEventListener('submit', event => {
       if (form.querySelector('#settings-panel-auto-replies').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните автоответы отдельной кнопкой или загрузите их заново.'));
       const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       T.zone(next.timeZone);
+      const nextPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
+      const repaint = next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
       clearError();
       applyLanguage(next.language);
-      navigationPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
+      navigationPlacement = nextPlacement;
       localPreferences.setItem('aster-navigation-placement-v2', navigationPlacement);
       await applyInterfaceScale(data.interfaceScale);
       timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);
       miniMonthCursor = null;
-      if (data.syncSignature) await getServerSignature();
       syncSignature = Boolean(data.syncSignature); localPreferences.setItem('aster-signature-sync', String(syncSignature));
       if (!syncSignature) state.signature = data.signature;
       state.theme = data.theme;
@@ -1199,7 +1202,12 @@ document.addEventListener('submit', event => {
       localPreferences.setItem('aster-signature', state.signature); localPreferences.setItem('aster-theme', state.theme);
       await localSave;
       document.body.classList.toggle('dark', state.theme === 'dark'); $('#modal').close(); toast(tr('Настройки сохранены'));
-      if (ready()) await loadView(); else welcome();
+      if (!ready()) welcome();
+      else if (repaint) {
+        if (state.view === 'mail') renderMail();
+        else if (state.view === 'calendar') renderCalendar();
+        else renderContacts();
+      }
     }); return;
   }
   if (form.id === 'connect-form') submitForm(form, async data => {

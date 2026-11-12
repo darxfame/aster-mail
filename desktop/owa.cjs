@@ -348,7 +348,14 @@ class OWAClient {
   async updateEvent(data) {
     const current = await this.eventDetails({ ...data.ref, scope: data.scope || 'single' });
     if (!data.expectedChangeKey || current.changeKey !== data.expectedChangeKey) throw new Error(tr('Встреча изменилась на сервере. Откройте карточку заново перед сохранением.'));
-    await this.ews('UpdateItem', calendarEvents.updateSOAP(current, data.changes));
+    await this.ews('UpdateItem', calendarEvents.updateSOAP(current, data.changes, data.sendUpdates));
+    return true;
+  }
+  async removeEvent(data) {
+    const current = await this.eventDetails({ ...data.ref, scope: data.scope || 'single' });
+    if (!data.expectedChangeKey || current.changeKey !== data.expectedChangeKey) throw new Error(tr('Встреча изменилась на сервере. Откройте карточку заново перед сохранением.'));
+    const request = calendarEvents.removeRequest(current);
+    await this.ews(request.action, request.xml);
     return true;
   }
   async eventMessage(data) {

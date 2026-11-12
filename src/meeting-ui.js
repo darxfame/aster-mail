@@ -103,7 +103,7 @@ function renderMeetingCard() {
   const status = e.cancelled ? tr('Встреча отменена') : own ? tr('Вы организатор') : responseName(e.response);
   const links = window.asterEvents.links(e).filter(url => url !== e.location?.trim());
   const attendee = person => `<div class="meeting-person">${avatar(person.name || person.email, 0, person.email)}<div><strong>${esc(person.name || person.email || tr('Не указан'))}</strong><small>${esc(person.email || '')}</small><span>${esc(person.role === 'resource' ? tr('Ресурс') : person.role === 'optional' ? `${tr("Необязательный ·")} ${responseName(person.response)}` : responseName(person.response))}</span></div></div>`;
-  $('#modal-content').innerHTML = `<header class="meeting-card-header"><div><div class="eyebrow">${icon('calendar')}${e.recurring ? tr('Повторяющаяся встреча') : tr('Встреча')}</div><h2>${esc(e.title)}</h2><span class="meeting-status ${kind}">${esc(status)}</span></div><button class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></header><div class="meeting-toolbar">${e.recurring ? tr('<label class="meeting-scope"><span>Применить к</span><select id="meeting-scope" aria-label="Область действия встречи"><option value="single">Этому повтору</option><option value="series">Всему ряду</option></select></label>') : ''}${!e.cancelled ? `<button class="secondary" data-action="meeting-local-reminders">${tr("Напоминания Aster")}</button><button class="secondary" data-action="meeting-edit" ${e.canModify === false ? tr('disabled title="Нет прав на изменение"') : ''}>${icon('file')}${own ? tr('Редактировать') : tr('Напоминание')}</button><button class="secondary" data-action="meeting-reply" ${e.canReply === false ? 'disabled' : ''}>${icon('reply')}${tr("Ответить")}</button><button class="secondary" data-action="meeting-reply-all" ${e.canReplyAll === false ? 'disabled' : ''}>${tr("Ответить всем")}</button><button class="secondary" data-action="${own ? 'meeting-invite' : 'meeting-forward'}" ${e.forwardingAllowed === false && !own ? tr('disabled title="Пересылка запрещена организатором"') : ''}>${icon('send')}${own ? tr('Добавить участников') : tr('Переслать')}</button>` : ''}</div><div class="meeting-card-layout"><section class="meeting-main"><div class="meeting-when">${icon('clock')}<div><strong>${esc(dateFormat(e.start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</strong><span>${e.allDay ? tr('Весь день') : `${esc(time(e.start))}–${esc(time(e.end))}`} · ${esc(T.zone(timeZone))}</span></div></div>${e.location ? `<div class="meeting-location">${icon('globe')}<span>${esc(e.location)}</span>${join && !e.cancelled ? `<button class="primary" data-action="meeting-join">${tr("Войти в звонок ↗")}</button>` : ''}</div>` : join && !e.cancelled ? tr('<button class="primary" data-action="meeting-join">Войти в звонок ↗</button>') : ''}<div class="meeting-properties"><span>${tr("Показывать как:")} ${esc({ Free: tr('Свободен'), Tentative: tr('Под вопросом'), Busy: tr('Занят'), OOF: tr('Нет на месте'), WorkingElsewhere: tr('В другом месте') }[e.showAs] || tr('Занят'))}</span><span>${tr("Напоминание:")} ${e.reminderSet ? `${e.reminder} ${tr("мин")}` : tr('выключено')}</span>${e.sensitivity === 'Private' ? tr('<span>Частная встреча</span>') : ''}</div>${!own ? `<div id="event-rsvp">${rsvpButtons(e.id, e.changeKey, e.cancelled, e.response, own)}</div>` : ''}<div id="meeting-conflicts">${meetingConflictMarkup(e.conflicts)}</div><div id="meeting-body"></div>${links.length ? `<section class="meeting-links"><h3>${tr("Ссылки")}</h3>${links.map(url => `<div><button class="meeting-link" data-action="link" data-url="${esc(url)}">${icon('globe')}<span>${esc(url)}</span></button>${join === url && !e.cancelled ? tr('<button class="secondary" data-action="meeting-join">Войти ↗</button>') : ''}</div>`).join('')}</section>` : ''}${e.attachments.length ? `<section class="meeting-attachments"><h3>${icon('clip')}${tr("Вложения")}</h3>${e.attachments.map(a => `<article>${['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(a.type) ? `<div class="meeting-image" data-id="${esc(a.id)}"><span class="image-status">${a.size > 5 * 1024 * 1024 ? tr('Большое изображение — скачайте файл') : tr('Загружаем изображение…')}</span><img data-id="${esc(a.id)}" alt="${esc(a.name)}" hidden></div>` : ''}<button class="attachment" data-action="attachment" data-id="${esc(a.id)}" data-name="${esc(a.name)}">${icon('file')}<span><strong>${esc(a.name)}</strong><small>${bytes(a.size)} ${tr("· Скачать")}</small></span></button></article>`).join('')}</section>` : ''}${formError()}</section><aside class="meeting-people"><div class="meeting-people-content"><h3>${tr("Организатор")}</h3>${attendee({ ...e.organizer, response: 'Organizer' })}<h3>${tr("Участники")} <small>${e.attendees.length}</small></h3><div class="meeting-attendee-scroll" tabindex="0" aria-label="${tr("Список участников")}">${e.attendees.map(attendee).join('') || tr('<p class="form-note">Другие участники не указаны.</p>')}</div></div></aside></div>`;
+  $('#modal-content').innerHTML = `<header class="meeting-card-header"><div><div class="eyebrow">${icon('calendar')}${e.recurring ? tr('Повторяющаяся встреча') : tr('Встреча')}</div><h2>${esc(e.title)}</h2><span class="meeting-status ${kind}">${esc(status)}</span></div><button class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></header><div class="meeting-toolbar">${e.recurring ? tr('<label class="meeting-scope"><span>Применить к</span><select id="meeting-scope" aria-label="Область действия встречи"><option value="single">Этому повтору</option><option value="series">Всему ряду</option></select></label>') : ''}${!e.cancelled ? `<button class="secondary" data-action="meeting-local-reminders">${tr("Напоминания Aster")}</button><button class="secondary" data-action="meeting-edit" ${e.canModify === false ? tr('disabled title="Нет прав на изменение"') : ''}>${icon('file')}${own ? tr('Редактировать') : tr('Напоминание')}</button><button class="secondary" data-action="meeting-reply" ${e.canReply === false ? 'disabled' : ''}>${icon('reply')}${tr("Ответить")}</button><button class="secondary" data-action="meeting-reply-all" ${e.canReplyAll === false ? 'disabled' : ''}>${tr("Ответить всем")}</button><button class="secondary" data-action="${own ? 'meeting-invite' : 'meeting-forward'}" ${e.forwardingAllowed === false && !own ? tr('disabled title="Пересылка запрещена организатором"') : ''}>${icon('send')}${own ? tr('Добавить участников') : tr('Переслать')}</button>` : ''}${meetingDeleteButton(e)}</div><div class="meeting-card-layout"><section class="meeting-main"><div class="meeting-when">${icon('clock')}<div><strong>${esc(dateFormat(e.start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</strong><span>${e.allDay ? tr('Весь день') : `${esc(time(e.start))}–${esc(time(e.end))}`} · ${esc(T.zone(timeZone))}</span></div></div>${e.location ? `<div class="meeting-location">${icon('globe')}<span>${esc(e.location)}</span>${join && !e.cancelled ? `<button class="primary" data-action="meeting-join">${tr("Войти в звонок ↗")}</button>` : ''}</div>` : join && !e.cancelled ? tr('<button class="primary" data-action="meeting-join">Войти в звонок ↗</button>') : ''}<div class="meeting-properties"><span>${tr("Показывать как:")} ${esc({ Free: tr('Свободен'), Tentative: tr('Под вопросом'), Busy: tr('Занят'), OOF: tr('Нет на месте'), WorkingElsewhere: tr('В другом месте') }[e.showAs] || tr('Занят'))}</span><span>${tr("Напоминание:")} ${e.reminderSet ? `${e.reminder} ${tr("мин")}` : tr('выключено')}</span>${e.sensitivity === 'Private' ? tr('<span>Частная встреча</span>') : ''}</div>${!own ? `<div id="event-rsvp">${rsvpButtons(e.id, e.changeKey, e.cancelled, e.response, own)}</div>` : ''}<div id="meeting-conflicts">${meetingConflictMarkup(e.conflicts)}</div><div id="meeting-body"></div>${links.length ? `<section class="meeting-links"><h3>${tr("Ссылки")}</h3>${links.map(url => `<div><button class="meeting-link" data-action="link" data-url="${esc(url)}">${icon('globe')}<span>${esc(url)}</span></button>${join === url && !e.cancelled ? tr('<button class="secondary" data-action="meeting-join">Войти ↗</button>') : ''}</div>`).join('')}</section>` : ''}${e.attachments.length ? `<section class="meeting-attachments"><h3>${icon('clip')}${tr("Вложения")}</h3>${e.attachments.map(a => `<article>${['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(a.type) ? `<div class="meeting-image" data-id="${esc(a.id)}"><span class="image-status">${a.size > 5 * 1024 * 1024 ? tr('Большое изображение — скачайте файл') : tr('Загружаем изображение…')}</span><img data-id="${esc(a.id)}" alt="${esc(a.name)}" hidden></div>` : ''}<button class="attachment" data-action="attachment" data-id="${esc(a.id)}" data-name="${esc(a.name)}">${icon('file')}<span><strong>${esc(a.name)}</strong><small>${bytes(a.size)} ${tr("· Скачать")}</small></span></button></article>`).join('')}</section>` : ''}${formError()}</section><aside class="meeting-people"><div class="meeting-people-content"><h3>${tr("Организатор")}</h3>${attendee({ ...e.organizer, response: 'Organizer' })}<h3>${tr("Участники")} <small>${e.attendees.length}</small></h3><div class="meeting-attendee-scroll" tabindex="0" aria-label="${tr("Список участников")}">${e.attendees.map(attendee).join('') || tr('<p class="form-note">Другие участники не указаны.</p>')}</div></div></aside></div>`;
   renderMeetingBody(e);
 }
 function renderMeetingBody(e) {
@@ -147,6 +147,16 @@ async function editMeeting(invite = false) {
   form.querySelector('[type="submit"]').textContent = own ? tr('Сохранить и отправить обновления') : tr('Сохранить личные настройки');
   form.querySelector('.modal-footer').insertAdjacentHTML('afterbegin', tr('<button type="button" class="secondary" data-action="meeting-return">Назад к карточке</button>'));
   meetingEdit = { origin, scope, detail, own, inputs: meetingFormValues(form) };
+  form.querySelector('.modal-footer').insertAdjacentHTML('beforebegin', `<label class="field"><span>${tr('Кому отправить обновление')}</span><select name="sendUpdates"><option value="all">${tr('Всем участникам')}</option><option value="changed" disabled>${tr('Только изменённым участникам')}</option></select></label><p class="form-note">${tr('Отправка только изменённым участникам доступна при изменении списка участников. Изменения времени, места, темы или описания отправляются всем.')}</p>`);
+  const initial = meetingEdit.inputs;
+  const updateRecipients = () => {
+    const values = meetingFormValues(form);
+    const changed = Object.keys(values).filter(key => !form.elements[key].disabled && values[key] !== initial[key]);
+    const option = form.elements.sendUpdates.options[1];
+    option.disabled = !changed.some(key => ['attendees', 'optionalAttendees'].includes(key)) || changed.some(key => !['attendees', 'optionalAttendees', 'reminder', 'reminderSet', 'showAs', 'sensitivity'].includes(key));
+    if (option.disabled) form.elements.sendUpdates.value = 'all';
+  };
+  form.addEventListener('input', updateRecipients); form.addEventListener('change', updateRecipients);
   window.asterRecipients.decorateMeeting(form, detail.attendees);
   if (invite && own) form.elements.attendees.focus();
 }
@@ -159,7 +169,7 @@ async function submitMeetingEdit(form) {
     const values = meetingFormValues(form), changes = {};
     for (const [key, value] of Object.entries(values)) if (!form.elements[key].disabled && value !== edit.inputs[key]) changes[key] = ['start', 'end'].includes(key) ? T.fromWall(value, timeZone).toISOString() : value;
     if (!Object.keys(changes).length) { toast(tr('Изменений нет')); return; }
-    await saveMeetingChanges(edit, changes);
+    await saveMeetingChanges(edit, changes, form.elements.sendUpdates.value);
   });
 }
 async function submitMeetingReminder(form) {
@@ -172,7 +182,7 @@ async function submitMeetingReminder(form) {
     await saveMeetingChanges(edit, changes);
   });
 }
-async function saveMeetingChanges(edit, changes) {
+async function saveMeetingChanges(edit, changes, sendUpdates = 'all') {
   if (state.demo) {
     for (const e of window.asterDemo.events.filter(e => edit.scope === 'series' && edit.origin.seriesId ? e.seriesId === edit.origin.seriesId : e.id === edit.origin.id)) {
       const startDelta = changes.start ? Date.parse(changes.start) - Date.parse(edit.detail.start) : 0, endDelta = changes.end ? Date.parse(changes.end) - Date.parse(edit.detail.end) : 0;
@@ -182,7 +192,7 @@ async function saveMeetingChanges(edit, changes) {
       if (changes.end) e.end = new Date(Date.parse(e.end) + endDelta).toISOString();
       for (const [key, role] of [['attendees', 'required'], ['optionalAttendees', 'optional']]) if (changes[key] !== undefined) e.attendees = [...(e.attendees || []).filter(a => a.role !== role), ...changes[key].split(/[,;]/).map(email => email.trim()).filter(Boolean).map(email => ({ email, name: email, role, response: 'Unknown' }))];
     }
-  } else await api('updateEvent', { ref: ref(edit.origin), scope: edit.scope, expectedChangeKey: edit.detail.changeKey, changes });
+  } else await api('updateEvent', { ref: ref(edit.origin), scope: edit.scope, expectedChangeKey: edit.detail.changeKey, changes, sendUpdates });
   $('#modal').close(); toast(state.demo ? tr('Демо: встреча обновлена') : tr('Изменения сохранены в Exchange')); await loadView();
 }
 
@@ -201,6 +211,7 @@ async function handleMeetingAction(button) {
   const action = button.dataset.action;
   if (action === 'meeting-return') return openMeeting(activeMeeting?.origin || meetingEdit?.origin);
   if (!activeMeeting?.id) return;
+  if (action === 'meeting-delete' || action === 'meeting-delete-series') return confirmMeetingRemoval(action === 'meeting-delete-series' ? 'series' : meetingScope());
   if (action === 'meeting-edit' || action === 'meeting-invite') return editMeeting(action === 'meeting-invite');
   if (action === 'meeting-join') {
     if (state.demo) return toast(tr('Демо: ссылка на созвон не открывалась'));
@@ -210,6 +221,41 @@ async function handleMeetingAction(button) {
   }
   const kind = { 'meeting-reply': 'reply', 'meeting-reply-all': 'reply-all', 'meeting-forward': 'forward' }[action];
   if (kind) return meetingMessage(kind);
+}
+function meetingRemovalCancels(event) {
+  return window.asterEvents.organizer(event, state.account?.username || '') && !event.cancelled && (event.isMeeting === true || event.attendees?.length > 0);
+}
+function meetingDeleteButton(event) {
+  return `<button type="button" class="secondary danger" data-action="meeting-delete" ${event.canDelete === false ? 'disabled' : ''}>${icon('trash')}${meetingRemovalCancels(event) ? tr('Отменить встречу…') : tr('Удалить из календаря…')}</button>`;
+}
+async function confirmMeetingRemoval(scope) {
+  if (modalBusy) return;
+  const original = activeMeeting, account = state.account, demo = state.demo, request = meetingRequest;
+  if (!original || original.canDelete === false) return;
+  const detail = scope === 'series' ? demo ? demoMeeting(original.origin, scope) : await api('eventDetails', { ...ref(original.origin), scope }) : original;
+  if (activeMeeting !== original || state.account !== account || state.demo !== demo || request !== meetingRequest || !$('#modal').open || $('#modal').dataset.meetingCard !== 'true') return;
+  const cancelling = meetingRemovalCancels(detail);
+  const explanation = cancelling ? tr('Встреча будет отменена. Exchange отправит отмену всем участникам.') : tr('Запись будет удалена только из вашего календаря. Ответ организатору не отправляется.');
+  modal(cancelling ? tr('Отменить встречу?') : tr('Удалить из календаря?'), detail.title,
+    `<form id="meeting-removal-form"><p class="form-note">${explanation}</p>${original.recurring ? `<p class="form-note">${scope === 'series' ? tr('Будет удалён весь ряд встреч.') : tr('Будет удалён только выбранный повтор.')}</p>` : ''}${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="meeting-return">${tr('Назад к карточке')}</button><button type="submit" class="primary">${cancelling ? tr('Отменить встречу') : tr('Удалить из календаря')}</button></div></form>`);
+  meetingEdit = { origin: original.origin, scope, detail, account, demo, cancelling, attempted: false };
+}
+async function submitMeetingRemoval(form) {
+  const edit = meetingEdit;
+  if (!edit || edit.attempted) return;
+  await submitForm(form, async () => {
+    if (state.account !== edit.account || state.demo !== edit.demo) throw new Error(tr('Сессия аккаунта завершена'));
+    edit.attempted = true;
+    form.querySelector('[type="submit"]').disabled = true;
+    if (edit.demo) {
+      const events = window.asterDemo.events;
+      for (let i = events.length - 1; i >= 0; i--) if (edit.scope === 'series' ? (events[i].seriesId || events[i].id) === (edit.origin.seriesId || edit.origin.id) : events[i].id === edit.origin.id) events.splice(i, 1);
+    } else await api('removeEvent', { ref: ref(edit.origin), scope: edit.scope, expectedChangeKey: edit.detail.changeKey });
+    if (state.account !== edit.account || state.demo !== edit.demo || !form.isConnected) return;
+    $('#modal').close(); activeMeeting = null; meetingEdit = null; meetingRequest++;
+    toast(edit.cancelling ? tr('Встреча отменена') : tr('Встреча удалена из календаря'));
+    await loadView();
+  });
 }
 let meetingPointerOutside = false;
 document.addEventListener('pointerdown', event => { const dialog = document.querySelector('#modal'); if (!dialog?.open) return; const r = dialog.getBoundingClientRect(); meetingPointerOutside = event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom; });

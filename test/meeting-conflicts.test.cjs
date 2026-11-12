@@ -70,6 +70,17 @@ test('linked requests, cancellations and ordinary mail retain their classificati
   }
   assert.equal(message({ ItemId: { Id: 'mail' }, ItemClass: 'IPM.Note' }).meeting, null);
 });
+test('accepted, declined and tentative responses are informational mail even with calendar references and times', () => {
+  const { message } = require('../desktop/protocol.cjs');
+  for (const response of ['Pos', 'Neg', 'Tent']) for (const associated of [undefined, { Id: 'calendar', ChangeKey: 'fresh' }]) {
+    const result = message({ ItemId: { Id: 'reply' }, ItemClass: `IPM.Schedule.Meeting.Resp.${response}`, Subject: 'Fictional response', AssociatedCalendarItemId: associated,
+      Start: meeting.start, End: meeting.end, Body: { BodyType: 'Text', Value: 'Fictional participant response.' }, Attachments: [{ AttachmentId: { Id: 'file' }, Name: 'notes.txt' }] });
+    assert.equal(result.meeting, null);
+    assert.equal(result.text, 'Fictional participant response.');
+    assert.equal(result.attachments[0].id, 'file');
+  }
+  assert.notEqual(message({ ItemId: { Id: 'invite' }, ItemClass: 'IPM.Schedule.Meeting.Request', Subject: 'Принято: Ретро спринта' }).meeting, null, 'Classification must use the Exchange class, not the subject');
+});
 test('a late conflict result cannot replace a newer meeting card', async () => {
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../src/meeting-ui.js'), 'utf8');

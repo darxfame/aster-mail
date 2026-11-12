@@ -22,6 +22,8 @@ function normalize(o) {
     hasReminderSettings: o.ReminderIsSet !== undefined || o.IsReminderSet !== undefined || o.ReminderMinutesBeforeStart !== undefined,
     showAs: o.LegacyFreeBusyStatus || 'Busy', showAsKnown: ['Free', 'Tentative', 'Busy', 'OOF', 'WorkingElsewhere'].includes(o.LegacyFreeBusyStatus), sensitivity: o.Sensitivity || 'Normal', reminder: Number(o.ReminderMinutesBeforeStart ?? 15), reminderSet: flag(o.ReminderIsSet ?? o.IsReminderSet ?? true),
     canModify: o.EffectiveRights?.Modify === undefined ? null : flag(o.EffectiveRights.Modify),
+    canDelete: o.EffectiveRights?.Delete === undefined ? null : flag(o.EffectiveRights.Delete),
+    isMeeting: o.IsMeeting === undefined ? null : flag(o.IsMeeting),
     forwardingAllowed: o.IsForwardingAllowed === undefined ? o.ResponseObjects !== undefined ? Object.hasOwn(Object(o.ResponseObjects), 'ForwardItem') : null : flag(o.IsForwardingAllowed),
     canReply: o.ResponseObjects !== undefined ? Object.hasOwn(Object(o.ResponseObjects), 'ReplyToItem') : null,
     canReplyAll: o.ResponseObjects !== undefined ? Object.hasOwn(Object(o.ResponseObjects), 'ReplyAllToItem') : null,
@@ -35,12 +37,14 @@ function itemXML(ref, scope = 'single') {
 function getSOAP(ref, scope) {
   return P.soap(`<m:GetItem><m:ItemShape><t:BaseShape>AllProperties</t:BaseShape><t:BodyType>HTML</t:BodyType></m:ItemShape><m:ItemIds>${itemXML(ref, scope)}</m:ItemIds></m:GetItem>`);
 }
-function updateSOAP(current, changes) {
+function updateSOAP(current, changes, sendUpdates = 'all') {
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new Error(tr('Нет изменений'));
+  if (!['all', 'changed'].includes(sendUpdates)) throw new Error(tr('Некорректный режим отправки обновлений'));
   const fields = [], allowed = ['title', 'body', 'start', 'end', 'location', 'attendees', 'optionalAttendees', 'allDay', 'reminder', 'reminderSet', 'showAs', 'sensitivity'];
   if (Object.keys(changes).some(key => !allowed.includes(key))) throw new Error(tr('Неподдерживаемое поле встречи'));
   if (current.cancelled || current.canModify === false) throw new Error(tr('Встреча отменена или недоступна для редактирования'));
   if (current.isOrganizer !== true && Object.keys(changes).some(key => !['reminder', 'reminderSet'].includes(key))) throw new Error(tr('Только организатор может изменять свойства встречи. Участнику доступно только напоминание.'));
+  if (sendUpdates === 'changed' && Object.keys(changes).some(key => !['attendees', 'optionalAttendees', 'reminder', 'reminderSet', 'showAs', 'sensitivity'].includes(key))) throw new Error(tr('Изменения времени, места, темы или описания нужно отправить всем участникам.'));
   const set = (field, value, element = field.split(':')[1]) => fields.push(`<t:SetItemField><t:FieldURI FieldURI="${field}"/><t:CalendarItem><t:${element}>${value}</t:${element}></t:CalendarItem></t:SetItemField>`);
   for (const key of ['title', 'body', 'location']) if (Object.hasOwn(changes, key)) {
     if (typeof changes[key] !== 'string' || changes[key].length > (key === 'body' ? 1000000 : 2000) || (key === 'title' && !changes[key].trim())) throw new Error(tr('Проверьте название и описание встречи'));
@@ -64,7 +68,8 @@ function updateSOAP(current, changes) {
   for (const [key, field, values] of [['showAs', 'calendar:LegacyFreeBusyStatus', ['Free', 'Tentative', 'Busy', 'OOF', 'WorkingElsewhere']], ['sensitivity', 'item:Sensitivity', ['Normal', 'Personal', 'Private', 'Confidential']]]) if (Object.hasOwn(changes, key)) { if (!values.includes(changes[key])) throw new Error(tr('Некорректное свойство встречи')); set(field, changes[key]); }
   if (!fields.length) throw new Error(tr('Нет изменений для сохранения'));
   const notify = current.isOrganizer === true && Object.keys(changes).some(key => !['reminder', 'reminderSet', 'showAs', 'sensitivity'].includes(key));
-  return P.soap(`<m:UpdateItem ConflictResolution="NeverOverwrite" SendMeetingInvitationsOrCancellations="${notify ? 'SendToAllAndSaveCopy' : 'SendToNone'}"><m:ItemChanges><t:ItemChange><t:ItemId Id="${P.escapeXML(current.id)}" ChangeKey="${P.escapeXML(current.changeKey)}"/><t:Updates>${fields.join('')}</t:Updates></t:ItemChange></m:ItemChanges></m:UpdateItem>`);
+  const recipients = notify ? sendUpdates === 'changed' ? 'SendToChangedAndSaveCopy' : 'SendToAllAndSaveCopy' : 'SendToNone';
+  return P.soap(`<m:UpdateItem ConflictResolution="NeverOverwrite" SendMeetingInvitationsOrCancellations="${recipients}"><m:ItemChanges><t:ItemChange><t:ItemId Id="${P.escapeXML(current.id)}" ChangeKey="${P.escapeXML(current.changeKey)}"/><t:Updates>${fields.join('')}</t:Updates></t:ItemChange></m:ItemChanges></m:UpdateItem>`);
 }
 function messageSOAP(current, data) {
   const type = { reply: 'ReplyToItem', 'reply-all': 'ReplyAllToItem', forward: 'ForwardItem' }[data.kind];
@@ -77,5 +82,15 @@ function messageSOAP(current, data) {
   return P.soap(`<m:CreateItem MessageDisposition="SendAndSaveCopy"><m:Items><t:${type}>${emails.length ? `<t:ToRecipients>${emails.map(email => `<t:Mailbox><t:EmailAddress>${P.escapeXML(email)}</t:EmailAddress></t:Mailbox>`).join('')}</t:ToRecipients>` : ''}<t:ReferenceItemId Id="${P.escapeXML(current.id)}" ChangeKey="${P.escapeXML(current.changeKey)}"/><t:NewBodyContent BodyType="Text">${P.escapeXML(data.body)}</t:NewBodyContent></t:${type}></m:Items></m:CreateItem>`);
 }
 function imageData(attachment) { return require('./raster-images.cjs').inspect(attachment).dataURL; }
+function removeRequest(current) {
+  if (current.canDelete === false) throw new Error(tr('Нет прав на удаление встречи'));
+  if (typeof current.isOrganizer !== 'boolean') throw new Error(tr('Не удалось определить организатора встречи. Откройте карточку заново.'));
+  const reference = `Id="${P.escapeXML(current.id)}" ChangeKey="${P.escapeXML(current.changeKey)}"`;
+  if (current.isOrganizer && !current.cancelled && (current.isMeeting === true || current.attendees?.length)) {
+    if (current.canModify === false) throw new Error(tr('Нет прав на отмену встречи'));
+    return { action: 'CreateItem', xml: P.soap(`<m:CreateItem MessageDisposition="SendAndSaveCopy"><m:Items><t:CancelCalendarItem><t:ReferenceItemId ${reference}/></t:CancelCalendarItem></m:Items></m:CreateItem>`) };
+  }
+  return { action: 'DeleteItem', xml: P.soap(`<m:DeleteItem DeleteType="MoveToDeletedItems" SendMeetingCancellations="SendToNone" SuppressReadReceipts="true"><m:ItemIds><t:ItemId ${reference}/></m:ItemIds></m:DeleteItem>`) };
+}
 
-module.exports = { normalize, itemXML, getSOAP, updateSOAP, messageSOAP, imageData };
+module.exports = { normalize, itemXML, getSOAP, updateSOAP, messageSOAP, imageData, removeRequest };

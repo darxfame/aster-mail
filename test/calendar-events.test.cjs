@@ -50,6 +50,19 @@ test('invitees may update only reminders and never send organizer updates', () =
   assert.throws(() => C.updateSOAP(source, { reminder: -1 }));
   assert.throws(() => C.updateSOAP(source, { html: '<script>' }));
 });
+test('organizer can send attendee-only updates just to changed recipients', () => {
+  for (const changes of [{ attendees: 'added@example.com' }, { attendees: '' }, { optionalAttendees: 'optional@example.com' }, { attendees: '', optionalAttendees: 'moved@example.com', reminder: 5 }]) {
+    const xml = C.updateSOAP(source, changes, 'changed');
+    assert.match(xml, /SendMeetingInvitationsOrCancellations="SendToChangedAndSaveCopy"/);
+    assert.match(xml, /ConflictResolution="NeverOverwrite"/);
+    assert.match(xml, /ChangeKey="key-1"/);
+  }
+  assert.match(C.updateSOAP(source, { attendees: 'added@example.com' }), /SendToAllAndSaveCopy/);
+  assert.match(C.updateSOAP(source, { reminder: 5 }), /SendToNone/);
+  assert.throws(() => C.updateSOAP(source, { attendees: 'added@example.com', location: 'New room' }, 'changed'), /всем участникам/);
+  assert.throws(() => C.updateSOAP(source, { attendees: 'added@example.com' }, 'none'), /обновлений/);
+  assert.throws(() => C.updateSOAP({ ...source, isOrganizer: false }, { attendees: 'added@example.com' }, 'changed'), /организатор/);
+});
 test('forward and reply use the actual calendar reference; forwarding permissions are enforced', () => {
   const xml = C.messageSOAP(source, { kind: 'forward', to: 'person@example.com', body: '<Comment>' });
   assert.match(xml, /<t:ForwardItem>/); assert.match(xml, /ReferenceItemId Id="event-1"/); assert.match(xml, /&lt;Comment&gt;/);
@@ -72,12 +85,52 @@ test('a series edit resolves the recurring master rather than updating only the 
   assert.match(mock.calls[1].options.body, /RecurringMasterItemId/);
   assert.match(mock.calls[2].options.body, /ItemId Id="master" ChangeKey="master-key"/);
 });
+test('changed-attendee delivery reaches EWS using the fresh item and is never retried after a lost response', async () => {
+  for (const lost of [false, true]) {
+    const mock = client(async (_options, calls) => {
+      if (calls.length === 1) return { status: 200, text: xmlItem() };
+      if (lost) throw new Error('Lost response');
+      return { status: 200, text: success };
+    });
+    const pending = mock.value.updateEvent({ ref: source, scope: 'single', expectedChangeKey: 'key-1', changes: { attendees: 'added@example.com' }, sendUpdates: 'changed' });
+    if (lost) await assert.rejects(pending, /Lost response/); else await pending;
+    assert.equal(mock.calls.length, 2);
+    assert.match(mock.calls[1].options.body, /SendToChangedAndSaveCopy/);
+    assert.match(mock.calls[1].options.body, /ChangeKey="key-1"/);
+  }
+});
 test('image previews reject SVG, mismatched MIME and oversized images', () => {
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=';
   assert.match(C.imageData({ ContentType: 'image/png', Content: png }), /^data:image\/png;base64,/);
   assert.throws(() => C.imageData({ ContentType: 'image/svg+xml', Content: Buffer.from('<svg/>').toString('base64') }));
   assert.throws(() => C.imageData({ ContentType: 'image/png', Content: Buffer.from('<html>').toString('base64') }));
   assert.throws(() => C.imageData({ ContentType: 'image/png', Content: Buffer.alloc(5 * 1024 * 1024 + 1).toString('base64') }));
+});
+test('calendar removal cancels organizer meetings but only trashes personal or invitee copies', () => {
+  const owned = { ...source, canDelete: true, attendees: [{ email: 'attendee@example.com' }] };
+  const cancel = C.removeRequest(owned);
+  assert.equal(cancel.action, 'CreateItem'); assert.match(cancel.xml, /CancelCalendarItem/);
+  assert.match(cancel.xml, /ReferenceItemId Id="event-1" ChangeKey="key-1"/);
+  for (const item of [source, { ...owned, isOrganizer: false }, { ...owned, cancelled: true }]) {
+    const request = C.removeRequest(item);
+    assert.equal(request.action, 'DeleteItem'); assert.match(request.xml, /DeleteType="MoveToDeletedItems"/);
+    assert.match(request.xml, /SendMeetingCancellations="SendToNone"/);
+    assert.doesNotMatch(request.xml, /HardDelete|CancelCalendarItem/);
+  }
+  assert.throws(() => C.removeRequest({ ...owned, canDelete: false }), /удалени/);
+  assert.throws(() => C.removeRequest({ ...owned, isOrganizer: undefined }), /организатор/);
+});
+test('calendar removal refuses a stale item, resolves series and never retries a lost cancellation', async () => {
+  const stale = client(async () => ({ status: 200, text: xmlItem({ key: 'fresh' }) }));
+  await assert.rejects(stale.value.removeEvent({ ref: source, expectedChangeKey: 'old' }), /изменилась/);
+  assert.equal(stale.calls.length, 1);
+  const lost = client(async (_options, calls) => { if (calls.length === 1) return { status: 200, text: xmlItem().replace('<IsRecurring>', '<IsMeeting>true</IsMeeting><IsRecurring>') }; throw new Error('Lost cancellation'); });
+  await assert.rejects(lost.value.removeEvent({ ref: source, scope: 'single', expectedChangeKey: 'key-1' }), /Lost cancellation/);
+  assert.equal(lost.calls.length, 2); assert.match(lost.calls[1].options.body, /CancelCalendarItem/);
+  const series = client(async (_options, calls) => ({ status: 200, text: calls.length === 1 ? xmlItem() : calls.length === 2 ? xmlItem({ key: 'master-key', type: 'RecurringMaster' }).replace('Id="event-1"', 'Id="master"') : success }));
+  await series.value.removeEvent({ ref: source, scope: 'series', expectedChangeKey: 'master-key' });
+  assert.match(series.calls[1].options.body, /RecurringMasterItemId/);
+  assert.match(series.calls[2].options.body, /ItemId Id="master" ChangeKey="master-key"/);
 });
 
 test('event attachment previews return a decoded byte budget alongside validated raster data', async () => {

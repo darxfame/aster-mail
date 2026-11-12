@@ -362,13 +362,13 @@ async function installModuleBundle(bundle, guard) {
   guard();
 }
 
-const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages']);
-const serverWrites = new Set(['send', 'draft', 'editDraft', 'mailBatch', 'folderOperation', 'change', 'move', 'createEvent', 'updateEvent', 'respond', 'createContact', 'createMailRule', 'saveAutoReplies']);
+const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'removeEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const serverWrites = new Set(['send', 'draft', 'editDraft', 'mailBatch', 'folderOperation', 'change', 'move', 'createEvent', 'updateEvent', 'removeEvent', 'respond', 'createContact', 'createMailRule', 'saveAutoReplies']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');
   if (['change', 'move', 'respond'].includes(operation) && typeof data.ref?.id !== 'string') throw new Error('Invalid item reference');
-  if (['editDraft', 'eventConflicts', 'updateEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
+  if (['editDraft', 'eventConflicts', 'updateEvent', 'removeEvent', 'eventMessage', 'eventImage', 'contentImages'].includes(operation) && (typeof data.ref?.id !== 'string' || data.ref.id.length > 16000)) throw new Error('Invalid content reference');
   if (data.scope !== undefined && !['single', 'series'].includes(data.scope)) throw new Error('Invalid meeting scope');
   if (operation === 'change' && (data.field === 'Importance' ? !['High', 'Normal'].includes(data.value) : typeof data.value !== 'boolean')) throw new Error('Invalid value');
   if (operation === 'messages' && (typeof data.folder !== 'string' || !Number.isInteger(data.offset || 0) || (data.offset || 0) < 0)) throw new Error('Invalid folder or offset');
@@ -551,7 +551,7 @@ app.whenReady().then(async () => {
           mailAlerts = []; publishMailAlerts();
           for (const n of activeNotifications) n.close(); activeNotifications.clear();
         }
-        await refreshPrivacy(); refreshWidget(); void pollNotifications(); return { ok: true, value: notificationSettings };
+        await refreshPrivacy(); refreshWidget(); return { ok: true, value: notificationSettings };
       }
       if (operation === 'testNotification') {
         if (!['mail', 'meeting'].includes(data.kind)) throw new Error('Invalid sound');
@@ -773,7 +773,7 @@ app.whenReady().then(async () => {
       const value = await activeClient[operation](data);
       if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
       if (composeEntry && ['send', 'draft', 'editDraft'].includes(operation) && window && !window.isDestroyed()) window.webContents.send('aster-compose-saved');
-      if (['respond', 'createEvent', 'updateEvent'].includes(operation)) {
+      if (['respond', 'createEvent', 'updateEvent', 'removeEvent'].includes(operation)) {
         try { moduleHost.publish('calendar.changed', { operation }); } catch { /* Module delivery cannot change a successful Exchange write. */ }
         widgetDetail = null; void pollNotifications();
       }

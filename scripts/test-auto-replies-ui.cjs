@@ -24,11 +24,17 @@ app.whenReady().then(async () => {
     await waitFor('Boolean(document.querySelector("[data-action=demo]"))');
     await js('document.querySelector("[data-action=demo]").click()');
     await waitFor('state.demo && state.messages.length > 0');
+    const html = '<html>\r\n<body>\r\n<div>\r\n<p>Добрый день!<br style="font-size:12px">Я отсутствую.</p>\r\n<p>Вернусь &amp; отвечу.</p>\r\n</div>\r\n</body></html>';
+    assert.equal(await js(`autoReplyText(${JSON.stringify(html)})`), 'Добрый день!\nЯ отсутствую.\n\nВернусь & отвечу.');
+    assert.equal(await js(`autoReplyText('Первая строка\\nВторая строка\\n\\nАбзац')`), 'Первая строка\nВторая строка\n\nАбзац');
+    assert.equal(await js(`autoReplyText('<div>Первая<div>Вторая</div>Третья</div>')`), 'Первая\nВторая\nТретья');
     await js('settingsModal()');
     await js('document.querySelector("#settings-tab-auto-replies").click()');
     assert.equal(await js('document.querySelector("#auto-replies-fields").disabled'), true);
     await js('document.querySelector("#auto-replies-load").click()');
     await waitFor('!document.querySelector("#auto-replies-fields").disabled');
+    assert.equal(await js('document.querySelector("#auto-replies-period").hidden'), false, 'Date controls remain visible even before Scheduled is selected');
+    assert.equal(await js('document.querySelector("#settings-form").elements.oofStart.disabled'), true);
     await js(`(() => {
       const form=document.querySelector('#settings-form');
       form.elements.oofState.value='Scheduled'; form.elements.oofState.dispatchEvent(new Event('input',{bubbles:true})); form.elements.oofState.dispatchEvent(new Event('change',{bubbles:true}));
@@ -38,6 +44,8 @@ app.whenReady().then(async () => {
       form.elements.oofExternal.value='Спасибо за письмо. Отвечу после возвращения.';
     })()`);
     assert.equal(await js('modalDirty'), true);
+    assert.equal(await js('document.querySelector("#settings-form").elements.oofStart.disabled'), false);
+    assert.equal(await js('document.querySelector("#auto-replies-period").hidden'), false);
     const output = path.join(root, 'release/auto-replies-ui'); await fs.mkdir(output, { recursive: true });
     for (const scale of [1, 2]) {
       window.webContents.setZoomFactor(scale);
@@ -89,6 +97,6 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("#auto-replies-error").textContent'), '');
     console.log('Automatic reply UI passed: demo, schedule, text safety, failed writes, stale reads, 100%/200% layout.');
   } finally {
-    window?.destroy(); await fs.rm(profile, { recursive: true, force: true });
+    window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 });
   }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

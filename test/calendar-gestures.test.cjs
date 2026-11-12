@@ -11,7 +11,7 @@ function harness(own = true) {
   const master = { ...origin, id: 'master', start: '2026-10-01T10:00:00Z', end: '2026-10-01T10:30:00Z', changeKey: 'master-key' };
   let pending;
   const context = vm.createContext({ tr: value => value, Date, state: { generation: 1, view: 'calendar', account: null, demo: false }, window: { asterEvents: E, asterCalendarLayout: L }, $: () => ({ open: false }), ref: value => ({ id: value.id, changeKey: value.changeKey }), api: async (operation, data) => { requests.push({ operation, data }); return data.scope === 'series' ? master : origin; }, modal: () => {}, esc: value => value, dateFormat: value => value, time: value => value, formError: () => '', document: { addEventListener: (type, handler) => { handlers[type] = handler; } }, submitForm: (form, callback) => { pending = callback({ scope: form.scope }); return pending; }, saveMeetingChanges: async (edit, changes) => saves.push({ edit, changes }), calendarDrop: null });
-  vm.runInContext(source.slice(source.indexOf('async function prepareCalendarDrop(')), context);
+  vm.runInContext(source.slice(source.indexOf('async function prepareCalendarDrop('), source.indexOf('\nlet calendarMenu')), context);
   return { context, origin, saves, requests, submit: async scope => { handlers.submit({ target: { id: 'calendar-move-form', scope }, preventDefault() {} }); await pending; } };
 }
 test('drop of recurring occurrence saves only that instance and preserves duration', async () => {

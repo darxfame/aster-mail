@@ -6,7 +6,8 @@ function autoRepliesMarkup() {
     <p id="auto-replies-status" class="form-note" role="status"></p>
     <fieldset id="auto-replies-fields" disabled>
     <label class="field"><span>${tr('Режим автоответов')}</span><select name="oofState"><option value="Disabled">${tr('Выключены')}</option><option value="Enabled">${tr('Включены постоянно')}</option><option value="Scheduled">${tr('В указанный период')}</option></select></label>
-    <div class="form-row" id="auto-replies-period" hidden>${field('oofStart', tr('Начало'), '', 'datetime-local')}${field('oofEnd', tr('Окончание'), '', 'datetime-local')}</div>
+    <div class="form-row" id="auto-replies-period">${field('oofStart', tr('Начало'), '', 'datetime-local')}${field('oofEnd', tr('Окончание'), '', 'datetime-local')}</div>
+    <p class="form-note">${tr('Для отправки по расписанию выберите «В указанный период».')}</p>
     <p class="form-note">${tr('Часовой пояс:')} ${esc(T.zone(timeZone))}</p>
     ${textField('oofInternal', tr('Ответ сотрудникам организации'))}
     <label class="field"><span>${tr('Ответы внешним отправителям')}</span><select name="oofAudience"><option value="None">${tr('Не отправлять')}</option><option value="Known">${tr('Только моим контактам')}</option><option value="All">${tr('Всем внешним отправителям')}</option></select></label>
@@ -15,8 +16,18 @@ function autoRepliesMarkup() {
     </fieldset><p id="auto-replies-error" class="form-error" role="alert"></p>`;
 }
 function autoReplyText(value) {
-  const safe = DOMPurify.sanitize(value.replace(/<br\s*\/?\s*>|<\/(?:p|div|li)>/gi, '\n'), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
-  return new DOMParser().parseFromString(safe, 'text/html').body.textContent.replace(/\n$/, '');
+  const container = document.createElement('div');
+  container.innerHTML = DOMPurify.sanitize(value, {
+    ALLOWED_TAGS: ['p','div','span','br','b','strong','i','em','u','s','pre','blockquote','ul','ol','li','table','thead','tbody','tr','td','th','h1','h2','h3','h4','h5','h6'], ALLOWED_ATTR: [],
+  });
+  if (!container.children.length) return container.textContent.replace(/\r\n?/g, '\n');
+  // Use Chromium's rendered text rules for block boundaries and HTML whitespace.
+  // Only inert markup without attributes is mounted; no mail styles or resources.
+  container.style.cssText = 'position:fixed;left:-100000px;top:0;width:100000px;opacity:0;pointer-events:none;white-space:normal';
+  container.setAttribute('aria-hidden', 'true');
+  document.body.append(container);
+  try { return container.innerText.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' '); }
+  finally { container.remove(); }
 }
 function setupAutoReplies(panel) {
   const form = panel.closest('form'), account = state.account, demo = state.demo, zone = timeZone;
@@ -26,8 +37,7 @@ function setupAutoReplies(panel) {
   const current = () => panel.isConnected && state.account === account && state.demo === demo;
   const update = () => {
     const scheduled = form.elements.oofState.value === 'Scheduled';
-    panel.querySelector('#auto-replies-period').hidden = !scheduled;
-    for (const name of ['oofStart', 'oofEnd']) { form.elements[name].disabled = !scheduled; }
+    for (const name of ['oofStart', 'oofEnd']) { form.elements[name].disabled = !scheduled; form.elements[name].required = scheduled; }
     form.elements.oofExternal.disabled = form.elements.oofAudience.value === 'None';
   };
   panel.addEventListener('input', () => { panel.dataset.dirty = 'true'; setModalDirty(true); });

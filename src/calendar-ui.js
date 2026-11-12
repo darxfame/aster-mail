@@ -109,3 +109,64 @@ document.addEventListener('submit', event => {
     calendarDrop = null;
   });
 });
+
+let calendarMenu;
+function closeCalendarMenu(restoreFocus = false) {
+  const opener = calendarMenu?.opener;
+  calendarMenu?.remove(); calendarMenu = null;
+  if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
+}
+function showCalendarMenu(button, x, y) {
+  if (state.view !== 'calendar' || $('#modal').open) return;
+  closeCalendarMenu();
+  const summary = state.events.find(event => event.id === button.dataset.id);
+  if (!summary) return;
+  const account = state.account, demo = state.demo;
+  const own = window.asterEvents.organizer(summary, account?.username || '');
+  const actions = [['open', tr('Открыть')], ['meeting-edit', own ? tr('Редактировать') : tr('Напоминание')], ['meeting-local-reminders', tr('Напоминания Aster')],
+    ['meeting-reply', tr('Ответить')], [own ? 'meeting-invite' : 'meeting-forward', own ? tr('Добавить участников') : tr('Переслать')],
+    ['meeting-delete', summary.recurring ? tr('Удалить этот повтор…') : own ? tr('Удалить или отменить встречу…') : tr('Удалить из календаря…')],
+    ...(summary.recurring ? [['meeting-delete-series', tr('Удалить весь ряд…')]] : [])];
+  const menu = calendarMenu = document.createElement('div');
+  menu.className = 'folder-context-menu calendar-context-menu'; menu.opener = button;
+  menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tr('Действия со встречей'));
+  menu.innerHTML = actions.map(([action, label]) => `<button type="button" role="menuitem" tabindex="-1" data-calendar-action="${action}" ${(summary.cancelled && !['open', 'meeting-delete', 'meeting-delete-series'].includes(action) || action.startsWith('meeting-delete') && summary.canDelete === false || ['meeting-edit', 'meeting-invite'].includes(action) && summary.canModify === false) ? 'disabled' : ''}>${esc(label)}</button>`).join('');
+  document.body.append(menu);
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, innerHeight - bounds.height - 8))}px`;
+  menu.onclick = async event => {
+    const item = event.target.closest('[data-calendar-action]'); if (!item || item.disabled) return;
+    const action = item.dataset.calendarAction; closeCalendarMenu();
+    if (state.account !== account || state.demo !== demo || state.view !== 'calendar') return;
+    try {
+      const loading = openMeeting(summary), request = meetingRequest;
+      await loading;
+      if (request !== meetingRequest || state.account !== account || state.demo !== demo || activeMeeting?.id !== summary.id || !$('#modal').open) return;
+      if (action === 'meeting-local-reminders') localMeetingReminders();
+      else if (action !== 'open') await handleMeetingAction({ dataset: { action } });
+    } catch (error) { showError(error); }
+  };
+  menu.querySelector('button:not(:disabled)')?.focus();
+}
+document.addEventListener('contextmenu', event => {
+  const button = event.target.closest('[data-action="event"][data-id]');
+  if (!button || state.view !== 'calendar' || $('#modal').open) return;
+  event.preventDefault(); showCalendarMenu(button, event.clientX, event.clientY);
+});
+document.addEventListener('pointerdown', event => { if (calendarMenu && !calendarMenu.contains(event.target)) closeCalendarMenu(); });
+window.addEventListener('resize', () => closeCalendarMenu());
+window.addEventListener('blur', () => closeCalendarMenu());
+document.addEventListener('keydown', event => {
+  const button = event.target.closest('[data-action="event"][data-id]');
+  if (button && (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) {
+    event.preventDefault(); const bounds = button.getBoundingClientRect(); showCalendarMenu(button, bounds.left, bounds.bottom); return;
+  }
+  if (!calendarMenu) return;
+  if (event.key === 'Escape' || event.key === 'Tab') { if (event.key === 'Escape') event.preventDefault(); closeCalendarMenu(true); return; }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const buttons = [...calendarMenu.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+  buttons[next]?.focus();
+});
