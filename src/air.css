@@ -80,6 +80,7 @@ body.dark {
 .mail-list-resize { background: transparent; border: 0; width: 9px; }
 .mail-list-resize:hover, .mail-list-resize:focus-visible { border-radius: 6px; }
 .reader { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.reader .reader-content { max-width: none; }
 .reader-toolbar { background: var(--surface2); border-bottom-color: var(--line); }
 .reader-replies { border-radius: 12px; }
 .message-row, body.dark .message-row { border-bottom-color: transparent; border-radius: 10px; width: calc(100% - 12px); margin: 0 6px 2px; }
@@ -165,7 +166,7 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
 .skeleton-mail-list .skeleton-avatar { display: none; }
 .skeleton-mail-list .skeleton-filters { margin: 12px 0; }
 .skeleton-mail-reader { flex: 1; min-width: 0; padding-left: 9px; }
-.skeleton-reader { width: 100%; max-width: 860px; padding: 26px 43px; }
+.skeleton-reader { width: 100%; padding: 32px clamp(16px, 3vw, 43px); }
 .skeleton-paragraph { margin: 28px 0; }
 .skeleton-paragraph .skeleton-bar { margin: 15px 0; }
 .skeleton-attachment { height: 58px; margin-top: 30px; border-radius: 12px; opacity: .5; }
@@ -196,7 +197,7 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
 }
 @media (max-width: 640px) {
   .topbar, .workspace, .sidebar, .sidebar-collapsed .sidebar { border-radius: 12px; }
-  .skeleton-reader { padding: 20px 18px; }
+  .skeleton-reader { padding: 24px clamp(16px, 3vw, 43px); }
   .skeleton-calendar, .skeleton-contacts { padding: 16px; }
   .skeleton-calendar-grid { gap: 7px; }
   .loading-caption { padding-left: 18px; }

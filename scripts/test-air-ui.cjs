@@ -24,13 +24,14 @@ async function screenshot(name) {
 app.whenReady().then(async () => {
   try {
     await fs.mkdir(output, { recursive: true });
-    window = new BrowserWindow({ width: 1440, height: 940, useContentSize: true, show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+    window = new BrowserWindow({ width: 1920, height: 940, useContentSize: true, show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     window.webContents.session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/.test(details.url) }));
     await window.loadFile(path.join(root, 'src/index.html'));
     await js('document.querySelector("[data-action=demo]").click()');
     await waitFor('state.demo && state.messages.length > 1');
     await js(`window.fixtureMessages=structuredClone(state.messages).map(m=>({...m,read:true})); window.fixtureApi=api;void 0;`);
     await js('openMessage(state.messages[0].id)');
+    assert.equal(await js(`Math.abs(document.querySelector('.reader-content').getBoundingClientRect().width-document.querySelector('.reader-scroll').clientWidth)<1`), true, 'Mail content must use the full reader width on a wide window');
     await screenshot('mail-light');
     // Preserve every existing action and the original semantic palette.
     assert.equal(await js("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()"), '#7760d6');
@@ -52,6 +53,7 @@ app.whenReady().then(async () => {
     assert.equal(await js('Boolean(document.querySelector(".loading-placeholder"))'), false);
     await js('window.fixtureRead=openMessage(state.messages[0].id);void 0');
     assert.equal(await js('Boolean(document.querySelector("#reader .loading-reader"))'), true);
+    assert.equal(await js(`Math.abs(document.querySelector('#reader .skeleton-reader').getBoundingClientRect().width-document.querySelector('#reader .skeleton-layout').clientWidth)<1`), true, 'Reader skeleton must use the same full width');
     await screenshot('reader-skeleton');
     await js('fixtureReads.shift().resolve({...fixtureMessages[0],meeting:null});fixtureRead');
     assert.equal(await js('Boolean(document.querySelector("#reader .sender-detail"))'), true);
@@ -110,7 +112,7 @@ app.whenReady().then(async () => {
           if (view === 'mail') await js('openMessage(state.messages[0].id)');
           await new Promise(resolve => setTimeout(resolve, 120));
           assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'), true, `${view} ${theme} ${width}/${zoom} horizontal overflow`);
-          if (view === 'mail') assert.equal(await js(`(()=>{const frame=document.querySelector('.email-frame');return !frame || frame.contentWindow.getComputedStyle(frame.contentDocument.body).backgroundColor===getComputedStyle(document.querySelector('#reader')).backgroundColor;})()`), true, 'Isolated mail background must match the neutral reader');
+          if (view === 'mail') assert.equal(await js(`(()=>{const frame=document.querySelector('.email-frame');return !frame || frame.contentWindow.getComputedStyle(frame.contentDocument.body).backgroundColor==='rgb(255, 255, 255)';})()`), true, 'HTML messages keep a white surface independently of chrome theme');
           assert.equal(await js(`(()=>{const bar=document.querySelector('.topbar'),right=bar.getBoundingClientRect().right;return [...bar.children].every(el=>el.getBoundingClientRect().right<=right+1);})()`), true, `toolbar ${theme} ${width}/${zoom}`);
           if (width === 1440 && zoom === 1) await screenshot(`${view}-${theme}`);
         }

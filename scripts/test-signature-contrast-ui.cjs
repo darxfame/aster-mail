@@ -40,6 +40,14 @@ app.whenReady().then(async () => {
     await waitFor('Boolean(document.querySelector("#signature-preview iframe")?.contentDocument?.querySelector("[title=hex]"))');
     assert.equal(await js(`document.querySelector('#signature-preview iframe').contentDocument.querySelector('[title=hex]').style.color`), 'rgb(32, 32, 32)', 'Light mode retains the original color');
     assert.equal(await js('fixtureSignature.html'), html);
+    // Original mail colors belong to the message, even in a dark application.
+    await js(`setModalDirty(false);document.querySelector('#modal').close();state.theme='dark';document.body.classList.add('dark');state.messages[0].html=${JSON.stringify(html)};state.messages[0].meeting=null;openMessage(state.messages[0].id)`);
+    await waitFor('Boolean(document.querySelector("#message-body iframe")?.contentDocument?.querySelector("[title=hex]"))');
+    assert.equal(await js(`(()=>{const frame=document.querySelector('#message-body iframe');return frame.contentWindow.getComputedStyle(frame.contentDocument.body).backgroundColor;})()`), 'rgb(255, 255, 255)', 'Dark chrome must not remove the white message surface');
+    assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('[title=hex]').style.color`), 'rgb(32, 32, 32)', 'Mail keeps authored text colors');
+    assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('div').style.backgroundColor`), 'white', 'Mail keeps authored backgrounds');
+    assert.equal(await js('state.messages[0].html'), html, 'Viewing must not rewrite the original message');
+    await fs.writeFile(path.join(output,'dark-mail.png'),(await window.webContents.capturePage()).toPNG());
     console.log('PASS: dark signature contrast for hex/named/HSL/alpha/nested/legacy colors, preserved emphasis/transparency, light colors and original outgoing markup.');
   } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

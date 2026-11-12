@@ -62,7 +62,10 @@
     });
     return doc;
   }
-  function render(target, html, { dark, title, loadImages, openLink }) {
+  function render(target, html, { dark, adaptToTheme = false, title, loadImages, openLink }) {
+    // Authored mail/meeting colors belong on a white document surface. Only
+    // embedded signature previews opt into the app's contrast adaptation.
+    dark = dark && adaptToTheme;
     const doc = sanitize(html, { dark, images: true });
     doc.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';

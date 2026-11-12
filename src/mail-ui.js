@@ -82,7 +82,7 @@ function applyReaderDensity() {
 function renderSignaturePreview(target, signature) {
   if (!target) return;
   if (!signature.html) { target.textContent = signature.text; return; }
-  window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', title: tr('Подпись OWA'), loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
+  window.asterRichContent.render(target, signature.html, { dark: state.theme === 'dark', adaptToTheme: true, title: tr('Подпись OWA'), loadImages: async () => ({ images: signature.images || {}, errors: signature.errors || {} }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : undefined });
   if (Object.keys(signature.errors || {}).length) { const note = document.createElement('p'); note.className = 'form-error'; note.textContent = tr('Не все картинки подписи доступны. Обновите подпись перед отправкой.'); target.append(note); }
 }
 const pendingReturnLater = new WeakSet();
