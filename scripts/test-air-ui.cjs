@@ -25,7 +25,7 @@ app.whenReady().then(async () => {
   try {
     await fs.mkdir(output, { recursive: true });
     window = new BrowserWindow({ width: 1920, height: 940, useContentSize: true, show: true,
-      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 34 } } : {}),
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 12 } } : {}),
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     window.webContents.session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/.test(details.url) }));
     await window.loadFile(path.join(root, 'src/index.html'));
@@ -33,14 +33,17 @@ app.whenReady().then(async () => {
     await waitFor('state.demo && state.messages.length > 1');
     if (process.platform === 'darwin') {
       await js("document.body.classList.add('desktop','mac')");
-      assert.deepEqual(window.getWindowButtonPosition(), { x: 22, y: 34 });
+      assert.deepEqual(window.getWindowButtonPosition(), { x: 22, y: 12 });
       assert.equal(window.getBounds().height, window.getContentBounds().height, 'No separate native title bar consumes content height');
       for (const zoom of [0.8, 1, 2]) {
         window.webContents.setZoomFactor(zoom);
-        window.setWindowButtonPosition({ x: Math.round(22 * zoom), y: Math.round(41 * zoom - 7) });
+        window.setWindowButtonPosition({ x: Math.round(22 * zoom), y: Math.round(19 * zoom - 7) });
         for (const collapsed of [false, true]) {
           await js(`document.body.classList.toggle('sidebar-collapsed',${collapsed})`);
           const controlsBottom = (window.getWindowButtonPosition().y + 14) / zoom;
+          assert.equal(await js("(()=>{const brand=document.querySelector('.wordmark'),top=brand.getBoundingClientRect().top;document.body.classList.remove('mac');const original=brand.getBoundingClientRect().top;document.body.classList.add('mac');return Math.abs(top-original)<.1;})()"), true, 'Native controls add no row or sidebar padding');
+          assert.equal(await js("getComputedStyle(document.querySelector('.sidebar')).backgroundColor"), 'rgba(0, 0, 0, 0)', 'No rounded panel underneath native controls');
+          assert.equal(await js("getComputedStyle(document.querySelector('.sidebar')).borderTopColor"), 'rgba(0, 0, 0, 0)', 'No oval border through the controls');
           assert.equal(await js(`document.querySelector('.wordmark').getBoundingClientRect().top>${controlsBottom}`), true, 'Brand stays below native controls at every scale');
           assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${(window.getWindowButtonPosition().x + 54) / zoom}`), true, 'Toolbar stays clear of the three native 14px controls and their 6px gaps');
           assert.equal(await js("getComputedStyle(document.querySelector('.topbar')).webkitAppRegion"), 'drag');
@@ -51,7 +54,7 @@ app.whenReady().then(async () => {
         }
       }
       window.webContents.setZoomFactor(1);
-      window.setWindowButtonPosition({ x: 22, y: 34 });
+      window.setWindowButtonPosition({ x: 22, y: 12 });
       await js('renderSidebar()');
     }
     await js(`window.fixtureMessages=structuredClone(state.messages).map(m=>({...m,read:true})); window.fixtureApi=api;void 0;`);
