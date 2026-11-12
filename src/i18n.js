@@ -608,7 +608,7 @@
     "Адрес изображения:": "Image address:",
     "из": "of",
     "Открыть контакт:": "Open contact:",
-    "Картинки: встроенные и с HTTPS-серверов · активное содержимое отключено": "Images: embedded and from HTTPS servers · active content disabled",
+    "Картинки: встроенные и внешние · активное содержимое отключено": "Images: embedded and external · active content disabled",
     "Содержимое письма": "Message content",
     "Демо: ссылка": "Demo: link",
     "Нет текстового содержимого": "No text content",

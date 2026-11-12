@@ -14,7 +14,14 @@
     'margin-left': /^(?:0|[1-9]\d?(?:px|pt))$/,
   };
   const styleAllowed = (name, value) => !!styles[name]?.test(value.trim());
-  if (typeof module !== 'undefined') { module.exports = { styleAllowed }; return; }
+  function isTrackingImage(value) {
+    if (!/^(?:https?:)?\/\//i.test(String(value || ''))) return false;
+    try {
+      const url = new URL(value, 'https://image.invalid');
+      return ['http:', 'https:'].includes(url.protocol) && (url.hostname === 'google-analytics.com' || url.hostname.endsWith('.google-analytics.com')) && /^\/(?:[gj]\/)?collect\/?$/.test(url.pathname);
+    } catch { return false; }
+  }
+  if (typeof module !== 'undefined') { module.exports = { styleAllowed, isTrackingImage }; return; }
   const darkSurface = [41, 42, 46];
   const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
   function sanitize(html, { dark = false, images = false, preserveBackgrounds = false } = {}) {
@@ -58,6 +65,7 @@
     };
     if (preserveBackgrounds && styleAllowed('color', originalColor) && (!dark || readableColor(originalColor, surfaceFor(doc.body)))) doc.body.style.color = originalColor;
     doc.body.querySelectorAll('*').forEach(node => {
+      if (node.tagName === 'IMG' && isTrackingImage(node.getAttribute('src'))) { node.remove(); return; }
       if (node.hasAttribute('color')) node.style.color = node.getAttribute('color');
       if (node.hasAttribute('bgcolor')) node.style.backgroundColor = node.getAttribute('bgcolor');
       if (node.hasAttribute('face')) node.style.fontFamily = node.getAttribute('face');
@@ -116,6 +124,10 @@
         placeholder.setAttribute('role', 'img');
         placeholder.setAttribute('aria-label', tr('Изображение недоступно'));
         placeholder.textContent = tr('Изображение недоступно');
+        // The placeholder may be inside a light authored box in a dark reader.
+        // Inherit that box's readable colors instead of the iframe root colors.
+        placeholder.style.setProperty('color', 'inherit', 'important');
+        placeholder.style.setProperty('background', 'transparent', 'important');
         const source = img.dataset.imageSource || '';
         const address = /^data:/i.test(source) ? `${source.slice(0, source.indexOf(',') + 1)}…` : source.slice(0, 2000);
         placeholder.title = `${String(reason || tr('Не удалось загрузить изображение')).slice(0, 500)}\n${tr('Адрес изображения:')} ${address}`;

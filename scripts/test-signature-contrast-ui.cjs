@@ -54,6 +54,16 @@ app.whenReady().then(async () => {
     await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<p>Fictional image failure</p><img src="https://images.example.test/logo.png">',{dark:true,title:'Fictional image',loadImages:async()=>({images:{},errors:{'https://images.example.test/logo.png':'Неподдерживаемый адрес изображения'}}),openLink(){}})`);
     await waitFor('Boolean(document.querySelector("#message-body iframe")?.contentDocument?.querySelector(".aster-image-unavailable"))');
     assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('.aster-image-unavailable').title`), 'Неподдерживаемый адрес изображения\nАдрес изображения: https://images.example.test/logo.png', 'Failed images show both their reason and source address');
+    for (const dark of [true,false]) for (const background of ['white','#202020']) {
+      await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<div style="background-color:${background}"><p>Fictional authored surface</p><img src="http://it/missing.png"></div>',{dark:${dark},title:'Missing image contrast',loadImages:async()=>({images:{},errors:{'http://it/missing.png':'HTTP 404'}}),openLink(){}})`);
+      await waitFor('Boolean(document.querySelector("#message-body iframe")?.contentDocument?.querySelector(".aster-image-unavailable"))');
+      const contrast = await js(`(()=>{const f=document.querySelector('#message-body iframe'),n=f.contentDocument.querySelector('.aster-image-unavailable'),v=f.contentWindow;const rgb=s=>s.match(/[\\d.]+/g).slice(0,3).map(Number),l=s=>rgb(s).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4}).reduce((sum,x,i)=>sum+x*[.2126,.7152,.0722][i],0);const a=l(v.getComputedStyle(n).color),b=l(v.getComputedStyle(n.parentElement).backgroundColor);return(Math.max(a,b)+.05)/(Math.min(a,b)+.05);})()`);
+      assert.ok(contrast>=4.5, `Missing-image labels remain readable on ${background} with dark=${dark}: ${contrast}`);
+    }
+    await js(`window.beaconLoads=0;window.asterRichContent.render(document.querySelector('#message-body'),'<p>Actual content</p><img width="1" height="1" src="http://www.google-analytics.com/collect?v=1&amp;tid=fictional">',{dark:true,title:'Tracking image',loadImages:async()=>{beaconLoads++;return{images:{},errors:{}}},openLink(){}})`);
+    await waitFor('document.querySelector("#message-body iframe")?.contentDocument?.querySelector("p")?.textContent==="Actual content"');
+    assert.equal(await js('beaconLoads'),0,'Known analytics pixels are not requested');
+    assert.equal(await js('document.querySelector("#message-body iframe").contentDocument.querySelectorAll("img,.aster-image-unavailable").length'),0,'Invisible analytics pixels create no broken-image labels');
     await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<html><body><p><br></p></body></html>',{dark:true,title:'Empty',openLink(){}})`);
     assert.equal(await js('document.querySelector("#message-body").children.length'),0,'Empty meeting responses have no artificial white rectangle');
     await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<p style="color:#111111">Short text without background</p>',{dark:true,title:'Plain HTML',openLink(){}})`);

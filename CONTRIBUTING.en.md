@@ -3,8 +3,7 @@
 [Русский](CONTRIBUTING.md) · [English](CONTRIBUTING.en.md)
 
 Aster Mail is an independent Exchange OWA/EWS desktop client built with Electron.
-Issues and pull requests in English or Russian are welcome. The app interface
-is currently Russian; English documentation does not imply an English app UI.
+Issues and pull requests in English or Russian are welcome. The app interface supports Russian and English.
 
 ## Find a task
 
@@ -48,7 +47,7 @@ Documentation-only changes should have their links and instructions checked.
 
 Follow [AGENTS.md](AGENTS.md): two-space indentation, semicolons, descriptive
 camelCase names, CommonJS `.cjs` backend modules, and plain browser JavaScript.
-Keep UI text in Russian and code/comments in English. Do not add tooling or
+Keep Russian/English UI strings in `src/i18n.js` and code/comments in English. Do not add tooling or
 dependencies without a concrete need. Use concise imperative commit subjects,
 such as `Handle expired OWA sessions`.
 
@@ -56,3 +55,6 @@ Preserve MIT attribution and the separate CC0 sound license. Do not import
 proprietary Mustang modules. Keep credentials, tokens, cookies, authentication
 logs, corporate addresses, and messages out of issues, PRs, and screenshots.
 See [SECURITY.md](SECURITY.md) for private vulnerability reporting instructions.
+
+See [macOS signing and Keychain (Russian)](docs/MACOS-SIGNING.md).
+Regenerate current screenshots with fictional data using `npm run docs:screenshots`.

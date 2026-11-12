@@ -1,20 +1,21 @@
 const tr = require('../src/i18n.js').text;
 const { inspect, maxDecodedBytes } = require('./raster-images.cjs');
 const { BlockList, isIP } = require('node:net');
+const { isTrackingImage } = require('../src/rich-content.js');
 const localAddresses = new BlockList();
 for (const [address, prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.168.0.0',16],['198.18.0.0',15],['224.0.0.0',4],['240.0.0.0',4]]) localAddresses.addSubnet(address, prefix, 'ipv4');
 for (const [address, prefix] of [['::',128],['::1',128],['fc00::',7],['fe80::',10],['ff00::',8]]) localAddresses.addSubnet(address, prefix, 'ipv6');
 function sourceURL(value, origin) {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || !origin || url.username || url.password || value.length > 16000) throw new Error(tr('Неподдерживаемый адрес изображения'));
+  if (!['http:', 'https:'].includes(url.protocol) || !origin || url.username || url.password || value.length > 16000) throw new Error(tr('Неподдерживаемый адрес изображения'));
   const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, ''), family = isIP(host);
-  // Corporate HTTPS hostnames (including short intranet names) are supported.
+  // HTTP/HTTPS images use an anonymous session, including corporate short names.
   // Preserve OWA access while rejecting unrelated literal local endpoints.
   if (url.origin !== new URL(origin).origin && (host === 'localhost' || host.endsWith('.localhost') || family && localAddresses.check(host, family === 4 ? 'ipv4' : 'ipv6'))) throw new Error(tr('Неподдерживаемый адрес изображения'));
   return url.href;
 }
 function sources(html) {
-  return [...new Set([...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(m => (m[1] ?? m[2] ?? m[3]).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")))].slice(0, 12);
+  return [...new Set([...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(m => (m[1] ?? m[2] ?? m[3]).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")))].filter(src => !isTrackingImage(src)).slice(0, 12);
 }
 function cid(value) {
   let result = String(value || '').replace(/^cid:/i, '');
