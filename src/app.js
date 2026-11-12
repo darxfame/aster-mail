@@ -70,6 +70,7 @@ let compactSidebarExpanded = false, narrowSidebar = window.innerWidth <= 900;
 let sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
 document.body.classList.toggle('desktop', Boolean(window.aster));
 document.body.classList.toggle('mac', window.aster?.platform === 'darwin');
+if (window.aster?.platform === 'darwin') $('.app-shell').prepend($('.topbar'));
 async function getServerSignature() {
   const signatureAccount = state.account;
   const value = state.demo ? { html: tr('<p>С уважением,<br><b>Команда Aster</b></p>'), text: tr('С уважением,\nКоманда Aster'), autoAddSignature: true, autoAddSignatureOnReply: true } : await api('signature');

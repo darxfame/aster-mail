@@ -24,31 +24,33 @@ async function screenshot(name) {
 app.whenReady().then(async () => {
   try {
     await fs.mkdir(output, { recursive: true });
-    window = new BrowserWindow({ width: 1920, height: 940, useContentSize: true, show: false,
-      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 34 } } : {}),
+    window = new BrowserWindow({ width: 1920, height: 940, useContentSize: true, show: true,
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 34 } } : {}),
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     window.webContents.session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/.test(details.url) }));
     await window.loadFile(path.join(root, 'src/index.html'));
     await js('document.querySelector("[data-action=demo]").click()');
     await waitFor('state.demo && state.messages.length > 1');
     if (process.platform === 'darwin') {
-      await js("document.body.classList.add('desktop','mac')");
-      assert.deepEqual(window.getWindowButtonPosition(), { x: 12, y: 34 });
+      await js("document.body.classList.add('desktop','mac');document.querySelector('.app-shell').prepend(document.querySelector('.topbar'))");
+      assert.deepEqual(window.getWindowButtonPosition(), { x: 22, y: 34 });
       assert.equal(window.getBounds().height, window.getContentBounds().height, 'No separate native title bar consumes content height');
       for (const zoom of [0.8, 1, 2]) {
         window.webContents.setZoomFactor(zoom);
-        window.setWindowButtonPosition({ x: 12, y: Math.round(41 * zoom - 7) });
+        window.setWindowButtonPosition({ x: Math.round(22 * zoom), y: Math.round(41 * zoom - 7) });
         for (const collapsed of [false, true]) {
           await js(`document.body.classList.toggle('sidebar-collapsed',${collapsed})`);
           const controlsBottom = (window.getWindowButtonPosition().y + 14) / zoom;
           assert.equal(await js(`document.querySelector('.wordmark').getBoundingClientRect().top>${controlsBottom}`), true, 'Brand stays below native controls at every scale');
-          assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${82 / zoom}`), true, 'Toolbar stays clear of native controls with either sidebar width');
-          assert.equal(await js("getComputedStyle(document.querySelector('.sidebar'),'::before').webkitAppRegion"), 'drag');
+          assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${(window.getWindowButtonPosition().x + 70) / zoom}`), true, 'Toolbar stays clear of native controls with either sidebar width');
+          assert.equal(await js("getComputedStyle(document.querySelector('.topbar')).webkitAppRegion"), 'drag');
+          assert.equal(await js("document.querySelector('.sidebar').getBoundingClientRect().top>=document.querySelector('.topbar').getBoundingClientRect().bottom"), true, 'Sidebar starts below the shared toolbar');
+          assert.equal(await js("document.querySelector('.topbar').getBoundingClientRect().left<12"), true, 'Toolbar spans both sidebar and workspace');
           assert.equal(await js("getComputedStyle(document.querySelector('#quick-create')).webkitAppRegion"), 'no-drag');
         }
       }
       window.webContents.setZoomFactor(1);
-      window.setWindowButtonPosition({ x: 12, y: 34 });
+      window.setWindowButtonPosition({ x: 22, y: 34 });
       await js('renderSidebar()');
     }
     await js(`window.fixtureMessages=structuredClone(state.messages).map(m=>({...m,read:true})); window.fixtureApi=api;void 0;`);
@@ -130,6 +132,7 @@ app.whenReady().then(async () => {
       assert.deepEqual(colors, originalColors, `${theme} event fills, rails and text must match the original styles`);
       for (const [width, zoom] of [[1440,1],[1024,1],[760,1],[1440,2]]) {
         window.setContentSize(width, 940); window.webContents.setZoomFactor(zoom);
+        await waitFor(`Math.abs(innerWidth-${width/zoom})<2`);
         for (const view of ['mail','calendar','contacts']) {
           await js(`state.view=${JSON.stringify(view)};loadView()`);
           if (view === 'mail') await js('openMessage(state.messages[0].id)');

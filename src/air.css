@@ -208,15 +208,29 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
   .sidebar, .sidebar-collapsed .sidebar { padding-top: 18px; }
   .sidebar .wordmark, .sidebar-collapsed .sidebar .wordmark { padding-bottom: 14px; }
 }
-/* Native macOS controls occupy the sidebar header, without a separate title bar. */
-body.mac:not(.compose-window) .sidebar { padding-top: 56px; }
-body.mac .sidebar .wordmark { -webkit-app-region: drag; }
-body.mac:not(.compose-window) .sidebar::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 52px;
-  -webkit-app-region: drag;
-}
+/* One shared macOS toolbar, with space for the native window controls. */
+body.mac:not(.compose-window) .app-shell { display: grid; grid-template-columns: auto 0 minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+body.mac .app-shell > .topbar { grid-column: 1 / -1; grid-row: 1; padding-left: 110px; }
+body.mac .app-shell > .sidebar { grid-column: 1; grid-row: 2; margin-top: 0; }
+body.mac .app-shell > .sidebar-edge { grid-column: 2; grid-row: 2; }
+body.mac .app-shell > main { grid-column: 3; grid-row: 2; min-height: 0; }
+.meeting-participant-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0 8px; }
+.meeting-participant-columns .meeting-participant-field { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface2); }
+.meeting-participant-field > label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 12px; font-weight: 550; }
+.participant-count { color: var(--muted); font-size: 11px; font-weight: 400; }
+.meeting-participant-field .participant-cards { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 6px; min-height: 46px; max-height: 228px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 3px; margin: -3px -3px 10px; }
+.meeting-participant-field .participant-card { display: flex; align-items: center; gap: 9px; width: 100%; flex: none; padding: 8px; border: 1px solid transparent; border-radius: 10px; background: var(--surface); cursor: text; }
+.meeting-participant-field .participant-card[draggable=true] { cursor: grab; }
+.meeting-participant-field .participant-card:hover { border-color: var(--line); }
+.participant-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); flex: none; font-size: 10px; }
+.participant-copy { min-width: 0; }
+.participant-copy strong { display: block; font-size: 12px; font-weight: 550; line-height: 1.5; overflow-wrap: anywhere; }
+.participant-copy small { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.participant-empty { color: var(--muted); font-size: 11px; margin: 8px; }
+.meeting-participant-field .participant-entry { display: flex; gap: 6px; }
+.participant-entry input { min-width: 0; flex: 1; width: 0; padding: 8px; font-size: 12px; background: var(--surface); }
+.participant-entry .participant-add { flex: none; width: 32px; padding: 4px; font-size: 18px; border-radius: 9px; }
+.meeting-participant-field .participant-addresses:not(.is-editing) { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; clip-path: inset(50%); overflow: hidden; }
+.meeting-participant-field .participant-addresses.is-editing { margin-bottom: 8px; font-size: 12px; padding: 8px; }
+.meeting-participant-field .recipient-suggestions { left: 0; right: 0; top: 100%; }
+@media(max-width:560px) { .meeting-participant-columns { grid-template-columns: minmax(0, 1fr); }.meeting-participant-field .participant-cards { max-height: 184px; } }
