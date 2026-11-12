@@ -18,6 +18,7 @@ app.whenReady().then(async () => {
       throw new Error(`Context UI did not become ready: ${expression}`);
     }
     await window.loadFile(path.join(root,'src/index.html'));
+    await js("applyLanguage('ru')");
     if (process.platform === 'darwin') await js("document.body.classList.add('desktop','mac')");
     await js('document.querySelector("[data-action=demo]").click()');
     await js('openMessage(state.messages[0].id)');
@@ -37,8 +38,10 @@ app.whenReady().then(async () => {
     assert.equal(await js('state.messages.find(m=>m.id===targetId).read'),false);
     assert.equal(await js('mailSelection.has(otherId)'),true,'Other checked messages are not affected');
     assert.equal(await js('document.querySelector("#reader")===readerBefore && state.selected.id===selectedBefore'),true,'The other open message remains mounted');
-    await open();
-    assert.equal(await js('Boolean(document.querySelector("[data-mail-context=read]"))'),true);
+    await js("applyLanguage('en')"); await open();
+    assert.equal(await js('document.querySelector("[data-mail-context=read]").textContent'),'Mark as read','Menu follows English UI independently of the OS language');
+    await js("closeMailContextMenu();applyLanguage('ru')"); await open();
+    assert.equal(await js('document.querySelector("[data-mail-context=read]").textContent'),'Пометить прочитанным');
     await js('document.querySelector("[data-mail-context=read]").click()'); await waitFor('!mailBatchBusy && calls.length===2');
     assert.equal(await js('state.messages.find(m=>m.id===targetId).read'),true);
     await open(); await js('state.generation++;document.querySelector("[data-mail-context=trash]").click()');
@@ -59,5 +62,10 @@ app.whenReady().then(async () => {
     await new Promise(resolve=>setTimeout(resolve,80));
     assert.equal(await js('calls.length'),3,'Uncertain mutations are never retried');
     console.log('PASS: right-click/keyboard menus, read/unread with fresh keys, preserved reader and unrelated selection, viewport placement, stale navigation and no uncertain-write retry.');
-  } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
+  } finally {
+    window?.destroy();
+    await fs.rm(profile,{recursive:true,force:true,maxRetries:3}).catch(error=>{
+      if(process.platform!=='win32'||!['EPERM','EBUSY','ENOTEMPTY'].includes(error.code))throw error;
+    });
+  }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

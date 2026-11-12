@@ -8,6 +8,7 @@
 [Инструкция](docs/USER-GUIDE.md) · [English](README.en.md)
 
 [![Релиз](https://img.shields.io/github/v/release/darxfame/aster-mail?cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases/latest)
+[![Скачивания](https://img.shields.io/github/downloads/darxfame/aster-mail/total?label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F&cacheSeconds=300)](https://github.com/darxfame/aster-mail/releases)
 [![Проверки](https://github.com/darxfame/aster-mail/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/darxfame/aster-mail/actions/workflows/release.yml)
 
 ![Aster Mail: текущий интерфейс Air Glass, вымышленные письма](docs/screenshots/mail-dark.png)

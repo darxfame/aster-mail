@@ -73,6 +73,9 @@ app.whenReady().then(async () => {
     imageWindow?.destroy();
     await isolated.closeAllConnections();
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
-    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3 });
+    // Chromium can hold its fictional temporary profile until process exit on Windows.
+    await fs.promises.rm(profile, { recursive: true, force: true, maxRetries: 3 }).catch(error => {
+      if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(error.code)) throw error;
+    });
   }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });
