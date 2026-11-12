@@ -7,7 +7,7 @@ const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 test('logout clears renderer corporate data, signatures, drafts, meetings and local preference copies', () => {
   const nodes = { '#search': { value: 'private query' }, '#people-search-suggestions': { replaceChildren() { this.cleared = true; } } };
   const context = vm.createContext({ tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
-    connectedModules: [{ id: 'private-module' }], loadModuleContributions: async () => {}, closeAttachmentPreview() {}, applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
+    connectedModules: [{ id: 'private-module' }], loadModuleContributions: async () => {}, closeAttachmentPreview() {}, closeMailAttachmentPreview() {}, applyLanguage() {}, restoreMailListWidth() {}, applyInterfaceScale: async () => {}, showError() {}, window: { asterMailFind: { reset() { nodes.findCleared = true; } } },
     state: { account: { sessionId: 'old' }, generation: 1, selected: { html: 'private mail' }, messages: ['private'], contacts: ['private'], events: ['private'], signature: 'private' },
     demoWaitingReplies: [{ id: 'old-wait' }], demoMailReminders: [{ id: 'old-reminder' }], localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },

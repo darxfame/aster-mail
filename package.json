@@ -1,6 +1,6 @@
 {
   "name": "aster-mail",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "description": "A calm desktop home for Exchange mail, calendar and people",
   "author": "Aster Mail contributors",
@@ -29,6 +29,7 @@
     "test:search": "electron scripts/test-mail-search-ui.cjs",
     "test:mail-to-meeting": "electron scripts/test-mail-to-meeting-ui.cjs",
     "test:meeting-participants": "electron scripts/test-meeting-participants-ui.cjs",
+    "test:reader-space": "electron scripts/test-reader-space-ui.cjs",
     "test:mac-updates": "node scripts/test-native-mac-updates.cjs",
     "build:keychain-helper": "node scripts/build-keychain-helper.cjs",
     "test:keychain": "node scripts/test-native-keychain.cjs",

@@ -63,8 +63,6 @@
       if (scroll) {
         const range = ranges[saved.index];
         range.startContainer.parentElement.scrollIntoView({ block: 'center' });
-        // A tall mail frame is capped; scroll its viewport to the actual match too.
-        if (frame) view.scrollBy(0, range.getBoundingClientRect().top - frame.clientHeight / 2);
       }
     }
     function search(scroll = false) {
@@ -88,7 +86,7 @@
       saved.index = (saved.index + delta + ranges.length) % ranges.length; paint(true);
     }
     function keydown(event) {
-      if (document.querySelector('dialog[open]') || !reader.isConnected) return;
+      if (document.querySelector('dialog[open]') || reader.querySelector('.reader-attachment-preview') || !reader.isConnected) return;
       const modifier = event.metaKey || event.ctrlKey;
       if (modifier && !event.altKey && event.key.toLowerCase() === 'f') { event.preventDefault(); open(); }
       else if (saved.opened && (event.key === 'F3' || modifier && event.key.toLowerCase() === 'g')) { event.preventDefault(); step(event.shiftKey ? -1 : 1); }

@@ -3,10 +3,62 @@ function mailAttachments(message) {
   const card = file => {
     const extension = /\.([a-z0-9]{1,8})$/i.exec(file.name || '')?.[1].toUpperCase() || 'FILE';
     const type = /^(PDF)$/.test(extension) ? 'pdf' : /^(DOCX?|ODT|RTF)$/.test(extension) ? 'document' : /^(XLSX?|CSV|ODS)$/.test(extension) ? 'sheet' : /^(JPE?G|PNG|GIF|WEBP|HEIC)$/.test(extension) ? 'image' : /^(ZIP|RAR|7Z|TAR|GZ)$/.test(extension) ? 'archive' : 'file';
-    return `<article class="mail-attachment"><span class="file-extension extension-${type}">${esc(extension)}</span><div><button type="button" class="attachment-open" data-action="open-attachment" data-id="${esc(file.id)}" aria-label="${tr("Открыть вложение:")} ${esc(file.name)}" title="${tr("Открыть в системном приложении")}">${esc(file.name)}</button><small>${bytes(file.size || 0)}</small><button type="button" data-action="attachment" data-id="${esc(file.id)}" data-name="${esc(file.name)}" aria-label="${tr("Сохранить как:")} ${esc(file.name)}">${tr("Сохранить как…")}</button></div></article>`;
+    return `<article class="mail-attachment"><span class="file-extension extension-${type}">${esc(extension)}</span><div><button type="button" class="attachment-open" data-action="preview-attachment" data-id="${esc(file.id)}" aria-label="${tr("Открыть вложение:")} ${esc(file.name)}" title="${tr("Предпросмотр вложения:")} ${esc(file.name)}">${esc(file.name)}</button><small>${bytes(file.size || 0)}</small><button type="button" data-action="attachment" data-id="${esc(file.id)}" data-name="${esc(file.name)}" aria-label="${tr("Сохранить как:")} ${esc(file.name)}">${tr("Сохранить как…")}</button></div></article>`;
   };
   const files = message.attachments;
   return `<section class="mail-attachments-top attachments-count-${Math.min(files.length, 4)}" aria-label="${tr("Вложения письма")}"><details class="mail-attachments-details" open><summary>${tr("Вложения письма")} · ${files.length}</summary><div class="mail-attachment-grid attachment-preview">${files.slice(0, 3).map(card).join('')}</div>${files.length > 1 ? `<details class="attachment-more"><summary><span class="attachment-expand">${tr("Все вложения (")}${files.length})</span><span class="attachment-collapse">${tr("Свернуть вложения")}</span></summary><div class="mail-attachment-grid attachment-rest">${files.slice(1).map(card).join('')}</div></details>` : ''}</details></section>`;
+}
+let closeMailAttachmentPreview = () => {};
+async function previewMailAttachment(button) {
+  const message = state.selected, file = message?.attachments?.find(file => file.id === button.dataset.id);
+  const reader = $('#reader'), scroll = reader?.querySelector('.reader-scroll');
+  if (!file || !scroll || reader.querySelector('.reader-attachment-preview')) return;
+  const generation = state.generation, account = state.account;
+  const scrollTop = scroll.scrollTop;
+  const panel = document.createElement('section'); panel.className = 'reader-attachment-preview';
+  panel.setAttribute('aria-label', `${tr('Предпросмотр вложения:')} ${file.name}`);
+  panel.innerHTML = `<header><button type="button" class="secondary" data-close-mail-preview>${tr('К письму')}</button><strong>${esc(file.name)}</strong><button type="button" class="secondary" data-open-file>${tr('Открыть в системном приложении')}</button></header><div class="reader-attachment-body" role="status">${tr('Загружаем предпросмотр…')}</div>`;
+  const body = panel.querySelector('.reader-attachment-body'), find = reader.querySelector('.mail-find'), findButton = reader.querySelector('[data-mail-find]');
+  const findHidden = find?.hidden;
+  scroll.hidden = true; if (find) find.hidden = true; if (findButton) findButton.disabled = true;
+  reader.append(panel);
+  const current = () => panel.isConnected && state.selected === message && state.account === account && state.generation === generation;
+  function close() {
+    closeMailAttachmentPreview = () => {};
+    if (window.aster && state.account === account) void api('composeAttachment', { action: 'close' }).catch(() => {});
+    panel.remove();
+    if (!scroll.isConnected) return;
+    scroll.hidden = false; scroll.scrollTop = scrollTop;
+    if (find) find.hidden = findHidden; if (findButton) findButton.disabled = false;
+    if (button.isConnected) button.focus({ preventScroll: true });
+  }
+  closeMailAttachmentPreview = close;
+  const back = panel.querySelector('[data-close-mail-preview]'); back.onclick = close; back.focus();
+  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } });
+  const open = panel.querySelector('[data-open-file]');
+  open.onclick = async () => {
+    if (!current()) return;
+    open.disabled = true;
+    try {
+      if (state.demo) toast(tr('Демо: открытие вымышленных вложений недоступно'));
+      else await api('openAttachment', { id: file.id, ref: ref(message) });
+    } catch (error) { if (current()) showError(error); }
+    finally { if (current()) open.disabled = false; }
+  };
+  try {
+    const result = state.demo ? file.type?.startsWith('image/') ? { kind: 'image', dataURL: file.previewUrl || '../assets/icon.png' }
+      : /\.(txt|log|md|csv|json)$/i.test(file.name) ? { kind: 'text', text: file.previewText || tr('Это демонстрационное вложение Aster Mail. Реальные файлы загружаются из Exchange.') } : { kind: 'external' }
+      : await api('composeAttachment', { action: 'preview', source: ref(message), id: file.id });
+    if (!current()) return;
+    body.replaceChildren();
+    body.removeAttribute('role');
+    if (result.kind === 'image') {
+      const image = document.createElement('img'); image.alt = file.name; image.src = result.dataURL; body.append(image);
+    } else if (result.kind === 'text') {
+      const pre = document.createElement('pre'); pre.textContent = result.text; body.append(pre);
+      if (result.truncated) { const note = document.createElement('p'); note.textContent = tr('Показаны первые 100 КБ файла.'); body.append(note); }
+    } else body.textContent = tr(result.kind === 'pdf' ? 'PDF открыт в отдельном окне предпросмотра.' : 'Этот документ можно открыть в системном приложении.');
+  } catch (error) { if (current()) body.textContent = errorText(error); }
 }
 function applyReaderDensity() {
   const compact = window.innerHeight <= 650;
@@ -62,6 +114,7 @@ function navigateMailMessage(event) {
   if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
   if (state.view !== 'mail' || mailBatchBusy || document.querySelector('dialog[open]')) return;
   const target = event.target;
+  if (target.closest('.reader-attachment-preview')) return;
   if (target.isContentEditable || target.closest('input,textarea,select,[role="slider"],[role="separator"]')) return;
   const frame = target.ownerDocument?.defaultView?.frameElement;
   if (!target.closest('#messages,#reader') && !(target === document.body && state.selected) && !(frame?.isConnected && frame.matches('#reader .email-frame'))) return;
@@ -235,7 +288,7 @@ function mailRecipientDetails(message) {
   return `<div class="mail-recipient-groups" aria-label="${tr("Получатели письма")}">${groups.map(([key, label]) => {
     const people = message[key] || [];
     if (!people.length) return key === 'to' ? tr('<div class="recipient-empty">Кому: не указано</div>') : '';
-    return `<details class="mail-recipients"><summary><span>${label} · ${people.length}</span><span class="recipient-summary-names">${esc(people.map(person => person.name || person.email || tr('Участник')).join(', '))}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="${tr("Открыть контакт:")} ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || tr('Участник'))}</strong><small>${esc(person.email || tr('Адрес не указан'))}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
+    return `<details class="mail-recipients"><summary><span>${label} · ${people.length}</span></summary><div class="mail-recipient-list">${people.map((person, index) => `<button type="button" class="mail-person" data-action="open-mail-person" data-group="${key}" data-index="${index}" aria-label="${tr("Открыть контакт:")} ${esc(person.name || person.email)}">${avatar(person.name || person.email, index, person.email)}<span><strong>${esc(person.name || person.email || tr('Участник'))}</strong><small>${esc(person.email || tr('Адрес не указан'))}</small></span>${icon('people')}</button>`).join('')}</div></details>`;
   }).join('')}</div>`;
 }
 let mailPeopleChoices = [];

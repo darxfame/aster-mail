@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "К письму": "Back to message",
     "Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.": "Click to edit the email. Drag to change the participant’s role.",
     "Для истории переписки нужен полный SMTP-адрес контакта.": "A full SMTP email address is required for correspondence history.",
     "Некорректная страница истории переписки.": "Invalid correspondence history page.",

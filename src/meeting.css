@@ -141,7 +141,8 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 @media(max-width: 620px) { .compose-dialog .modal-header { flex-wrap: wrap; }.compose-dialog .modal-header > div { flex-basis: 100%; } }
 
 /* Recipient roles remain visible without combining To and Cc names. */
-.mail-recipient-groups { margin: -12px 0 24px; display: grid; gap: 8px; }
+.mail-recipient-groups { margin: -12px 0 16px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.mail-recipient-groups .mail-recipients[open] { flex-basis: 100%; }
 .mail-recipient-groups .mail-recipients { margin: 0; }
 .mail-recipient-groups .mail-recipient-list { max-height: 144px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
 .recipient-empty { color: var(--muted); font-size: 10px; }
@@ -402,3 +403,13 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .contact-history-message:hover { background:var(--accent-bg); }
 .contact-history-message span,.contact-history-message small { color:var(--muted); font-size:12px; }
 .contact-history-actions { display:flex; flex-wrap:wrap; gap:8px; }
+
+/* The mail header and body share one scrolling area beneath the action bar. */
+#reader .reader-scroll { min-height: 0; overflow: auto; }
+#reader .email-frame { display: block; }
+.reader-attachment-preview { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.reader-attachment-preview > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.reader-attachment-preview > header strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.reader-attachment-body { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+.reader-attachment-body img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.reader-attachment-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.7; }
