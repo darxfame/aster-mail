@@ -20,7 +20,7 @@ const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
 const { WaitingReplies } = require('./waiting-replies.cjs');
 const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.cjs');
-const { fetchContentImage } = require('./content-images.cjs');
+const { fetchContentImage, fetchImageResponse } = require('./content-images.cjs');
 let localStore, connection, accountEpoch = 0, connectAttempt = 0;
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences, mailAlert } = require('./notifications.cjs');
@@ -340,7 +340,7 @@ async function connect(data, remember, restoring = false) {
   const candidate = new OWAClient(credentials, transport,
     async () => { assertCurrent(); return (await current.session.cookies.get({ url: `${credentials.server}/owa/`, name: 'X-OWA-CANARY' }))[0]?.value; },
     () => { assertCurrent(); return current.session.clearStorageData({ storages: ['cookies'] }); },
-    url => fetchContentImage(url, credentials.server, current.images, current.controller.signal));
+    url => fetchContentImage(url, credentials.server, { fetch: (url, options) => fetchImageResponse(url, options, current.images, net) }, current.controller.signal));
   current.client = candidate;
   candidate.onConnectionState = status => {
     if (client !== candidate || !candidate.syncId || current.health === status) return;

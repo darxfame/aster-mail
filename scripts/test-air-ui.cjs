@@ -142,7 +142,7 @@ app.whenReady().then(async () => {
           if (view === 'mail') await js('openMessage(state.messages[0].id)');
           await new Promise(resolve => setTimeout(resolve, 120));
           assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'), true, `${view} ${theme} ${width}/${zoom} horizontal overflow`);
-          if (view === 'mail') assert.equal(await js(`(()=>{const frame=document.querySelector('.email-frame');return !frame || frame.contentWindow.getComputedStyle(frame.contentDocument.body).backgroundColor==='rgb(255, 255, 255)';})()`), true, 'HTML messages keep a white surface independently of chrome theme');
+          if (view === 'mail') assert.equal(await js(`(()=>{const frame=document.querySelector('.email-frame');return !frame || frame.style.background==='transparent';})()`), true, 'Reader frames add no forced white background');
           assert.equal(await js(`(()=>{const bar=document.querySelector('.topbar'),right=bar.getBoundingClientRect().right;return [...bar.children].every(el=>el.getBoundingClientRect().right<=right+1);})()`), true, `toolbar ${theme} ${width}/${zoom}`);
           if (width === 1440 && zoom === 1) await screenshot(`${view}-${theme}`);
         }

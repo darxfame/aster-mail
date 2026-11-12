@@ -1,8 +1,16 @@
 const tr = require('../src/i18n.js').text;
 const { inspect, maxDecodedBytes } = require('./raster-images.cjs');
+const { BlockList, isIP } = require('node:net');
+const localAddresses = new BlockList();
+for (const [address, prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.168.0.0',16],['198.18.0.0',15],['224.0.0.0',4],['240.0.0.0',4]]) localAddresses.addSubnet(address, prefix, 'ipv4');
+for (const [address, prefix] of [['::',128],['::1',128],['fc00::',7],['fe80::',10],['ff00::',8]]) localAddresses.addSubnet(address, prefix, 'ipv6');
 function sourceURL(value, origin) {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || !origin || url.origin !== new URL(origin).origin || url.username || url.password || value.length > 16000) throw new Error(tr('Неподдерживаемый адрес изображения'));
+  if (url.protocol !== 'https:' || !origin || url.username || url.password || value.length > 16000) throw new Error(tr('Неподдерживаемый адрес изображения'));
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, ''), family = isIP(host);
+  // Corporate HTTPS hostnames (including short intranet names) are supported.
+  // Preserve OWA access while rejecting unrelated literal local endpoints.
+  if (url.origin !== new URL(origin).origin && (host === 'localhost' || host.endsWith('.localhost') || family && localAddresses.check(host, family === 4 ? 'ipv4' : 'ipv6'))) throw new Error(tr('Неподдерживаемый адрес изображения'));
   return url.href;
 }
 function sources(html) {
@@ -72,4 +80,45 @@ async function fetchContentImage(url, origin, imageSession, lifetime) {
     return { ContentType: type, Content: Buffer.concat(chunks).toString('base64') };
   } finally { clearTimeout(timer); controller.abort(); }
 }
-module.exports = { sourceURL, sources, load, fetchContentImage };
+function fetchImageResponse(url, options, imageSession, net) {
+  // Electron Session.fetch rejects manual redirects instead of returning their
+  // Location. ClientRequest exposes them without following or authenticating.
+  return new Promise((resolve, reject) => {
+    const signal = options.signal;
+    if (signal.aborted) { reject(signal.reason); return; }
+    const request = net.request({ url, session: imageSession, redirect: 'manual', credentials: 'omit', useSessionCookies: false });
+    let settled = false;
+    const finish = (error, response) => {
+      if (settled) return;
+      settled = true; signal.removeEventListener('abort', abort);
+      if (error) reject(error); else resolve(response);
+    };
+    const abort = () => { finish(signal.reason || new Error('Aborted')); request.abort(); };
+    signal.addEventListener('abort', abort, { once: true });
+    request.on('login', (_info, callback) => callback());
+    request.on('redirect', (status, _method, location) => {
+      finish(null, new Response(null, { status, headers: { location } })); request.abort();
+    });
+    request.on('error', error => finish(error));
+    request.on('response', response => {
+      const chunks = []; let size = 0;
+      response.on('error', error => finish(error));
+      response.on('aborted', () => finish(new Error(tr('Не удалось загрузить изображение'))));
+      response.on('data', chunk => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > 5 * 1024 * 1024) { finish(new Error(tr('Изображение превышает 5 МБ'))); request.abort(); }
+        else chunks.push(Buffer.from(chunk));
+      });
+      response.on('end', () => {
+        if (settled) return;
+        const type = response.headers['content-type'];
+        const body = [204, 205, 304].includes(response.statusCode) ? null : Buffer.concat(chunks);
+        try { finish(null, new Response(body, { status: response.statusCode, headers: type ? { 'content-type': Array.isArray(type) ? type[0] : type } : {} })); }
+        catch (error) { finish(error); }
+      });
+    });
+    request.end();
+  });
+}
+module.exports = { sourceURL, sources, load, fetchContentImage, fetchImageResponse };

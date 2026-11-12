@@ -43,6 +43,10 @@ jobs:
       - run: npm test
       - name: Verify native connection recovery
         run: npm run test:connection
+      - name: Verify isolated content image requests
+        run: npm run test:content-images
+      - name: Verify message context menu
+        run: npm run test:mail-context
       - name: Verify module sandbox
         run: npm run test:modules
       - name: Verify shared module SDK

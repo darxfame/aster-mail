@@ -135,6 +135,55 @@ function navigateMailMessage(event) {
 }
 document.addEventListener('keydown', navigateMailMessage);
 
+let mailContextMenu;
+function closeMailContextMenu(restoreFocus = false) {
+  const opener = mailContextMenu?.opener;
+  mailContextMenu?.remove(); mailContextMenu = null;
+  if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
+}
+function showMailContextMenu(row, x, y) {
+  if (mailBatchBusy || $('#modal').open) return;
+  const message = state.messages.find(item => item.id === row.dataset.id); if (!message) return;
+  closeMailContextMenu(); closeFolderMenu();
+  const account = state.account, scope = mailSelectionKey(), generation = state.generation;
+  const actions = [['open', tr('Открыть письмо')], [message.read ? 'unread' : 'read', message.read ? tr('Пометить непрочитанным') : tr('Пометить прочитанным')], ['archive', tr('В архив')], ['trash', tr('В корзину')]];
+  const menu = document.createElement('div'); mailContextMenu = menu; menu.opener = row.querySelector('.message-open');
+  menu.className = 'folder-context-menu mail-context-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tr('Действия с письмом'));
+  menu.innerHTML = actions.map(([action, label]) => `<button type="button" role="menuitem" tabindex="-1" data-mail-context="${action}" ${isDraftMessage(message) && ['read','unread'].includes(action) || !state.query && (action === 'archive' && state.folder === 'archive' || action === 'trash' && state.folder === 'deleteditems') ? 'disabled' : ''}>${esc(label)}</button>`).join('');
+  document.body.append(menu);
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, innerHeight - bounds.height - 8))}px`;
+  menu.onclick = event => {
+    const button = event.target.closest('[data-mail-context]'); if (!button || button.disabled) return;
+    const action = button.dataset.mailContext; closeMailContextMenu();
+    if (account !== state.account || scope !== mailSelectionKey() || generation !== state.generation || mailBatchBusy || !state.messages.some(item => item.id === message.id)) return;
+    if (action === 'open') void openMessage(message.id).catch(showError);
+    else void runMailBatch(action, undefined, [message.id]).catch(showError);
+  };
+  menu.querySelector('button:not(:disabled)').focus();
+}
+document.addEventListener('contextmenu', event => {
+  const row = event.target.closest('#messages .message-row[data-id]'); if (!row) return;
+  event.preventDefault(); showMailContextMenu(row, event.clientX, event.clientY);
+});
+document.addEventListener('pointerdown', event => { if (mailContextMenu && !mailContextMenu.contains(event.target)) closeMailContextMenu(); });
+document.addEventListener('scroll', event => { if (mailContextMenu && !mailContextMenu.contains(event.target)) closeMailContextMenu(); }, true);
+window.addEventListener('blur', () => closeMailContextMenu());
+window.addEventListener('resize', () => closeMailContextMenu());
+document.addEventListener('keydown', event => {
+  const row = event.target.closest('#messages .message-row[data-id]');
+  if (row && (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) {
+    event.preventDefault(); const bounds = row.getBoundingClientRect(); showMailContextMenu(row, bounds.right, bounds.top); return;
+  }
+  if (!mailContextMenu) return;
+  if (event.key === 'Escape') { event.preventDefault(); closeMailContextMenu(true); return; }
+  if (!['ArrowDown','ArrowUp','Home','End'].includes(event.key)) return;
+  event.preventDefault();
+  const buttons = [...mailContextMenu.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement);
+  buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length].focus();
+});
+
 async function toggleMailProperty(id, field) {
   const message = state.messages.find(item => item.id === id); if (!message) return;
   if (readingMessages.has(id)) await readingMessages.get(id);

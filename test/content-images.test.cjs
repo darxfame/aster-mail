@@ -30,27 +30,33 @@ test('image reads run in parallel with at most three requests and retain per-ima
   assert.equal(peak,3); assert.equal(Object.keys(result.images).length,6); assert.match(result.errors['https://images.example.com/3'],/404/);
 });
 
-test('automatic images are restricted to the exact HTTPS OWA origin before dispatch', async () => {
+test('automatic images accept other HTTPS hosts but reject unsafe addresses before dispatch', async () => {
   const origin = 'https://mail.example.com:8443';
   let requests = 0;
-  for (const src of ['http://mail.example.com:8443/a', 'https://mail.example.com/a', 'https://evil.example/a', 'https://mail.example.com.evil.test/a', 'http://127.0.0.1:8000/a', 'https://10.0.0.1/a', 'https://[::1]/a', 'https://user:pass@mail.example.com:8443/a', '//evil.example/a', 'javascript:bad']) {
+  for (const src of ['http://mail.example.com:8443/a', 'http://127.0.0.1:8000/a', 'https://10.0.0.1/a', 'https://[::1]/a', 'https://[::ffff:127.0.0.1]/a', 'https://localhost/a', 'https://user:pass@mail.example.com:8443/a', 'javascript:bad', 'file:///picture.png']) {
     const result = await I.load({ html: `<img src="${src}">`, attachments: [] }, null, () => { requests++; return image; }, origin);
     assert.equal(Object.keys(result.images).length, 0, src);
     assert.ok(result.errors[src], src);
   }
   assert.equal(requests, 0);
-  const result = await I.load({ html: '<img src="/owa/logo.png"><img src="https://mail.example.com:8443/logo.png">', attachments: [] }, null, async url => { assert.equal(new URL(url).origin, origin); requests++; return image; }, origin);
-  assert.equal(requests, 2); assert.equal(Object.keys(result.images).length, 2);
+  const result = await I.load({ html: '<img src="/owa/logo.png"><img src="https://mail.example.com:8443/logo.png"><img src="https://it/picture.png"><img src="//cdn.example.com/picture.png">', attachments: [] }, null, async () => { requests++; return image; }, origin);
+  assert.equal(requests, 4); assert.equal(Object.keys(result.images).length, 4);
 });
 
-test('image redirects cannot leave OWA, cookies are omitted, and logout aborts image reads', async () => {
+test('image redirects accept HTTPS hosts, reject unsafe targets, omit cookies, and abort at logout', async () => {
   const origin = 'https://mail.example.com';
-  for (const destination of ['https://evil.example/a', 'http://127.0.0.1/a', 'https://mail.example.com:8443/a']) {
+  for (const destination of ['http://127.0.0.1/a', 'https://127.0.0.1/a', 'https://user:password@cdn.example.com/a', 'file:///picture.png']) {
     const calls = [], lifetime = new AbortController();
     const session = { fetch: async (url, options) => { calls.push(url); assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'manual'); assert.equal(options.referrerPolicy, 'no-referrer'); return new Response(null, { status: 302, headers: { location: destination } }); } };
     await assert.rejects(I.fetchContentImage(`${origin}/image`, origin, session, lifetime.signal));
     assert.equal(calls.length, 1);
   }
+  const redirects = [];
+  const redirected = await I.fetchContentImage(`${origin}/image`, origin, { fetch: async (url, options) => {
+    redirects.push(url); assert.equal(options.credentials, 'omit'); assert.equal(options.referrerPolicy, 'no-referrer');
+    return redirects.length === 1 ? new Response(null, { status: 302, headers: { location: 'https://it/picture.png' } }) : new Response(Buffer.from(image.Content, 'base64'), { headers: { 'content-type': image.ContentType } });
+  } }, new AbortController().signal);
+  assert.deepEqual(redirected, image); assert.deepEqual(redirects, [`${origin}/image`, 'https://it/picture.png']);
   const lifetime = new AbortController(); let observedSignal;
   const pending = I.fetchContentImage(`${origin}/image`, origin, { fetch: (_url, { signal }) => { observedSignal = signal; return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })); } }, lifetime.signal);
   lifetime.abort(); await assert.rejects(pending); assert.equal(observedSignal.aborted, true);

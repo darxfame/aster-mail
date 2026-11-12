@@ -41,10 +41,11 @@ function mailBatchMoveDialog() {
   });
   form.elements.folder.focus();
 }
-async function runMailBatch(action, folder) {
-  if (mailBatchBusy || !mailSelection.size) return;
+async function runMailBatch(action, folder, explicitIds) {
+  const ids = explicitIds ? [...explicitIds] : [...mailSelection];
+  if (mailBatchBusy || !ids.length) return;
   const account = state.account, scope = mailSelectionKey(), generation = state.generation;
-  const ids = [...mailSelection];
+  const clearProcessedSelection = () => { if (explicitIds) for (const id of ids) mailSelection.delete(id); else mailSelection.clear(); };
   mailBatchBusy = true; renderMessages();
   try {
     await Promise.allSettled(ids.map(id => readingMessages.get(id)).filter(Boolean));
@@ -65,14 +66,20 @@ async function runMailBatch(action, folder) {
     const uncertain = result.results.find(item => item.status === 'uncertain');
     const skipped = result.results.filter(item => item.status === 'skipped').length;
     // Never leave an unconfirmed write preselected for an accidental repeated operation.
-    mailSelection.clear();
+    clearProcessedSelection();
     const note = `${tr("Выполнено:")} ${done} ${tr("из")} ${refs.length}.${uncertain ? ` ${tr("Не подтверждено: 1. Не обработано:")} ${skipped}. ${errorText(uncertain.error, 'mailBatch')}` : ''}`;
     if (uncertain) showError(Object.assign(new Error(note), { userFacing: true })); else toast(note);
-    await loadView();
+    if (explicitIds && !uncertain && ['read', 'unread'].includes(action)) {
+      for (const item of result.results.filter(item => item.status === 'done')) {
+        const message = state.messages.find(message => message.id === item.id);
+        if (message) { message.changeKey = item.changeKey || message.changeKey; applyMessageRead(message, action === 'read', state.query ? null : state.folder); }
+      }
+      renderMessages(); renderSidebar();
+    } else await loadView();
     if (uncertain && account === state.account && scope === mailSelectionKey()) showError(Object.assign(new Error(note), { userFacing: true }));
   } catch (error) {
     if (account === state.account && scope === mailSelectionKey()) {
-      mailSelection.clear();
+      clearProcessedSelection();
       showError(Object.assign(new Error(`${errorText(error)}${tr("\nРезультат операций может быть неизвестен. Проверьте выбранные письма в OWA перед повтором.")}`), { userFacing: true }));
     }
   } finally {
