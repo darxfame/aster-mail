@@ -149,7 +149,7 @@ and Windows remain unverified for this feature. [Example](docs/contact-history.j
   independent compose windows, server drafts, and attachments opened in their system application.
 - **Calendar:** day and week views, invitations, colleague availability, and
   suggestions for a common meeting time. On macOS, a menu-bar meeting widget
-  shows your next meeting and a countdown.
+  shows current meeting cards with a countdown; upcoming meetings remain in the day schedule.
 - **Stay focused:** light and dark themes, configurable notifications, a compact
   connection indicator, and automatic OWA connection recovery. Multiple meeting
   reminders support common intervals and individual schedules, while Aster is

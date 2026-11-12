@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Сейчас встреч нет": "No meetings in progress",
     "Все": "All",
     "Загружаем почту…": "Loading mail…",
     "Загружаем контакты…": "Loading contacts…",
