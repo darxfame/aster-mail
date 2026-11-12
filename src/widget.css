@@ -51,6 +51,47 @@ header button { width:28px; height:28px; font-size:18px; }
 .day-toolbar strong small { display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:3px; }
 
 .featured:not(.mail-preview) .mail-preview-text { -webkit-line-clamp:1; margin:4px 0; font-size:12px; }
+/* Air Glass shares the app's neutral surfaces. Event/status colors above
+   remain untouched, including live, accepted, organized and declined states. */
+:root {
+  --bg: #f5f6f8; --surface: #fff; --text: #242933; --muted: #687281;
+  --line: #24293312; --soft: #f0ebfc; --accent: #7760d6;
+  --widget-glass: #ffffffb8; --widget-edge: #ffffffb3;
+}
+body.dark {
+  --bg: #202124; --surface: #292a2e; --text: #eceef2; --muted: #a3acbb;
+  --line: #ffffff12; --soft: #413a55; --accent: #ab92ee;
+  --widget-glass: #292a2ec7; --widget-edge: #ffffff16;
+}
+.widget-shell {
+  padding: 8px; gap: 8px;
+  background: radial-gradient(ellipse at 0 0, #a58adf20, transparent 65%),
+    radial-gradient(ellipse at 100% 0, #9bbfd51a, transparent 60%), var(--bg);
+}
+header {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--widget-edge); border-radius: 12px;
+  box-shadow: inset 0 1px var(--widget-edge);
+}
+header .brand { color: var(--accent); }
+header button { background: var(--surface); color: var(--muted); border-color: var(--line); border-radius: 50%; }
+main { padding: 2px; gap: 8px; }
+.featured { border-radius: 14px; background: var(--surface); box-shadow: 0 3px 12px #29203f06; }
+.day-grid { border-radius: 14px; }
+.day-toolbar { background: var(--surface); }
+.day-toolbar button { border-radius: 8px; background: var(--bg); color: var(--text); }
+.open, .dismiss { background: var(--bg); color: var(--text); }
+.open, .dismiss, .join, .more-alerts { border-radius: 18px; }
+.more-alerts { color: var(--text); background: var(--surface); }
+footer { padding: 3px 4px; border-color: transparent; }
+#error { border-radius: 10px; }
+@supports (backdrop-filter: blur(20px)) {
+  header, .featured { background: var(--widget-glass); backdrop-filter: blur(22px) saturate(115%); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .widget-shell { background: var(--bg); }
+  header, .featured { background: var(--surface); backdrop-filter: none; }
+}
 @media(max-height:440px) {
   .featured { padding:6px 8px; }
   .focus-label { margin-bottom:2px; }

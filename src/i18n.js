@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Все": "All",
     "Загружаем почту…": "Loading mail…",
     "Загружаем контакты…": "Loading contacts…",
     "ещё": "remaining",

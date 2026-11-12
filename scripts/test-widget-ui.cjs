@@ -56,6 +56,11 @@ app.whenReady().then(async () => {
       assert.equal(await js('Math.abs(innerWidth-380)<=1'),true,'Widget must retain its CSS width at each zoom factor');
       assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true);
       assert.equal(await js('document.querySelector("header").getBoundingClientRect().height<=44'),true);
+      assert.equal(await js('getComputedStyle(document.querySelector("header")).backgroundImage'), 'none', 'Air header must not restore the old purple gradient');
+      assert.notEqual(await js('getComputedStyle(document.querySelector("header")).backdropFilter'), 'none');
+      assert.equal(await js(`getComputedStyle(document.body).getPropertyValue('--bg').trim()`), theme === 'light' ? '#f5f6f8' : '#202124');
+      const eventFill = await js(`getComputedStyle(document.querySelector('.grid-event.accepted')).backgroundColor`);
+      assert.equal(eventFill, theme === 'light' ? 'rgb(228, 242, 234)' : 'rgb(41, 69, 55)', 'Calendar status colors must retain their original meaning');
       assert.equal(await js('document.querySelector(".day-grid").getBoundingClientRect().height>=(innerHeight<=440?130:150)'),true);
       assert.equal(await js(`document.querySelector('.featured [data-action=join][data-id=next]').getBoundingClientRect().bottom<=document.querySelector('.featured-meetings').getBoundingClientRect().bottom+1`),true,'Both priority call buttons must be visible');
       await fs.writeFile(path.join(output,`${theme}-${scale}.png`),(await window.webContents.capturePage()).toPNG());

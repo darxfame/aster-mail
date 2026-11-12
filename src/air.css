@@ -86,6 +86,39 @@ body.dark {
 .message-row.selected { box-shadow: inset 0 1px #ffffff14; }
 .list-filters { border-bottom-color: var(--line); }
 .day-label { letter-spacing: .8px; }
+/* Keep mail productive: three text lines and inline metadata, with no empty
+   avatar gutter or extra row just for attachment/invitation indicators. */
+.mail-list .list-heading { padding: 12px 16px 5px; gap: 10px; }
+.mail-list .list-heading > div { flex: 1; min-width: 0; }
+.mail-list .list-heading h1 { font-size: 18px; line-height: 1.3; letter-spacing: -.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mail-list .list-heading small { margin-top: 4px; font-size: 11px; line-height: 1.4; }
+.mail-list #mail-count { flex: none; font-size: 12px; }
+.mail-list .list-filters { gap: 4px; padding: 0 12px; }
+.mail-list .list-filters button { min-width: 0; padding: 8px 3px; font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mail-list .mail-selection-bar { padding: 5px 12px; font-size: 11px; line-height: 16px; }
+.mail-list .mail-selection-bar input { margin: 0; }
+.mail-list .messages { padding: 0 0 4px; }
+.mail-list .day-label { padding: 7px 16px 5px; font-size: 10px; line-height: 1.4; }
+.mail-list .message-row, body.dark .mail-list .message-row { gap: 0; margin-bottom: 1px; }
+.mail-list .message-open { padding: 6px 5px 6px 30px; }
+.mail-list .message-open > .avatar { display: none; }
+.mail-list .message-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto 18px; gap: 1px 5px; }
+.mail-list .row-top, .mail-list .subject { grid-column: 1 / -1; margin: 0; }
+.mail-list .row-top { gap: 6px; }
+.mail-list .sender { font-size: 13px; line-height: 1.3; }
+.mail-list .date { font-size: 11px; }
+.mail-list .subject { font-size: 12px; line-height: 1.4; }
+.mail-list .message-copy .preview { grid-column: 1; grid-row: 3; min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.5; overflow-wrap: normal; }
+.mail-list .message-meta { grid-column: 2; grid-row: 3; align-self: center; gap: 4px; margin: 0; }
+.mail-list .message-meta .tag { font-size: 9px; line-height: 1.4; padding: 1px 4px; }
+.mail-list .message-row > .mail-select { left: 8px; top: 10px; }
+.mail-list .message-row .unread-dot { left: 2px; top: 15px; width: 4px; height: 4px; box-shadow: none; }
+.mail-list .message-quick-actions { padding: 3px 3px 2px 0; gap: 2px; }
+.mail-list .message-quick-actions .icon-button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
+.mail-list .load-more { min-height: 30px; margin: 4px 12px 8px; padding: 5px 10px; font-size: 12px; }
+@media (pointer: coarse) {
+  .mail-list .message-quick-actions .icon-button { min-width: 44px; min-height: 44px; }
+}
 .calendar-view, .contacts-view { border: 1px solid var(--line); border-radius: 16px; }
 .calendar-heading { gap: 12px; }
 .calendar-toolbar { border-radius: 14px; }
@@ -127,6 +160,10 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
 .skeleton-copy { flex: 1; min-width: 0; }
 .skeleton-filters { display: flex; gap: 16px; margin: 20px 0; }
 .skeleton-mail-list { flex: none; width: var(--mail-list-width, 340px); padding: 16px 24px; }
+.skeleton-mail-list .skeleton-row { padding: 6px 0; }
+.skeleton-mail-list .skeleton-row .skeleton-bar { margin: 4px 0; }
+.skeleton-mail-list .skeleton-avatar { display: none; }
+.skeleton-mail-list .skeleton-filters { margin: 12px 0; }
 .skeleton-mail-reader { flex: 1; min-width: 0; padding-left: 9px; }
 .skeleton-reader { width: 100%; max-width: 860px; padding: 26px 43px; }
 .skeleton-paragraph { margin: 28px 0; }
