@@ -31,6 +31,57 @@
   const recipients = { token, replace, matches, reply };
   if (typeof module !== 'undefined') { module.exports = recipients; return; }
   root.asterRecipients = recipients;
+  const meetingForms = new WeakMap();
+  const addresses = value => value.split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
+  const otherParticipants = input => input.form?.id === 'event-form' ? input.form.elements[{ attendees: 'optionalAttendees', optionalAttendees: 'attendees' }[input.name]] : null;
+  function removeParticipant(input, email) {
+    input.value = addresses(input.value).filter(value => value.toLowerCase() !== email.toLowerCase()).join(', ');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  recipients.decorateMeeting = (form, people) => {
+    const context = { people: people.filter(person => person.role !== 'resource'), drag: null }; meetingForms.set(form, context);
+    for (const name of ['attendees', 'optionalAttendees']) {
+      const input = form.elements[name], field = input.closest('.field');
+      const cards = document.createElement('div'); cards.className = 'participant-cards'; input.after(cards);
+      function render() {
+        cards.replaceChildren();
+        let offset = 0;
+        for (const part of input.value.split(/[,;\n]/)) {
+          const start = offset + part.search(/\S|$/), end = offset + part.trimEnd().length;
+          offset += part.length + 1;
+          if (!part.trim()) continue;
+          const email = part.trim(), button = document.createElement('button');
+          button.type = 'button'; button.className = 'participant-card'; button.textContent = email;
+          button.title = tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
+          button.disabled = input.disabled; button.draggable = !input.disabled && !otherParticipants(input)?.disabled;
+          button.addEventListener('click', event => { event.preventDefault(); input.focus(); input.setSelectionRange(start, end); });
+          button.addEventListener('dragstart', event => {
+            context.drag = { input, email, value: input.value }; event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', email);
+          });
+          button.addEventListener('dragend', () => { context.drag = null; form.querySelectorAll('.participant-drop').forEach(node => node.classList.remove('participant-drop')); });
+          cards.append(button);
+        }
+      }
+      input.addEventListener('input', render); render();
+      field.addEventListener('dragover', event => {
+        if (!context.drag || context.drag.input === input || input.disabled || context.drag.input.disabled) return;
+        event.preventDefault(); event.dataTransfer.dropEffect = 'move'; field.classList.add('participant-drop');
+      });
+      field.addEventListener('dragleave', event => { if (!field.contains(event.relatedTarget)) field.classList.remove('participant-drop'); });
+      field.addEventListener('drop', event => {
+        const drag = context.drag; context.drag = null; field.classList.remove('participant-drop');
+        if (!drag || drag.input === input || input.disabled || drag.input.disabled || drag.input.value !== drag.value) return;
+        event.preventDefault();
+        if (!addresses(input.value).some(value => value.toLowerCase() === drag.email.toLowerCase())) input.value = [...addresses(input.value), drag.email].join(', ');
+        removeParticipant(drag.input, drag.email);
+        input.dispatchEvent(new Event('input', { bubbles: true })); input.focus();
+      });
+    }
+    const hint = document.createElement('p'); hint.className = 'form-note';
+    hint.textContent = tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
+    form.elements.optionalAttendees.closest('.field').after(hint);
+  };
   recipients.decorate = form => {
     for (const name of ['to', 'cc', 'bcc']) {
       const input = form.elements[name]; if (!input) continue;
@@ -46,7 +97,7 @@
       label.append(button);
     }
   };
-  const inputs = new WeakMap(); let nextId = 0;
+  const inputs = new WeakMap(); let nextId = 0, activeInput = null;
   const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#meeting-message-form input[name="to"],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"]') && !input.disabled;
   function setup(input) {
     if (inputs.has(input)) return inputs.get(input);
@@ -65,7 +116,12 @@
     input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant');
   }
   function choose(input, index) {
-    const person = inputs.get(input)?.options[index]; if (!person) return;
+    const person = inputs.get(input)?.options[index]; if (!person || input.disabled) return;
+    const other = otherParticipants(input);
+    if (other && addresses(other.value).some(email => email.toLowerCase() === person.email.toLowerCase())) {
+      if (other.disabled) return;
+      removeParticipant(other, person.email);
+    }
     const result = replace(input.value, input.selectionStart ?? input.value.length, person.email);
     input.value = result.value; input.setSelectionRange(result.cursor, result.cursor); hide(input); input.focus();
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -76,11 +132,14 @@
     context.box.hidden = !people.length && !message; input.setAttribute('aria-expanded', String(!context.box.hidden));
   }
   function search(input) {
+    if (activeInput && activeInput !== input) hide(activeInput);
+    activeInput = input;
     const context = setup(input); hide(input);
     const cursor = input.selectionStart ?? input.value.length, current = token(input.value, cursor), query = current.query;
     if (query.length < 2 || query.length > 254) return;
-    const excluded = [input.value.slice(0, current.start), input.value.slice(current.end), ...['attendees', 'optionalAttendees', 'to', 'cc', 'bcc'].filter(name => name !== input.name).map(name => input.form.elements[name]?.value || '')].join(',').split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
-    const local = state.demo ? window.asterDemo.contacts : [...colleagues(), ...state.contacts];
+    const other = otherParticipants(input);
+    const excluded = [input.value.slice(0, current.start), input.value.slice(current.end), ...['attendees', 'optionalAttendees', 'to', 'cc', 'bcc'].filter(name => name !== input.name && (!other || name !== other.name || other.disabled)).map(name => input.form.elements[name]?.value || '')].join(',').split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
+    const local = [...(meetingForms.get(input.form)?.people || []), ...addresses(other?.value || '').map(email => ({ email })), ...(state.demo ? window.asterDemo.contacts : [...colleagues(), ...state.contacts])];
     const found = matches(local, query, excluded); show(input, found, tr('Поиск в каталоге…'));
     const generation = context.generation, fingerprint = input.value, account = `${state.demo}|${state.account?.server}|${state.account?.username}|${state.account?.sessionId}`;
     context.timer = setTimeout(async () => {
@@ -93,8 +152,16 @@
       } catch (error) { if (current()) show(input, found, `${tr("Поиск в общем справочнике не выполнен:")} ${errorText(error)}${tr(". Можно ввести полный email вручную.")}`); }
     }, 250);
   }
-  document.addEventListener('focusin', event => { if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target); });
-  document.addEventListener('input', event => { if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target); });
+  document.addEventListener('focusin', event => {
+    if (activeInput && activeInput !== event.target) hide(activeInput);
+    if (event.target instanceof HTMLInputElement && eligible(event.target)) search(event.target);
+  });
+  document.addEventListener('input', event => {
+    if (event.target instanceof HTMLInputElement && eligible(event.target)) {
+      if (document.activeElement === event.target) search(event.target);
+      else hide(event.target);
+    }
+  });
   document.addEventListener('keyup', event => {
     if (event.target instanceof HTMLInputElement && eligible(event.target) && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) search(event.target);
   });

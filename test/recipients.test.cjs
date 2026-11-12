@@ -23,7 +23,7 @@ function renderer(name, lookup) {
     setTimeout: callback => { timers.set(++timerId, callback); return timerId; }, clearTimeout: id => timers.delete(id),
   });
   vm.runInContext(fs.readFileSync(require.resolve('../src/recipients.js'), 'utf8'), context);
-  return { input, state, handlers, get box() { return box; }, search: () => handlers.input({ target: input }),
+  return { input, state, handlers, blur: () => { document.activeElement = null; }, get box() { return box; }, search: () => handlers.input({ target: input }),
     flush: async () => { const pending = [...timers.values()]; timers.clear(); await Promise.all(pending.map(callback => callback())); } };
 }
 test('live meeting and compose suggestions call Exchange and preserve surrounding recipients', async () => {
@@ -53,11 +53,42 @@ test('directory suggestions discard responses overtaken by typing or account-ses
     assert.doesNotMatch(h.box.innerHTML, /old@example.com/);
   }
 });
+test('choosing an attendee in the other role moves it and preserves surrounding addresses', async () => {
+  for (const name of ['attendees', 'optionalAttendees']) {
+    const h = renderer(name, async () => ({ items: [] }));
+    h.state.contacts = [{ name: 'Ирина', email: 'irina@example.com' }];
+    let changes = 0;
+    const otherName = name === 'attendees' ? 'optionalAttendees' : 'attendees';
+    const other = { name: otherName, value: 'before@example.com; IRINA@example.com, after@example.com', dispatchEvent() { changes++; } };
+    h.input.form.elements[otherName] = other;
+    h.search(); await h.flush();
+    assert.match(h.box.innerHTML, /irina@example.com/);
+    for (const key of ['ArrowDown', 'Enter']) h.handlers.keydown({ target: h.input, key, preventDefault() {} });
+    assert.equal(h.input.value, 'kept@example.com, irina@example.com, later@example.com');
+    assert.equal(other.value, 'before@example.com, after@example.com');
+    assert.equal(changes, 1);
+  }
+});
+test('search finds manually entered attendees in the other role and respects locked lists', async () => {
+  const h = renderer('attendees', async () => ({ items: [] }));
+  h.input.value = 'irina'; h.input.selectionStart = 5;
+  const other = { name: 'optionalAttendees', value: 'irina@example.com', disabled: false };
+  h.input.form.elements.optionalAttendees = other;
+  h.search(); await h.flush(); assert.match(h.box.innerHTML, /irina@example.com/);
+  other.disabled = true;
+  h.search(); await h.flush(); assert.doesNotMatch(h.box.innerHTML, /irina@example.com/);
+});
 test('participant suggestions match Latin email prefixes and Russian names and exclude duplicates', () => {
   const anna = { name: 'Анна', email: 'anna@example.com' };
   assert.deepEqual(R.matches([anna, anna, { name: 'Ann', email: 'bad-address' }], 'an'), [anna]);
   assert.deepEqual(R.matches([anna], 'ан'), [anna]);
   assert.deepEqual(R.matches([anna], 'AN', ['ANNA@example.com']), []);
+});
+test('programmatic changes to an unfocused role hide its suggestions', async () => {
+  const h = renderer('optionalAttendees', async () => ({ items: [] }));
+  h.search(); assert.equal(h.box.hidden, false);
+  h.blur(); h.search(); await h.flush();
+  assert.equal(h.box.hidden, true);
 });
 test('choosing a participant replaces only the current address and preserves surrounding recipients', () => {
   assert.deepEqual(R.replace('an', 2, 'anna@example.com'), { value: 'anna@example.com, ', cursor: 18 });

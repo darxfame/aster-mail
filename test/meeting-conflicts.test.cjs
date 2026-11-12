@@ -49,6 +49,27 @@ test('an unlinked meeting request remains visible with unknown availability', ()
   const result = message({ ItemId: { Id: 'invitation' }, ItemClass: 'IPM.Schedule.Meeting.Request', Subject: 'Fictional invitation' });
   assert.equal(result.meeting.id, ''); assert.equal(result.meeting.start, null);
 });
+test('forward notifications preserve their body without an invitation or availability banner', () => {
+  const { message } = require('../desktop/protocol.cjs');
+  const html = '<p>Fictional attendee forwarded the invitation.</p><table><tr><th>Собрание</th><td>Груминг</td></tr><tr><th>Время собрания</th><td>17 ноября 2026 г. 15:00-16:00.</td></tr></table>';
+  for (const associated of [undefined, { Id: 'calendar', ChangeKey: 'fresh' }]) {
+    const result = message({ ItemId: { Id: 'notice' }, ItemClass: 'IPM.Schedule.Meeting.Notification.Forward', AssociatedCalendarItemId: associated, NormalizedBody: { BodyType: 'HTML', Value: html } });
+    assert.equal(result.meeting, null);
+    assert.equal(result.html, html);
+  }
+});
+test('linked requests, cancellations and ordinary mail retain their classification', () => {
+  const { message } = require('../desktop/protocol.cjs');
+  for (const itemClass of ['IPM.Schedule.Meeting.Request', 'IPM.Schedule.Meeting.Canceled']) {
+    const result = message({ ItemId: { Id: 'mail' }, ItemClass: itemClass, AssociatedCalendarItemId: { Id: 'calendar', ChangeKey: 'fresh' }, Start: meeting.start, End: meeting.end });
+    assert.equal(result.meeting.id, 'calendar');
+    assert.equal(result.meeting.changeKey, 'fresh');
+    assert.equal(Date.parse(result.meeting.start), Date.parse(meeting.start));
+    assert.equal(Date.parse(result.meeting.end), Date.parse(meeting.end));
+    assert.equal(result.meeting.cancelled, itemClass.endsWith('Canceled'));
+  }
+  assert.equal(message({ ItemId: { Id: 'mail' }, ItemClass: 'IPM.Note' }).meeting, null);
+});
 test('a late conflict result cannot replace a newer meeting card', async () => {
   const fs = require('node:fs'), vm = require('node:vm');
   const source = fs.readFileSync(require.resolve('../src/meeting-ui.js'), 'utf8');

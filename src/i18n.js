@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.": "Click to edit the email. Drag to change the participant’s role.",
     "Для истории переписки нужен полный SMTP-адрес контакта.": "A full SMTP email address is required for correspondence history.",
     "Некорректная страница истории переписки.": "Invalid correspondence history page.",
     "Сервер вернул неподдерживаемую страницу истории переписки.": "The server returned an unsupported correspondence history page.",
@@ -724,7 +725,7 @@
     "Проверить письмо": "Test mail",
     "Проверить встречу": "Test meeting",
     "Оригинальные звуки Aster — CC0: можно свободно использовать и изменять.": "Original Aster sounds are CC0: free to use and modify.",
-    "Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. Плашка в клиенте остаётся до открытия или закрытия. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.": "Allow banners and sounds for Aster Mail in macOS System Settings → Notifications. Mail is checked every 15 seconds independently of the calendar. In-app alerts remain until opened or dismissed. For persistent macOS notifications, choose “Alerts”. Aster stays in the menu bar after closing its window; checks stop when you quit the app or your computer sleeps.",
+    "Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. На macOS используются системные уведомления без плашки внутри окна почты. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.": "Allow banners and sounds for Aster Mail in macOS System Settings → Notifications. Mail is checked every 15 seconds independently of the calendar. On macOS, system notifications are used without an in-app mail banner. For persistent macOS notifications, choose “Alerts”. Aster stays in the menu bar after closing its window; checks stop when you quit the app or your computer sleeps.",
     "Аккаунт Exchange": "Exchange account",
     "Данные на компьютере": "Data on this computer",
     "Подпись, коллеги и настройки сохраняются зашифрованными и удаляются при выходе. Кэш почты хранится только в памяти текущей сессии (до 24 МиБ). При открытии вложения создаётся временная копия для системного приложения; при выходе из аккаунта или завершении Aster она удаляется. При выходе кэш очищается.": "Your signature, colleagues and settings are stored encrypted and removed on sign-out. Mail is cached only in memory for the current session (up to 24 MiB). Opening an attachment creates a temporary copy for the system app; it is removed when signing out or quitting Aster. The cache is cleared on sign-out.",

@@ -147,6 +147,7 @@ async function editMeeting(invite = false) {
   form.querySelector('[type="submit"]').textContent = own ? tr('Сохранить и отправить обновления') : tr('Сохранить личные настройки');
   form.querySelector('.modal-footer').insertAdjacentHTML('afterbegin', tr('<button type="button" class="secondary" data-action="meeting-return">Назад к карточке</button>'));
   meetingEdit = { origin, scope, detail, own, inputs: meetingFormValues(form) };
+  window.asterRecipients.decorateMeeting(form, detail.attendees);
   if (invite && own) form.elements.attendees.focus();
 }
 function meetingFormValues(form) {

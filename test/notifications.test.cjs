@@ -79,12 +79,34 @@ test('slow calendar polling does not block mail and duplicate concurrent mail po
 test('persistent preview queue is bounded and replaces duplicates without replaying old entries', () => {
   const vm = require('node:vm'), source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   const snapshots = [];
-  const context = vm.createContext({ tr: value => value, window: { isDestroyed: () => false, webContents: { send: (_channel, alerts) => snapshots.push(alerts) } }, privacyHidden: () => false, refreshWidget() {}, notificationSettings: { preview: true }, mailAlert: require('../desktop/notifications.cjs').mailAlert });
+  const context = vm.createContext({ process: { platform: 'win32' }, tr: value => value, window: { isDestroyed: () => false, webContents: { send: (_channel, alerts) => snapshots.push(alerts) } }, privacyHidden: () => false, refreshWidget() {}, notificationSettings: { preview: true }, mailAlert: require('../desktop/notifications.cjs').mailAlert });
   vm.runInContext(source.slice(source.indexOf('let mailAlerts ='), source.indexOf('async function pollMail()')), context);
   for (let id = 0; id < 25; id++) context.queueMailAlert({ id: String(id), from: { name: 'Anna' }, subject: 'Subject' });
   assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].id, '24');
   context.queueMailAlert({ id: '24', from: { name: 'Pavel' } });
   assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].title, 'Pavel');
+});
+test('macOS suppresses window alerts while retaining the widget queue and native notifications', () => {
+  const vm = require('node:vm'), source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
+  for (const platform of ['darwin', 'win32']) {
+    const snapshots = [], native = { asterNavigation: { view: 'mail', id: 'new' }, close() { this.closed = true; } };
+    let hidden = false, widgetRefreshes = 0;
+    const context = vm.createContext({ process: { platform }, window: { isDestroyed: () => false, webContents: { send: (_channel, alerts) => snapshots.push(alerts) } },
+      privacyHidden: () => hidden, refreshWidget: () => widgetRefreshes++, notificationSettings: { preview: true },
+      mailAlert: require('../desktop/notifications.cjs').mailAlert, activeNotifications: new Set([native]) });
+    vm.runInContext(source.slice(source.indexOf('let mailAlerts ='), source.indexOf('async function pollMail()')), context);
+    context.queueMailAlert({ id: 'new', from: { name: 'Fictional Sender' }, subject: 'Fictional subject' });
+    assert.equal(context.mailWindowAlerts().length, platform === 'darwin' ? 0 : 1);
+    assert.equal(snapshots.at(-1).length, platform === 'darwin' ? 0 : 1);
+    assert.equal(vm.runInContext('mailAlerts.length', context), 1);
+    assert.equal(native.closed, undefined);
+    assert.equal(widgetRefreshes, 1);
+    hidden = true; context.publishMailAlerts(); assert.equal(snapshots.at(-1).length, 0);
+    hidden = false; context.dismissMailAlert('new');
+    assert.equal(vm.runInContext('mailAlerts.length', context), 0);
+    assert.equal(native.closed, true);
+  }
+  assert.match(source, /if \(operation === 'mailAlerts'\) return \{ ok: true, value: mailWindowAlerts\(\) \}/);
 });
 test('inbox synchronizes with notifications disabled and rejects a snapshot overtaken by a mailbox write', async () => {
   const vm=require('node:vm'), source=fs.readFileSync(path.join(__dirname,'../desktop/main.cjs'),'utf8');

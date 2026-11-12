@@ -49,8 +49,11 @@ function syncNotificationPrivacy() {
 function togglePresentation() { presentationMode = !presentationMode; syncNotificationPrivacy(); refreshWidget(); updateTrayMenu(); }
 let dismissedMeetings = new Set();
 let mailAlerts = [];
+function mailWindowAlerts() {
+  return process.platform === 'darwin' || privacyHidden() ? [] : mailAlerts;
+}
 function publishMailAlerts() {
-  if (window && !window.isDestroyed()) window.webContents.send('aster-mail-alerts', privacyHidden() ? [] : mailAlerts);
+  if (window && !window.isDestroyed()) window.webContents.send('aster-mail-alerts', mailWindowAlerts());
 }
 function queueMailAlert(message) {
   const alert = mailAlert(message, notificationSettings.preview && !privacyHidden());
@@ -527,7 +530,7 @@ app.whenReady().then(async () => {
         if (app.isPackaged && data.autoCheck) void updates.checkAutomatically();
         return { ok: true, value };
       }
-      if (operation === 'mailAlerts') return { ok: true, value: privacyHidden() ? [] : mailAlerts };
+      if (operation === 'mailAlerts') return { ok: true, value: mailWindowAlerts() };
       if (operation === 'dismissMailAlert') { dismissMailAlert(data.id); return { ok: true, value: true }; }
       if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported(), privacyActive: privacyHidden(), presentationMode } };
       if (operation === 'togglePresentation') { togglePresentation(); return { ok: true, value: presentationMode }; }
