@@ -27,7 +27,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
   assert.equal(context.readingMessages.size, 0); assert.equal(Object.keys(context.localValues).length, 0);
   assert.equal(context.mailSelection.size, 0); assert.equal(context.mailSelectionScope, '');
   assert.equal(nodes['#search'].value, ''); assert.equal(nodes['#people-search-suggestions'].cleared, true);
-  assert.equal(context.notificationPreferences.preview, false);
+  assert.equal(context.notificationPreferences.preview, true);
   context.localPreferences.getItem = key => context.localValues[key] ?? null;
   context.applyAccount({ server: 'https://mail.example.com', username: 'bob', sessionId: 'new', localData: { 'aster-signature': 'Bob signature' }, notifications: { preview: true } });
   assert.equal(context.state.signature, 'Bob signature'); assert.equal(context.notificationPreferences.preview, true);

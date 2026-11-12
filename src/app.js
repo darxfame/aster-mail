@@ -104,7 +104,7 @@ async function refreshSignatureField() {
     status.textContent = `${tr("Не удалось получить подпись:")} ${errorText(error)}`;
   }
 }
-let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
+let notificationPreferences = { mail: true, meetings: true, sounds: true, minutes: 15, preview: true, mailTextPreview: true };
 function playSound(kind) {
   if (!['mail', 'meeting'].includes(kind)) return;
   const audio = new Audio(`../assets/sounds/aster-${kind}.wav`);
@@ -321,7 +321,7 @@ function renderMessages() {
   $('#messages').innerHTML = related + (state.query ? tr('<h3 class="search-mail-heading">Письма</h3>') : '') + (items.map((m, i) => {
     const key = dayKey(m.date), label = key === dayKey(new Date()) ? tr('Сегодня') : dateFormat(m.date, { day: 'numeric', month: 'long' });
     const heading = key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : ''; previousDay = key;
-    return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
+    return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
   }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? tr('Непрочитанных писем нет') : state.filter === 'flagged' ? tr('Избранных писем нет') : tr('Здесь пока нет писем')}</p></div>`);
   restoreFocus();
   renderMailBatchToolbar();
@@ -763,9 +763,12 @@ async function settingsModal() {
     ${checkbox('notifySounds', tr('Звук нового письма и отдельный звук встречи'), p.sounds)}
     ${checkbox('notifyPreview', tr('Показывать отправителя, тему и текст в уведомлениях'), p.preview)}
     ${checkbox('mailTextPreview', tr('Короткий текст письма в карточках трея'), p.mailTextPreview)}
-    ${checkbox('autoPrivacy', tr('Автоматически скрывать уведомления при работающих приложениях звонков и браузерах'), p.autoPrivacy !== false)}
-    <p class="form-note">${tr('Защита включается при запущенных Teams, Zoom, Webex, Slack, Discord, OBS и популярных браузерах, даже без шаринга. Это консервативная проверка приложений, а не точное определение демонстрации экрана. Для других программ включите режим презентации в трее.')}</p>
-    <button type="button" class="secondary" data-action="presentation-mode">${tr('Переключить режим презентации')}</button>
+    ${checkbox('autoPrivacy', tr('Автоматически скрывать уведомления при работе выбранных приложений'), p.autoPrivacy !== false)}
+    <div class="privacy-apps">${window.asterPrivacyApps.applications.map(app => `<label><input type="checkbox" name="privacyApp" value="${esc(app.id)}" ${(p.privacyApps || []).includes(app.id) ? 'checked' : ''}>${esc(app.name)}</label>`).join('')}</div>
+    <p class="form-note">${tr('Содержимое скрывается, пока запущено выбранное приложение, даже без демонстрации экрана. Без выбранных приложений автоскрытие не включается.')}</p>
+    <label class="field"><span>${tr('Режим презентации на')}</span><select id="presentation-duration">${[15, 30, 60, 120].map(n => `<option value="${n}" ${n === 30 ? 'selected' : ''}>${n} ${tr('минут')}</option>`).join('')}</select></label>
+    <p id="presentation-status" class="form-note" role="status"></p>
+    <button type="button" class="secondary" data-action="presentation-mode" data-presentation-toggle role="switch" aria-checked="false">${tr('Переключить режим презентации')}</button>
     <div class="sound-tests"><button type="button" class="secondary" data-action="test-notification" data-kind="mail">${icon('mail')}${tr("Проверить письмо")}</button><button type="button" class="secondary" data-action="test-notification" data-kind="meeting">${icon('calendar')}${tr("Проверить встречу")}</button></div>
     <p class="form-note">${tr("Оригинальные звуки Aster — CC0: можно свободно использовать и изменять.")} ${window.aster ? tr('Проверка показывает баннер и воспроизводит звук. На macOS Aster играет звук напрямую, с обычной громкостью аудиовыхода.') : tr('В браузере проверяются звук и плашка с вымышленным письмом. Системные уведомления доступны в приложении.')}</p>
     <p class="form-note">${tr("Разрешите баннеры и звуки для Aster Mail в системных настройках macOS → Уведомления. Почта проверяется каждые 15 секунд независимо от календаря. На macOS используются системные уведомления без плашки внутри окна почты. Для постоянных системных уведомлений macOS выберите стиль «Предупреждения». После закрытия окна Aster остаётся в строке меню; после полного выхода и во время сна проверки не выполняются.")}</p>
@@ -785,6 +788,7 @@ async function settingsModal() {
     </div>
     <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
+  receivePresentation(p);
   setupAutoReplies($('#settings-panel-auto-replies'));
   void refreshModuleList().catch(showError);
   $('#settings-form').addEventListener('keydown', event => {
@@ -903,7 +907,11 @@ async function handleAction(button) {
     renderSidebar(); return;
   }
   if (action === 'presentation-mode') {
-    if (window.aster) { const enabled = await api('togglePresentation'); toast(enabled ? tr('Уведомления скрыты') : tr('Ручной режим презентации выключен')); }
+    if (window.aster) {
+      button.disabled = true;
+      try { receivePresentation(await api('togglePresentation', { enabled: !presentationSnapshot.presentationMode, minutes: Number($('#presentation-duration')?.value || 30) })); }
+      finally { button.disabled = false; }
+    }
     else toast(tr('Режим презентации доступен в настольном приложении.'));
     return;
   }
@@ -1183,7 +1191,7 @@ document.addEventListener('submit', event => {
     if (!form.querySelector('#settings-panel-auto-replies').hidden) { form.querySelector('#auto-replies-save').click(); return; }
     submitForm(form, async data => {
       if (form.querySelector('#settings-panel-auto-replies').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните автоответы отдельной кнопкой или загрузите их заново.'));
-      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
+      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), privacyApps: [...form.querySelectorAll('[name="privacyApp"]:checked')].map(input => input.value), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       T.zone(next.timeZone);
       const nextPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
       const repaint = next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
@@ -1247,7 +1255,7 @@ function applyAccount(value) {
   state.signature = localPreferences.getItem('aster-signature') || '';
   state.theme = localPreferences.getItem('aster-theme') || 'light';
   if (notifications?.language) applyLanguage(notifications.language);
-  notificationPreferences = notifications || { mail: true, meetings: true, sounds: true, minutes: 15, preview: false };
+  notificationPreferences = notifications || { mail: true, meetings: true, sounds: true, minutes: 15, preview: true, mailTextPreview: true };
   timeZone = notificationPreferences.timeZone || 'system';
   calendarPreference = localPreferences.getItem('aster-calendar-view') || 'auto';
   navigationPlacement = localPreferences.getItem('aster-navigation-placement-v2') === 'bottom' ? 'bottom' : 'sidebar';
@@ -1279,7 +1287,9 @@ async function boot() {
     });
     window.aster.onUpdate(receiveUpdate);
     receiveUpdate(await api('updateState'));
+    window.aster.onPrivacy?.(receivePresentation);
     const savedSettings = await api('notificationSettings');
+    receivePresentation(savedSettings);
     timeZone = savedSettings.timeZone || 'system';
     notificationPreferences = savedSettings;
     window.aster.onSound(playSound);

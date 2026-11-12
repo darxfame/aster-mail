@@ -15,6 +15,8 @@
   };
   const styleAllowed = (name, value) => !!styles[name]?.test(value.trim());
   if (typeof module !== 'undefined') { module.exports = { styleAllowed }; return; }
+  const darkSurface = [38, 39, 51];
+  const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
   function sanitize(html, { dark = false, images = false } = {}) {
     const safe = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: ['div','p','br','span','b','strong','i','em','u','s','strike','sub','sup','font','a','blockquote','pre','code','ul','ol','li','h1','h2','h3','h4','hr','table','thead','tbody','tfoot','tr','td','th', ...(images ? ['img'] : [])],
@@ -22,6 +24,17 @@
       ADD_DATA_URI_TAGS: ['img'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
     });
     const doc = new DOMParser().parseFromString(safe, 'text/html');
+    const canvas = dark ? document.createElement('canvas') : null;
+    if (canvas) canvas.width = canvas.height = 1;
+    const colors = canvas?.getContext('2d', { willReadFrequently: true });
+    const readableColor = value => {
+      if (!colors) return false;
+      colors.clearRect(0, 0, 1, 1); colors.fillStyle = '#000'; colors.fillStyle = value; colors.fillRect(0, 0, 1, 1);
+      const rgba = colors.getImageData(0, 0, 1, 1).data, alpha = rgba[3] / 255;
+      if (!alpha) return true; // Preserve deliberately transparent text.
+      const text = luminance(darkSurface.map((channel, i) => rgba[i] * alpha + channel * (1 - alpha))), surface = luminance(darkSurface);
+      return (Math.max(text, surface) + 0.05) / (Math.min(text, surface) + 0.05) >= 4.5;
+    };
     doc.body.querySelectorAll('*').forEach(node => {
       if (node.hasAttribute('color')) node.style.color = node.getAttribute('color');
       if (node.hasAttribute('bgcolor')) node.style.backgroundColor = node.getAttribute('bgcolor');
@@ -37,8 +50,8 @@
       node.removeAttribute('style');
       for (const name of ['color','bgcolor','face','size','align','height']) node.removeAttribute(name);
       for (const [name, value] of allowed) {
-        // Remove unreadable document defaults in dark mode while retaining emphasis colors.
-        if (dark && (name === 'background-color' || name === 'color' && /^(?:black|white|#000(?:000)?|#fff(?:fff)?|rgb\((?:0, 0, 0|255, 255, 255)\))$/i.test(value))) continue;
+        // Inherit readable text when an original color has too little contrast.
+        if (dark && (name === 'background-color' || name === 'color' && !readableColor(value))) continue;
         node.style.setProperty(name, value);
       }
       if (node.tagName === 'A') {
@@ -97,7 +110,7 @@
         resize();
       } catch (error) { if (frame.isConnected) body.querySelectorAll('img').forEach(img => unavailable(img, error.message)); }
     });
-    const background = dark ? '#262733' : '#ffffff', text = dark ? '#e1dfee' : '#4d5063', line = dark ? '#49495b' : '#e4e4eb';
+    const background = dark ? `rgb(${darkSurface.join(',')})` : '#ffffff', text = dark ? '#e1dfee' : '#4d5063', line = dark ? '#49495b' : '#e4e4eb';
     frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}html,body{background:${background};color:${text};margin:0}body{display:flow-root;font:13px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}body *{box-sizing:border-box;max-width:100%}a[href]{color:${dark ? '#c3a5ff' : '#7750bd'}!important;text-decoration:underline;cursor:pointer}img{max-width:100%;height:auto;object-fit:contain}.aster-image-unavailable{display:inline-block!important;font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif!important;letter-spacing:normal!important;word-spacing:normal!important;white-space:normal!important;color:${text}!important;background:${background}!important;padding:4px 8px!important;border:1px solid ${line}!important;border-radius:4px;max-width:100%}table{border-collapse:collapse;width:auto!important}td,th{padding:5px;border-color:${line}!important}p{margin:0 0 16px}pre{white-space:pre-wrap}blockquote{border-left:2px solid ${line};padding-left:14px}ul,ol{padding-left:24px}</style></head><body>${doc.body.innerHTML}</body></html>`;
     target.replaceChildren(frame);
   }

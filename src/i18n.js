@@ -1,6 +1,23 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Автоскрытие: вкл.": "Automatic privacy: on",
+    "Презентация: до": "Presentation: until",
+    "Презентация: включена": "Presentation: on",
+    "Презентация: выкл.": "Presentation: off",
+    "Уведомления приостановлены до": "Notifications paused until",
+    "Время встреч остаётся видно; названия и описание скрыты.": "Meeting times remain visible; titles and descriptions are hidden.",
+    "Проверяем выбранные приложения. Содержимое временно скрыто.": "Checking selected applications. Content is temporarily hidden.",
+    "Автоскрытие: запущено выбранное приложение": "Automatic privacy: selected application is running",
+    "Скрытие выключено. Названия и описание встреч доступны.": "Privacy is off. Meeting titles and descriptions are visible.",
+    "Автоматически скрывать уведомления при работе выбранных приложений": "Automatically hide notifications while selected applications are running",
+    "Содержимое скрывается, пока запущено выбранное приложение, даже без демонстрации экрана. Без выбранных приложений автоскрытие не включается.": "Content is hidden while a selected application is running, even without screen sharing. Automatic privacy is inactive when no applications are selected.",
+    "Режим презентации на": "Presentation mode for",
+    "15 мин": "15 min",
+    "30 мин": "30 min",
+    "60 мин": "60 min",
+    "120 мин": "120 min",
+
     "Нет прав на удаление встречи": "You do not have permission to delete this event",
     "Нет прав на отмену встречи": "You do not have permission to cancel this meeting",
     "Не удалось определить организатора встречи. Откройте карточку заново.": "Could not identify the meeting organizer. Reopen the event details.",

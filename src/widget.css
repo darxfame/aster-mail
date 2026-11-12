@@ -9,7 +9,7 @@ header { padding:10px 12px; gap:8px; }
 header > div { flex:1; min-width:0; }
 header small { font-size:12px; }
 header button { flex:none; margin-left:0; width:32px; height:32px; }
-#privacy-toggle[aria-pressed="true"] { background:#ffffff40; outline:2px solid #fff; }
+#privacy-toggle[aria-checked="true"] { background:#ffffff40; outline:2px solid #fff; }
 main { padding:10px; gap:10px; }
 .featured-meetings { flex:none; display:grid; gap:8px; max-height:min(330px,55vh); overflow:auto; padding:3px; margin:-3px; }
 .featured { padding:11px; border-radius:10px; min-width:0; }
@@ -34,3 +34,10 @@ footer { padding:8px 10px; font-size:11px; }
 .free-state,#error { font-size:12px; }
 @media(max-height:440px) { .featured-meetings { max-height:50vh; } .day-grid { min-height:130px; } header small,footer { display:none; } }
 @media(max-width:320px) { .actions { flex-wrap:wrap; } .actions .open { flex:1 1 130px; } }
+
+#privacy-toggle { width:auto; max-width:170px; font-size:12px; padding:4px 7px; }
+.privacy-controls { flex:none; padding:8px 12px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; }
+.privacy-controls select { margin-left:8px; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:5px; padding:3px; }
+#privacy-status { margin:6px 0 0; line-height:1.4; }
+.actions[hidden] { display:none; }
+.grid-event-main:disabled,.all-day button:disabled { opacity:1; cursor:default; }

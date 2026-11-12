@@ -119,8 +119,10 @@ test('inbox synchronizes with notifications disabled and rejects a snapshot over
   await context.pollMail(); assert.equal(snapshots.length,1);
 });
 
-test('notification content is hidden by default and explicit privacy choices survive normalization', () => {
-  assert.equal(preferences().preview, false);
+test('notification content is visible by default and explicit privacy choices survive normalization', () => {
+  assert.equal(preferences().preview, true);
+  assert.equal(preferences().mailTextPreview, true);
+  assert.equal(preferences({ mailTextPreview: false }).mailTextPreview, false);
   assert.equal(preferences({ preview: false }).preview, false);
   assert.equal(preferences({ preview: true }).preview, true);
   const { mailAlert } = require('../desktop/notifications.cjs');

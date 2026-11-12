@@ -28,6 +28,19 @@ app.whenReady().then(async () => {
     assert.equal(await js(`autoReplyText(${JSON.stringify(html)})`), 'Добрый день!\nЯ отсутствую.\n\nВернусь & отвечу.');
     assert.equal(await js(`autoReplyText('Первая строка\\nВторая строка\\n\\nАбзац')`), 'Первая строка\nВторая строка\n\nАбзац');
     assert.equal(await js(`autoReplyText('<div>Первая<div>Вторая</div>Третья</div>')`), 'Первая\nВторая\nТретья');
+    const outlook = '<p class="MsoNormal">Добрый день.</p>' + '<p class="MsoNormal">&nbsp;</p>'.repeat(4)
+      + '<p style="margin:0cm">Коллеги, с 27.07 по 09.08 буду в отпуске.</p><p style="margin:0cm">В период отсутствия прошу обращаться</p>'
+      + '<p class="MsoNormal">к&nbsp;&nbsp; Петру&nbsp;&nbsp; (person@example.test).</p><p class="MsoNormal">Буду недоступен.</p>' + '<p class="MsoNormal">&nbsp;</p>'.repeat(2);
+    const outlookText = 'Добрый день.\n\nКоллеги, с 27.07 по 09.08 буду в отпуске.\nВ период отсутствия прошу обращаться\nк Петру (person@example.test).\nБуду недоступен.';
+    assert.equal(await js(`autoReplyText(${JSON.stringify(outlook)})`), outlookText);
+    assert.equal(await js(`autoReplyText('<pre> A  B\\n\\n\\nC </pre>')`), ' A  B\n\n\nC ');
+    assert.equal(await js(`autoReplyText('Добрый день.\\n\\n\\n\\nКоллеги, прошу обращаться к  сотруднику.\\n\\n')`), 'Добрый день.\n\nКоллеги, прошу обращаться к сотруднику.');
+    assert.equal(await js(`autoReplyText('<div style="white-space:pre-wrap"> A  B\\n\\n\\nC </div>')`), ' A  B\n\n\nC ');
+    const requests = [];
+    window.webContents.session.webRequest.onBeforeRequest({ urls: ['https://external.example.test/*'] }, (request, callback) => { requests.push(request.url); callback({ cancel: true }); });
+    assert.equal(await js(`autoReplyText('<p style="margin:0;background-image:url(https://external.example.test/background)">Text<img src="https://external.example.test/image"></p>')`), 'Text');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(requests.length, 0, 'Source styles and images must not trigger any network requests');
     await js('settingsModal()');
     await js('document.querySelector("#settings-tab-auto-replies").click()');
     assert.equal(await js('document.querySelector("#auto-replies-fields").disabled'), true);
@@ -74,15 +87,16 @@ app.whenReady().then(async () => {
     await js(`(() => {
       setModalDirty(false);document.querySelector('#modal').close();
       state.demo=false;state.account={sessionId:'fictional'};window.fixtureCalls=[];
-      api=async operation=>{fixtureCalls.push(operation);if(operation==='autoReplies')return {...demoAutoReplies,internal:'<p>Existing <b>reply</b></p><script>throw 1</script>',revision:'fictional'};if(operation==='saveAutoReplies')throw new Error('Fictional lost response');return [];};
+      api=async (operation,data)=>{fixtureCalls.push(operation);if(operation==='autoReplies')return {...demoAutoReplies,internal:${JSON.stringify(outlook + '<script>throw 1</script>')},revision:'fictional'};if(operation==='saveAutoReplies'){window.fixtureOofWrite=data;throw new Error('Fictional lost response');}return [];};
     })()`);
     await js('settingsModal()');
     await js('document.querySelector("#settings-tab-auto-replies").click();document.querySelector("#auto-replies-load").click()');
     await waitFor('!document.querySelector("#auto-replies-fields").disabled');
-    assert.equal(await js('document.querySelector("[name=oofInternal]").value'), 'Existing reply');
+    assert.equal(await js('document.querySelector("[name=oofInternal]").value'), outlookText);
     await js('document.querySelector("#auto-replies-save").click()');
     await waitFor('!modalBusy && Boolean(document.querySelector("#auto-replies-error").textContent)');
     assert.equal(await js('document.querySelector("#auto-replies-fields").disabled'), true);
+    assert.equal(await js('Object.hasOwn(fixtureOofWrite,"internal")'), false, 'Unchanged Exchange markup must not be replaced by normalized display text');
     await js('document.querySelector("#auto-replies-save").click()');
     assert.equal(await js('fixtureCalls.filter(value=>value==="saveAutoReplies").length'), 1);
     // A response for a closed settings form cannot populate its replacement.

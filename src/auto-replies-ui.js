@@ -16,17 +16,40 @@ function autoRepliesMarkup() {
     </fieldset><p id="auto-replies-error" class="form-error" role="alert"></p>`;
 }
 function autoReplyText(value) {
+  const compact = text => text.replace(/\r\n?/g, '\n').replace(/[ \t\u00a0]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   const container = document.createElement('div');
   container.innerHTML = DOMPurify.sanitize(value, {
-    ALLOWED_TAGS: ['p','div','span','br','b','strong','i','em','u','s','pre','blockquote','ul','ol','li','table','thead','tbody','tr','td','th','h1','h2','h3','h4','h5','h6'], ALLOWED_ATTR: [],
+    ALLOWED_TAGS: ['p','div','span','br','b','strong','i','em','u','s','pre','blockquote','ul','ol','li','table','thead','tbody','tr','td','th','h1','h2','h3','h4','h5','h6'],
+    ALLOWED_ATTR: ['class', 'style'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
   });
-  if (!container.children.length) return container.textContent.replace(/\r\n?/g, '\n');
+  if (!container.children.length) return compact(container.textContent);
+  let preserveSpacing = false;
+  for (const node of [...container.querySelectorAll('*')]) {
+    const whiteSpace = node.style.whiteSpace;
+    const compactParagraph = node.tagName === 'P' && (node.classList.contains('MsoNormal') || parseFloat(node.style.marginTop) === 0 && parseFloat(node.style.marginBottom) === 0);
+    node.removeAttribute('class'); node.removeAttribute('style');
+    let element = node;
+    if (compactParagraph) {
+      element = document.createElement('div'); element.append(...node.childNodes); node.replaceWith(element);
+      if (!element.textContent.trim() && !element.querySelector('br')) element.append(document.createElement('br'));
+    }
+    if (['pre', 'pre-wrap', 'pre-line', 'break-spaces'].includes(whiteSpace)) {
+      element.style.whiteSpace = whiteSpace; element.dataset.oofSpace = 'true'; preserveSpacing = true;
+    }
+    if (element.tagName === 'PRE') preserveSpacing = true;
+  }
+  const walker = document.createTreeWalker(container, 4);
+  let textNode;
+  while ((textNode = walker.nextNode())) if (!textNode.parentElement.closest('pre,[data-oof-space]')) textNode.data = textNode.data.replace(/\u00a0/g, ' ');
   // Use Chromium's rendered text rules for block boundaries and HTML whitespace.
-  // Only inert markup without attributes is mounted; no mail styles or resources.
+  // Only inert markup and explicitly restored whitespace styles are mounted.
   container.style.cssText = 'position:fixed;left:-100000px;top:0;width:100000px;opacity:0;pointer-events:none;white-space:normal';
   container.setAttribute('aria-hidden', 'true');
   document.body.append(container);
-  try { return container.innerText.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' '); }
+  try {
+    const text = container.innerText.replace(/\r\n?/g, '\n');
+    return preserveSpacing ? text : compact(text);
+  }
   finally { container.remove(); }
 }
 function setupAutoReplies(panel) {

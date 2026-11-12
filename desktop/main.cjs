@@ -32,10 +32,21 @@ let notificationSettings = preferences(), tracker = new NotificationTracker(), p
 let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
 const { SharingPrivacy } = require('./sharing-privacy.cjs');
-let presentationMode = false, lastPrivacyHidden = true;
+let presentationMode = false, presentationUntil = 0, presentationTimer, lastPrivacyHidden = true;
 const sharingPrivacy = new SharingPrivacy({ changed: syncNotificationPrivacy });
-function privacyHidden() { return presentationMode || notificationSettings.autoPrivacy && sharingPrivacy.active !== false; }
-async function refreshPrivacy() { if (notificationSettings.autoPrivacy) await sharingPrivacy.check(); syncNotificationPrivacy(); }
+function privacyHidden() {
+  if (presentationMode && presentationUntil && Date.now() >= presentationUntil) { presentationMode = false; presentationUntil = 0; }
+  return presentationMode || notificationSettings.autoPrivacy && Boolean(notificationSettings.privacyApps?.length) && sharingPrivacy.active !== false;
+}
+function privacyState() {
+  const hidden = privacyHidden();
+  return { privacyActive: hidden, presentationMode, presentationUntil, privacyReason: presentationMode ? 'manual' : hidden ? sharingPrivacy.active === null ? 'checking' : 'application' : 'none',
+    privacyApplications: require('../src/privacy-apps.js').applications.filter(app => (sharingPrivacy.matches || []).includes(app.id)).map(app => app.name) };
+}
+async function refreshPrivacy() {
+  sharingPrivacy.configure(notificationSettings.autoPrivacy ? notificationSettings.privacyApps : []);
+  if (notificationSettings.autoPrivacy) await sharingPrivacy.check(); syncNotificationPrivacy();
+}
 function syncNotificationPrivacy() {
   const hidden = privacyHidden();
   if (hidden !== lastPrivacyHidden) {
@@ -45,8 +56,16 @@ function syncNotificationPrivacy() {
     for (const n of activeNotifications) n.close(); activeNotifications.clear();
     refreshWidget(); updateTrayMenu();
   }
+  if (typeof window !== 'undefined' && window && !window.isDestroyed()) window.webContents.send('aster-privacy', privacyState());
 }
-function togglePresentation() { presentationMode = !presentationMode; syncNotificationPrivacy(); refreshWidget(); updateTrayMenu(); }
+function setPresentation(enabled, minutes = 30) {
+  if (typeof enabled !== 'boolean' || ![15, 30, 60, 120].includes(minutes)) throw new Error('Invalid presentation duration');
+  clearTimeout(presentationTimer);
+  presentationMode = enabled; presentationUntil = enabled ? Date.now() + minutes * 60000 : 0;
+  if (enabled) { presentationTimer = setTimeout(() => setPresentation(false), minutes * 60000); presentationTimer.unref?.(); }
+  syncNotificationPrivacy(); refreshWidget(); updateTrayMenu();
+}
+function togglePresentation() { setPresentation(!presentationMode); }
 let dismissedMeetings = new Set();
 let mailAlerts = [];
 function mailWindowAlerts() {
@@ -162,17 +181,17 @@ function updateTrayMenu() {
 }
 function widgetState() {
   const hidden = privacyHidden();
-  const project = event => ({ id: event.id, title: notificationSettings.preview ? event.title : tr('Встреча'), start: event.start, end: event.end, allDay: event.allDay, cancelled: event.cancelled, response: event.response, isOrganizer: event.isOrganizer, joinUrl: Boolean(meetingLink(event)) });
-  const calendarEvents = hidden ? [] : widgetEvents.filter(event => !event.cancelled).map(project);
+  const project = event => ({ id: event.id, title: hidden ? tr('Встреча') : event.title, preview: hidden ? '' : require('./protocol.cjs').mailPreview(event.preview || event.body || event.html || '', Boolean(!event.preview && !event.body && event.html)), start: event.start, end: event.end, allDay: event.allDay, cancelled: event.cancelled, response: event.response, isOrganizer: event.isOrganizer, joinUrl: !hidden && Boolean(meetingLink(event)) });
+  const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(project);
   const events = upcomingMeetings(calendarEvents).slice(0, 5);
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, mailAlerts: hidden ? [] : mailAlerts.map(alert => ({ id: alert.id, title: alert.title, subject: alert.subject, date: alert.date, text: notificationSettings.mailTextPreview ? alert.body.split('\n').slice(1).join(' ') : '' })), dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), privacyActive: hidden, presentationMode, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, mailAlerts: hidden ? [] : mailAlerts.map(alert => ({ id: alert.id, title: alert.title, subject: alert.subject, date: alert.date, text: notificationSettings.mailTextPreview ? alert.body.split('\n').slice(1).join(' ') : '' })), dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
 }
 function refreshWidget() {
   const state = widgetState();
   if (tray) {
     const nearest = nearestMeetings(state.calendarEvents);
     const multiple = nearest.length > 1;
-    if (process.platform === 'darwin') tray.setTitle(client && !state.privacyActive ? multiple && state.countdown.active ? `${tr('Встречи')} · ${nearest.length}` : state.countdown.label : '');
+    if (process.platform === 'darwin') tray.setTitle(client ? `${state.privacyActive ? '⏸ ' : ''}${multiple && state.countdown.active ? `${tr('Встречи')} · ${nearest.length}` : state.countdown.label}` : '');
     tray.setToolTip(state.privacyActive ? tr('Aster Mail · уведомления скрыты') : multiple ? `${tr('Встречи')} · ${nearest.length}\n${nearest.slice(0, 5).map(event => event.title).join('\n')}` : state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.send('aster-widget-update', state);
@@ -532,8 +551,8 @@ app.whenReady().then(async () => {
       }
       if (operation === 'mailAlerts') return { ok: true, value: mailWindowAlerts() };
       if (operation === 'dismissMailAlert') { dismissMailAlert(data.id); return { ok: true, value: true }; }
-      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported(), privacyActive: privacyHidden(), presentationMode } };
-      if (operation === 'togglePresentation') { togglePresentation(); return { ok: true, value: presentationMode }; }
+      if (operation === 'notificationSettings') return { ok: true, value: { ...notificationSettings, lastPoll, lastMailPoll, error: errorMessage(attachmentCleanupError || lastMailError || lastPollError, { debug: notificationSettings.debugErrors }), supported: Notification.isSupported(), ...privacyState() } };
+      if (operation === 'togglePresentation') { setPresentation(data.enabled ?? !presentationMode, data.minutes ?? 30); return { ok: true, value: privacyState() }; }
       if (operation === 'saveNotifications') {
         require('../src/time.js').zone(data.timeZone);
         const before = notificationSettings, next = preferences({ ...data, meetingReminders: notificationSettings.meetingReminders });
@@ -544,7 +563,6 @@ app.whenReady().then(async () => {
           if (connection !== active) throw new Error(tr('Сессия аккаунта завершена'));
         }
         notificationSettings = next;
-        if (!before.autoPrivacy && next.autoPrivacy) { sharingPrivacy.active = null; syncNotificationPrivacy(); }
         i18n.setLanguage(next.language); updateTrayMenu();
         if (!before.mail && notificationSettings.mail) { tracker.mailSeen.clear(); tracker.baseline = null; }
         if (!notificationSettings.preview || !notificationSettings.mail) {
@@ -787,7 +805,7 @@ app.whenReady().then(async () => {
       if (!widgetWindow || event.sender !== widgetWindow.webContents || event.senderFrame !== widgetWindow.webContents.mainFrame) throw new Error('Untrusted widget sender');
       if (operation === 'state') return { ok: true, value: widgetState() };
       if (operation === 'app') { widgetWindow.hide(); reveal(); return { ok: true }; }
-      if (operation === 'presentation') { togglePresentation(); return { ok: true }; }
+      if (operation === 'presentation') { setPresentation(data?.id !== 'off', data?.id === 'off' ? 30 : Number(data?.id || 30)); return { ok: true }; }
       if (operation === 'dismiss-mail') { dismissMailAlert(data?.id); return { ok: true }; }
       if (operation === 'open-mail') {
         const alert = mailAlerts.find(item => item.id === data?.id);

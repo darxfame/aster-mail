@@ -57,12 +57,13 @@
         <button class="icon-button" data-action="refresh" aria-label="Обновить" title="Обновить"><svg><use href="#i-refresh"/></svg></button>
         <button class="icon-button" data-action="theme" aria-label="Сменить тему" title="Сменить тему"><svg><use href="#i-moon"/></svg></button>
 
+        <button type="button" class="secondary presentation-toggle" data-action="presentation-mode" data-presentation-toggle role="switch" aria-checked="false">Презентация: выкл.</button>
         <button type="button" id="connection" class="connection" data-action="connect" aria-label="Подключить Exchange"><i></i><span>Не подключено</span></button>
       </header>
       <div id="demo-banner" class="demo-banner" hidden><span class="demo-label">Демонстрационный режим · письма и встречи вымышлены</span> <button data-action="connect">Подключить OWA <span>↗</span></button></div>
       <div id="error" class="error-banner" role="alert" hidden></div>
       <section id="workspace" class="workspace"></section>
-      <footer class="statusbar"><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <button class="version" data-action="updates" title="Проверить обновления">0.2.14</button></span></footer>
+      <footer class="statusbar"><span id="status">Ваш рабочий день. В одном месте.</span><span>ASTER MAIL <button class="version" data-action="updates" title="Проверить обновления">0.2.15</button></span></footer>
     </main>
   </div>
   <dialog id="modal" aria-label="Диалог Aster Mail"><div id="modal-content"></div></dialog>
@@ -105,6 +106,8 @@
   <script src="mail-reminders-ui.js"></script>
   <script src="contact-history.js"></script>
   <script src="contact-history-ui.js"></script>
+  <script src="privacy-apps.js"></script>
+  <script src="presentation-ui.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

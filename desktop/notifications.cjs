@@ -1,7 +1,7 @@
 const tr = require('../src/i18n.js').text;
 // Pure notification policy, independent of Electron and real mailboxes.
 const T = require('../src/time.js');
-const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: false, autoPrivacy: true, mailTextPreview: false, debugErrors: false, timeZone: 'system', theme: 'light', language: 'ru', interfaceScale: 1 };
+const defaults = { mail: true, meetings: true, sounds: true, minutes: 15, preview: true, autoPrivacy: true, mailTextPreview: true, debugErrors: false, timeZone: 'system', theme: 'light', language: 'ru', interfaceScale: 1 };
 function reminderMinutes(value) {
   if (!Array.isArray(value) || value.length > 16 || value.some(n => !Number.isInteger(n) || n < 0 || n > 1440)) return null;
   return [...new Set(value)].sort((a, b) => b - a);
@@ -14,6 +14,7 @@ function meetingReminders(value) {
 function preferences(value = {}) {
   const result = { ...defaults };
   for (const key of ['mail', 'meetings', 'sounds', 'preview', 'autoPrivacy', 'mailTextPreview', 'debugErrors']) if (typeof value[key] === 'boolean') result[key] = value[key];
+  result.privacyApps = require('../src/privacy-apps.js').selected(value.privacyApps);
   if (typeof value.interfaceScale === 'number' && Number.isFinite(value.interfaceScale) && value.interfaceScale >= 0.8 && value.interfaceScale <= 2) result.interfaceScale = value.interfaceScale;
   if ([0, 5, 10, 15, 30].includes(Number(value.minutes))) result.minutes = Number(value.minutes);
   try { if (typeof value.timeZone === 'string') { T.zone(value.timeZone); result.timeZone = value.timeZone || 'system'; } } catch { /* Invalid saved zone falls back to the computer. */ }
