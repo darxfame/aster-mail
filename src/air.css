@@ -13,6 +13,7 @@
   --air-shadow: 0 4px 18px #29203f08;
   --skeleton-fill: #e1e3ec;
   --skeleton-shine: #ffffffa6;
+  --air-unread: #f7f5fc;
 }
 body.dark {
   --bg: #202124;
@@ -29,6 +30,7 @@ body.dark {
   --air-shadow: 0 4px 18px #00000012;
   --skeleton-fill: #3e3e50;
   --skeleton-shine: #ffffff16;
+  --air-unread: #302d3a;
 }
 .app-shell {
   background: radial-gradient(ellipse at 0 0, #a58adf20, transparent 60%),
@@ -108,9 +110,12 @@ body.dark {
 .mail-list .message-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto 18px; gap: 1px 5px; }
 .mail-list .row-top, .mail-list .subject { grid-column: 1 / -1; margin: 0; }
 .mail-list .row-top { gap: 6px; }
-.mail-list .sender { font-size: 13px; line-height: 1.3; }
+.mail-list .sender { font-size: 13px; font-weight: 400; line-height: 1.3; }
 .mail-list .date { font-size: 11px; }
-.mail-list .subject { font-size: 12px; line-height: 1.4; }
+.mail-list .subject { font-size: 12px; font-weight: 400; line-height: 1.4; }
+.mail-list .unread .sender, .mail-list .unread .subject { font-weight: 600; }
+.mail-list .message-row.unread:not(.selected) { background: var(--air-unread); }
+.mail-list .message-row.selected, body.dark .mail-list .message-row.selected { background: var(--accent-bg); }
 .mail-list .message-copy .preview { grid-column: 1; grid-row: 3; min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.5; overflow-wrap: normal; }
 .mail-list .message-meta { grid-column: 2; grid-row: 3; align-self: center; gap: 4px; margin: 0; }
 .mail-list .message-meta .tag { font-size: 9px; line-height: 1.4; padding: 1px 4px; }

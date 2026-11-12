@@ -24,6 +24,15 @@ app.whenReady().then(async () => {
       reports.push({ width, theme, ...report });
       await fs.writeFile(path.join(output, `${baseline ? 'before' : 'after'}-${width}-${theme}.png`), (await window.webContents.capturePage()).toPNG());
       if (!baseline) {
+        const states = await js(`(()=>{const read=document.querySelector('.message-row:not(.unread)'),unread=document.querySelector('.message-row.unread'),style=row=>({background:getComputedStyle(row).backgroundColor,sender:getComputedStyle(row.querySelector('.sender')).fontWeight,subject:getComputedStyle(row.querySelector('.subject')).fontWeight});const normal=style(read),fresh=style(unread);read.classList.add('selected');unread.classList.add('selected');const selectedRead=style(read),selectedUnread=style(unread);read.classList.remove('selected');unread.classList.remove('selected');return {normal,fresh,selectedRead,selectedUnread}})()`);
+        assert.equal(states.normal.sender, '400'); assert.equal(states.normal.subject, '400');
+        assert.equal(states.fresh.sender, '600'); assert.equal(states.fresh.subject, '600');
+        assert.notEqual(states.normal.background, states.fresh.background, `${theme} unread mail has its own background`);
+        assert.notEqual(states.fresh.background, states.selectedUnread.background, `${theme} selected mail is distinct from unread mail`);
+        assert.equal(states.selectedRead.background, states.selectedUnread.background, 'Selection has priority over unread status');
+        await js('state.messages[1].read=true;renderMessages();void 0');
+        assert.equal(await js('getComputedStyle(document.querySelector("[data-id=density-1] .sender")).fontWeight'), '400', 'Marking mail read removes the emphasis');
+        await js('state.messages[1].read=false;renderMessages();void 0');
         assert.ok(report.visible >= 7, `At least 7 complete messages at ${width}px: ${JSON.stringify(report)}`);
         assert.ok(report.rowHeight <= 84, `Summary row must stay compact at ${width}px`);
         assert.ok(report.headerHeight <= 125, 'List heading, filters and selection must not consume the viewport');
