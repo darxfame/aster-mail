@@ -1,4 +1,4 @@
-let updateSnapshot = { installed: '0.2.22', status: 'idle', autoCheck: true, available: null, error: '' };
+let updateSnapshot = { installed: '0.2.23', status: 'idle', autoCheck: true, available: null, error: '' };
 const promptedUpdateVersions = new Set();
 let updatePromptsReady = false;
 let updateInstallAttempt = 0, updateOpening = false;
