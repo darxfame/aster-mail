@@ -78,13 +78,13 @@ function queueMailAlert(message) {
   const alert = mailAlert(message, notificationSettings.preview && !privacyHidden());
   if (privacyHidden()) return alert;
   mailAlerts = [alert, ...mailAlerts.filter(item => item.id !== alert.id)].slice(0, 20);
-  publishMailAlerts(); refreshWidget();
+  publishMailAlerts();
   return alert;
 }
 function dismissMailAlert(id) {
   mailAlerts = mailAlerts.filter(item => item.id !== id);
   for (const notification of activeNotifications) if (notification.asterNavigation?.view === 'mail' && notification.asterNavigation.id === id) { notification.close(); activeNotifications.delete(notification); }
-  publishMailAlerts(); refreshWidget();
+  publishMailAlerts();
 }
 function publishConnectionHealth(active) {
   if (client !== active || connection?.client !== active || !active.syncId || !connection.health) return;
@@ -184,7 +184,7 @@ function widgetState() {
   const project = event => ({ id: event.id, title: hidden ? tr('Встреча') : event.title, preview: hidden ? '' : require('./protocol.cjs').mailPreview(event.preview || event.body || event.html || '', Boolean(!event.preview && !event.body && event.html)), start: event.start, end: event.end, allDay: event.allDay, cancelled: event.cancelled, response: event.response, isOrganizer: event.isOrganizer, joinUrl: !hidden && Boolean(meetingLink(event)) });
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(project);
   const events = upcomingMeetings(calendarEvents).slice(0, 5);
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, mailAlerts: hidden ? [] : mailAlerts.map(alert => ({ id: alert.id, title: alert.title, subject: alert.subject, date: alert.date, text: notificationSettings.mailTextPreview ? alert.body.split('\n').slice(1).join(' ') : '' })), dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), workSchedule: notificationSettings.workSchedule, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), workSchedule: notificationSettings.workSchedule, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
 }
 function refreshWidget() {
   const state = widgetState();
@@ -822,12 +822,6 @@ app.whenReady().then(async () => {
       if (operation === 'state') return { ok: true, value: widgetState() };
       if (operation === 'app') { widgetWindow.hide(); reveal(); return { ok: true }; }
       if (operation === 'presentation') { setPresentation(data?.id !== 'off', data?.id === 'off' ? 30 : Number(data?.id || 30)); return { ok: true }; }
-      if (operation === 'dismiss-mail') { dismissMailAlert(data?.id); return { ok: true }; }
-      if (operation === 'open-mail') {
-        const alert = mailAlerts.find(item => item.id === data?.id);
-        if (!alert || privacyHidden()) throw new Error(tr('Уведомление больше не доступно'));
-        widgetWindow.hide(); reveal(alert.navigation); return { ok: true };
-      }
       if (privacyHidden()) throw new Error(tr('Уведомления скрыты'));
       const meeting = widgetEvents.find(item => item.id === data?.id && !item.cancelled);
       if (!meeting) throw new Error(tr('Встреча больше не доступна. Дождитесь обновления календаря.'));

@@ -19,7 +19,7 @@ main { padding:10px; gap:10px; }
 .open,.dismiss,.join { font-size:13px; min-height:34px; padding:7px 10px; border-radius:7px; }
 .dismiss { flex:none; color:var(--text); background:var(--soft); border:1px solid var(--line); }
 .more-alerts { min-height:34px; padding:8px; color:var(--accent); background:var(--soft); border-radius:7px; font-size:13px; }
-.mail-preview-text { margin:6px 0; font-size:13px; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.meeting-preview-text { margin:6px 0; font-size:13px; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
 .day-grid { min-height:150px; }
 .day-toolbar { padding:7px 8px; }
 .day-toolbar>strong { font-size:12px; }
@@ -53,7 +53,7 @@ header button { width:28px; height:28px; font-size:18px; }
 .featured .actions .dismiss { flex:none; width:26px; min-width:26px; padding:4px; }
 .day-toolbar strong small { display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:3px; }
 
-.featured:not(.mail-preview) .mail-preview-text { -webkit-line-clamp:1; margin:4px 0; font-size:12px; }
+.featured .meeting-preview-text { -webkit-line-clamp:1; margin:4px 0; font-size:12px; }
 /* Air Glass shares the app's neutral surfaces. Event/status colors above
    remain untouched, including live, accepted, organized and declined states. */
 :root {

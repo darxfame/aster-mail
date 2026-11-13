@@ -410,7 +410,6 @@
     "Занятое время": "Busy time",
     "Для этой встречи": "For this occurrence",
     "Режим презентации или автоматическая защита содержимого активны.": "Presentation mode or automatic content protection is active.",
-    "Встречи и новые письма": "Meetings and new messages",
     "Открыть письмо": "Open message",
     "Закрыть уведомление:": "Dismiss notification:",
     "Открыть встречу": "Open meeting",

@@ -91,7 +91,8 @@ app.whenReady().then(async () => {
     await js('render({...snapshot,calendarEvents:[]})');
     assert.match(await js('document.querySelector(".free-state").textContent'),/Сейчас встреч нет/);
     await js('render({...snapshot,mailAlerts:[{id:"fictional-mail",subject:"Fictional mail alert"}]})');
-    assert.equal(await js('document.querySelectorAll(".featured.mail-preview").length'),1,'Mail alerts are independent of meeting cards');
+    assert.equal(await js('document.querySelectorAll(".featured").length'),0,'Mail alerts never appear in the calendar widget');
+    assert.doesNotMatch(await js('document.querySelector("#meetings").textContent'),/Fictional mail alert/);
     await js('render({...snapshot,mailAlerts:[],calendarEvents:fixtureEvents.map(event=>event.id==="next"?{...event,start:new Date(fixedNow).toISOString()}:event)})');
     assert.equal(await js('document.querySelectorAll(".featured.is-current").length'),2,'A meeting becomes a current card exactly when it starts');
     await js('render({...snapshot,calendarEvents:fixtureEvents,events:fixtureEvents,privacyActive:true,presentationMode:true})');

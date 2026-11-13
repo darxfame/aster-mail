@@ -86,7 +86,7 @@ test('persistent preview queue is bounded and replaces duplicates without replay
   context.queueMailAlert({ id: '24', from: { name: 'Pavel' } });
   assert.equal(snapshots.at(-1).length, 20); assert.equal(snapshots.at(-1)[0].title, 'Pavel');
 });
-test('macOS suppresses window alerts while retaining the widget queue and native notifications', () => {
+test('mail alerts preserve native and Windows notifications without refreshing the calendar widget', () => {
   const vm = require('node:vm'), source = fs.readFileSync(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   for (const platform of ['darwin', 'win32']) {
     const snapshots = [], native = { asterNavigation: { view: 'mail', id: 'new' }, close() { this.closed = true; } };
@@ -100,7 +100,7 @@ test('macOS suppresses window alerts while retaining the widget queue and native
     assert.equal(snapshots.at(-1).length, platform === 'darwin' ? 0 : 1);
     assert.equal(vm.runInContext('mailAlerts.length', context), 1);
     assert.equal(native.closed, undefined);
-    assert.equal(widgetRefreshes, 1);
+    assert.equal(widgetRefreshes, 0);
     hidden = true; context.publishMailAlerts(); assert.equal(snapshots.at(-1).length, 0);
     hidden = false; context.dismissMailAlert('new');
     assert.equal(vm.runInContext('mailAlerts.length', context), 0);
