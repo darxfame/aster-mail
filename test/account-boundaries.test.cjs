@@ -17,6 +17,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
     moveRuleContext: {}, mailDrag: {}, mailPeopleChoices: ['private'], colleagueData: ['private'], directoryResults: ['private'], directoryRequest: 1, colleagueRequest: 1,
     document: { body: { classList: { toggle() {} } } }, $: key => nodes[key], renderMailAlerts() {}, renderSidebar() {}, refreshWaitingReplyCount: async () => {},
   });
+  vm.runInContext(source.slice(source.indexOf('function applyTheme()'), source.indexOf('let connectionState')), context);
   vm.runInContext(source.slice(source.indexOf('function applyAccount('), source.indexOf('async function boot()')), context);
   context.applyAccount(null);
   assert.equal(nodes.findCleared, true); assert.equal(context.connectedModules.length, 0);

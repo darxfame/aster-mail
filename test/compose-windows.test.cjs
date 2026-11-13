@@ -34,7 +34,7 @@ test('parallel compose windows isolate payloads, acknowledge readiness and restr
     for (const operation of ['connect', 'restore', 'disconnect', 'saveLocalData', 'downloadUpdate', 'detachCompose', 'waitingReplies', 'waitingRepliesCount', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply', 'contactHistory', 'mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder']) assert.throws(() => f.windows.authorize(wc, wc.mainFrame, operation, 'alice'));
     assert.throws(() => f.windows.authorize(wc, {}, 'send', 'alice'));
     assert.throws(() => f.windows.authorize(wc, wc.mainFrame, 'send', 'bob'));
-    for (const operation of ['quickReplies', 'saveQuickReplies']) {
+    for (const operation of ['quickReplies', 'saveQuickReplies', 'setWindowTheme']) {
       assert.equal(f.windows.authorize(wc, wc.mainFrame, operation, 'alice'), entry);
       assert.throws(() => f.windows.authorize(wc, {}, operation, 'alice'));
       assert.throws(() => f.windows.authorize(wc, wc.mainFrame, operation, 'bob'));

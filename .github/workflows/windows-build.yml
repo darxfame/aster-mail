@@ -5,7 +5,6 @@ permissions:
   contents: read
 jobs:
   build:
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -19,6 +18,13 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npm run test:window-chrome
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-air-preview
+          path: release/window-chrome-ui/*.png
+          if-no-files-found: ignore
       - run: npm run dist:win -- --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:

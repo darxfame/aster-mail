@@ -34,7 +34,7 @@ async function bootComposeWindow() {
   if (state.demo) demoQuickReplies = window.asterQuickReplies.normalize(snapshot.quickReplies || []);
   notificationPreferences.debugErrors = preferences.debugErrors === true;
   state.theme = preferences.theme || 'light'; timeZone = preferences.timeZone || 'system';
-  document.body.classList.toggle('dark', state.theme === 'dark');
+  applyTheme();
   document.body.classList.add('compose-window');
   await compose(snapshot.mode, null, snapshot);
   document.title = `${snapshot.fields.subject || tr('Новое письмо')} · Aster Mail`;

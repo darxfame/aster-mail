@@ -1,6 +1,7 @@
 // Compose windows share the active transport, never credentials or account switching.
 const path = require('node:path');
-const allowed = new Set(['composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft', 'quickReplies', 'saveQuickReplies']);
+const { windowsChrome } = require('./window-chrome.cjs');
+const allowed = new Set(['setWindowTheme', 'composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft', 'quickReplies', 'saveQuickReplies']);
 class ComposeWindows {
   constructor({ BrowserWindow, dialog, page, tr }) {
     Object.assign(this, { BrowserWindow, dialog, page, tr });
@@ -22,7 +23,7 @@ class ComposeWindows {
     // A server draft must have only one detached editor to avoid conflicting saves.
     const draftId = context.snapshot.data.draftReference?.id;
     if (draftId && [...this.entries.values()].some(entry => entry.draftId === draftId)) throw new Error(this.tr('Этот черновик уже открыт в отдельном окне'));
-    const child = new this.BrowserWindow({ width: 960, height: 800, minWidth: 480, minHeight: 400, show: false, title: 'Aster Mail', backgroundColor: '#f7f8fb',
+    const child = new this.BrowserWindow({ width: 960, height: 800, minWidth: 480, minHeight: 400, show: false, title: 'Aster Mail', backgroundColor: '#f7f8fb', ...windowsChrome(context.preferences?.theme),
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     const sender = child.webContents;

@@ -214,8 +214,8 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
   .sidebar .wordmark, .sidebar-collapsed .sidebar .wordmark { padding-bottom: 14px; }
 }
 /* Native controls float on the window background without a frame or extra row. */
-body.mac .sidebar { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
-body.mac .sidebar .wordmark { -webkit-app-region: drag; }
+body.mac .sidebar, body.windows .sidebar { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
+body.mac .sidebar .wordmark, body.windows .sidebar .wordmark { -webkit-app-region: drag; }
 body.mac:not(.compose-window) .sidebar::before {
   content: "";
   position: absolute;
@@ -225,6 +225,18 @@ body.mac:not(.compose-window) .sidebar::before {
   height: 26px;
   -webkit-app-region: drag;
 }
+/* The native overlay reports its safe width in CSS pixels, including DPI/zoom.
+   Only the toolbar reserves this space; the reader below keeps the full width. */
+body.windows {
+  --window-controls-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px / var(--interface-scale, 1)))));
+}
+body.windows .topbar { margin-right: calc(10px + var(--window-controls-right)); }
+body.windows.compose-window .modal-header {
+  padding-right: calc(20px + var(--window-controls-right));
+  min-height: max(60px, env(titlebar-area-height, 40px));
+  -webkit-app-region: drag;
+}
+body.windows.compose-window .modal-header button { -webkit-app-region: no-drag; }
 .meeting-participant-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0 8px; }
 .meeting-participant-columns .meeting-participant-field { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface2); }
 .meeting-participant-field > label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 12px; font-weight: 550; }

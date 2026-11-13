@@ -7,6 +7,7 @@ const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ComposeWindows } = require('./compose-windows.cjs');
+const { windowsChrome } = require('./window-chrome.cjs');
 let composeWindows, moduleHost, moduleProfile;
 const { Updates, openInstallerFile } = require('./updates.cjs');
 const { AttachmentFiles, safeName } = require('./attachment-files.cjs');
@@ -493,7 +494,7 @@ app.whenReady().then(async () => {
   createWindow = () => {
     const { width, height } = screen.getPrimaryDisplay().workArea;
     window = new BrowserWindow({ width: Math.min(1440, width), height: Math.min(940, height), minWidth: Math.min(760, width), minHeight: Math.min(540, height), title: 'Aster Mail',
-      backgroundColor: '#f7f8fb',
+      backgroundColor: '#f7f8fb', ...windowsChrome(notificationSettings.theme),
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 12 } } : {}),
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
@@ -535,6 +536,12 @@ app.whenReady().then(async () => {
         if (!data.snapshot || !['new', 'reply', 'reply-all', 'forward', 'draft'].includes(data.snapshot.mode) || !data.snapshot.data || !Array.isArray(data.snapshot.files)) throw new Error('Invalid compose context');
         if (!data.demo && (!client || data.sessionId !== client.syncId)) throw new Error(tr('Сессия аккаунта завершена'));
         return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences: data.preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
+      }
+      if (operation === 'setWindowTheme') {
+        if (!['light', 'dark'].includes(data.theme)) throw new Error('Invalid window theme');
+        const chrome = windowsChrome(data.theme);
+        if (chrome.titleBarOverlay) (composeEntry?.window || window).setTitleBarOverlay(chrome.titleBarOverlay);
+        return { ok: true, value: true };
       }
       if (operation === 'setInterfaceScale') {
         if (typeof data.scale !== 'number' || !Number.isFinite(data.scale) || data.scale < 0.8 || data.scale > 2) throw new Error('Invalid interface scale');

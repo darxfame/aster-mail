@@ -69,11 +69,11 @@ test('pre-login recovery never clears without confirmation and blocks concurrent
 });
 for (const platform of ['darwin', 'win32']) test(`window fits the display and uses platform-appropriate chrome on ${platform}`, () => {
   let options;
-  const context = vm.createContext({ process: { platform }, tr: value => value, screen: { getPrimaryDisplay: () => ({ workArea: { width: 960, height: 640 } }) }, BrowserWindow: function (value) { options = value; this.loadFile = () => {}; this.on = () => {}; this.webContents = { setWindowOpenHandler() {}, on() {}, session: { setPermissionRequestHandler() {} } }; }, path, __dirname: path.join(__dirname, '../desktop'), page: 'index.html' });
+  const context = vm.createContext({ windowsChrome: theme => require('../desktop/window-chrome.cjs').windowsChrome(theme, platform), notificationSettings: { theme: 'light' }, process: { platform }, tr: value => value, screen: { getPrimaryDisplay: () => ({ workArea: { width: 960, height: 640 } }) }, BrowserWindow: function (value) { options = value; this.loadFile = () => {}; this.on = () => {}; this.webContents = { setWindowOpenHandler() {}, on() {}, session: { setPermissionRequestHandler() {} } }; }, path, __dirname: path.join(__dirname, '../desktop'), page: 'index.html' });
   const start = source.indexOf('  createWindow = () => {'), end = source.indexOf("  ipcMain.on('aster-unsaved-changes'", start);
   vm.runInContext(source.slice(start, end), context); context.createWindow();
   assert.equal(options.width, 960); assert.equal(options.height, 640); assert.equal(options.minWidth, 760); assert.equal(options.minHeight, 540);
-  assert.equal(options.titleBarStyle, platform === 'darwin' ? 'hiddenInset' : undefined);
+  assert.equal(options.titleBarStyle, platform === 'darwin' ? 'hiddenInset' : 'hidden');
   assert.equal(options.trafficLightPosition?.x, platform === 'darwin' ? 22 : undefined);
   assert.equal(options.trafficLightPosition?.y, platform === 'darwin' ? 12 : undefined);
 });

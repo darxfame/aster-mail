@@ -10,11 +10,12 @@ function settings({ changed = {}, apiError, sync = true } = {}) {
   const context = vm.createContext({ form, tr: value => value, state: { view: 'mail', account: { sessionId: 'fictional' }, theme: 'light', signature: 'Original signature' },
     window: { asterWorkSchedule: require('../src/work-schedule.js'), aster: {}, asterI18n: { language: 'ru' } }, notificationPreferences: {}, timeZone: 'system', navigationPlacement: 'sidebar', syncSignature: sync,
     T: { zone() {} }, submitForm(_form, operation) { pending = operation(data); }, api: async (operation, value) => { calls.push(operation); if (apiError) throw apiError; return value; },
-    localPreferences: { setItem: (key, value) => writes.push([key, value]) }, localSave: Promise.resolve(), clearError() {}, applyLanguage() {}, applyInterfaceScale: async () => {},
+    localPreferences: { setItem: (key, value) => writes.push([key, value]) }, localSave: Promise.resolve(), clearError() {}, showError(error) { throw error; }, applyLanguage() {}, applyInterfaceScale: async () => {},
     renderSidebar() {}, renderMail() { calls.push('renderMail'); }, renderCalendar() { calls.push('renderCalendar'); }, renderContacts() { calls.push('renderContacts'); },
     getServerSignature: async () => { calls.push('signature'); throw new Error('OWA unavailable'); }, loadView: async () => { calls.push('loadView'); throw new Error('OWA unavailable'); },
     ready: () => true, welcome() {}, document: { body: { classList: { toggle() {} } } }, $: () => ({ close() { calls.push('close'); } }), toast() {}, miniMonthCursor: null,
   });
+  vm.runInContext(source.slice(source.indexOf('function applyTheme()'), source.indexOf('let connectionState')), context);
   const begin = source.indexOf("  if (form.id === 'settings-form') {"), end = source.indexOf("  if (form.id === 'connect-form')", begin);
   vm.runInContext(`async function save() { ${source.slice(begin, end)} }`, context);
   return { calls, writes, context, async save() { await context.save(); return pending; } };
@@ -58,4 +59,11 @@ test('backend saves debug preferences without polling OWA and retains session gu
       assert.equal(context.notificationSettings.debugErrors, false); assert.equal(saves, mode === 'stale' ? 0 : 1);
     }
   }
+});
+
+test('Windows theme changes also update native window symbols without Exchange reads', async () => {
+  const f = settings({ changed: { theme: 'dark' }, sync: false });
+  f.context.window.aster.platform = 'win32';
+  await f.save();
+  assert.deepEqual(f.calls, ['saveNotifications', 'setWindowTheme', 'close', 'renderMail']);
 });

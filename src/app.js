@@ -51,6 +51,7 @@ async function applyInterfaceScale(value, save = true) {
     document.documentElement.style.setProperty('--viewport-height', `${100 / scale}dvh`);
     document.querySelector('.app-shell').style.height = `${100 / scale}vh`;
   }
+  document.documentElement.style.setProperty('--interface-scale', String(scale));
   interfaceScale = scale;
   if (save) localPreferences.setItem('aster-interface-scale', String(scale));
 }
@@ -70,6 +71,7 @@ let compactSidebarExpanded = false, narrowSidebar = window.innerWidth <= 900;
 let sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
 document.body.classList.toggle('desktop', Boolean(window.aster));
 document.body.classList.toggle('mac', window.aster?.platform === 'darwin');
+document.body.classList.toggle('windows', window.aster?.platform === 'win32');
 async function getServerSignature() {
   const signatureAccount = state.account;
   const value = state.demo ? { html: tr('<p>С уважением,<br><b>Команда Aster</b></p>'), text: tr('С уважением,\nКоманда Aster'), autoAddSignature: true, autoAddSignatureOnReply: true } : await api('signature');
@@ -112,7 +114,10 @@ function playSound(kind) {
   audio.volume = 0.65;
   audio.play().catch(() => toast(tr('Звук заблокирован системой. Проверьте настройки звука и уведомлений.')));
 }
-document.body.classList.toggle('dark', state.theme === 'dark');
+function applyTheme() {
+  document.body.classList.toggle('dark', state.theme === 'dark');
+  if (window.aster?.platform === 'win32') void api('setWindowTheme', { theme: state.theme }).catch(showError);
+}
 let connectionState = { status: 'disconnected' };
 let mailWrites = 0, mailWriteEpoch = 0;
 async function api(operation, data = {}) {
@@ -948,7 +953,7 @@ async function handleAction(button) {
     return;
   }
   if (action === 'theme') {
-    state.theme = state.theme === 'dark' ? 'light' : 'dark'; localPreferences.setItem('aster-theme', state.theme); document.body.classList.toggle('dark', state.theme === 'dark');
+    state.theme = state.theme === 'dark' ? 'light' : 'dark'; localPreferences.setItem('aster-theme', state.theme); applyTheme();
     if (state.selected) renderReader();
     if (activeMeeting && $('#modal').open && $('#modal').dataset.meetingCard === 'true') renderMeetingBody(activeMeeting);
     if (window.aster) notificationPreferences = await api('saveNotifications', { ...notificationPreferences, theme: state.theme });
@@ -1215,7 +1220,7 @@ document.addEventListener('submit', event => {
       renderSidebar();
       localPreferences.setItem('aster-signature', state.signature); localPreferences.setItem('aster-theme', state.theme);
       await localSave;
-      document.body.classList.toggle('dark', state.theme === 'dark'); $('#modal').close(); toast(tr('Настройки сохранены'));
+      applyTheme(); $('#modal').close(); toast(tr('Настройки сохранены'));
       if (!ready()) welcome();
       else if (repaint) {
         if (state.view === 'mail') renderMail();
@@ -1276,11 +1281,12 @@ function applyAccount(value) {
   colleagueData = []; directoryResults = []; directoryRequest++; colleagueRequest++;
   state.query = ''; $('#search').value = ''; renderMailAlerts([]);
   $('#people-search-suggestions')?.replaceChildren();
-  document.body.classList.toggle('dark', state.theme === 'dark'); renderSidebar();
+  applyTheme(); renderSidebar();
   void refreshWaitingReplyCount();
   void loadModuleContributions().catch(showError);
 }
 async function boot() {
+  applyTheme();
   if (isComposeWindow && window.aster) return bootComposeWindow();
   if (window.aster) await api('setLanguage', { language: window.asterI18n.language });
   installMailLayout();

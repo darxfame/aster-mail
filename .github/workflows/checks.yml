@@ -22,6 +22,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: Verify Windows Air window chrome
+        run: npm run test:window-chrome
       - name: Verify native connection recovery
         run: npm run test:connection
       - name: Verify module sandbox

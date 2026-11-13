@@ -7,7 +7,7 @@ function fixture() {
   const listeners = {}, saved = [], attributes = {}, css = {};
   const separator = { previousElementSibling: { clientWidth: 340 }, setPointerCapture() {}, setAttribute: (key, value) => { attributes[key] = value; }, getAttribute: key => attributes[key], matches: () => true };
   const state = { generation: 1, account: {} }, workspace = { clientWidth: 1200 };
-  const context = vm.createContext({ state, window: { aster: {} }, interfaceScale: 1,
+  const context = vm.createContext({ state, window: { aster: {} }, document: { documentElement: { style: { setProperty() {} } } }, interfaceScale: 1,
     $: selector => selector === '#workspace' ? workspace : { open: false },
     localPreferences: { getItem: () => '600', setItem: (...args) => saved.push(args) },
     document: { body: { classList: { toggle() {}, add() {}, remove() {} } }, documentElement: { style: { setProperty: (key, value) => { css[key] = value; } } }, querySelector: () => separator, addEventListener: (name, callback) => { listeners[name] = callback; } },
@@ -35,7 +35,7 @@ test('dragging resizes without persisting every pixel and retirement never saves
 test('interface scale validates bounds and uses native zoom without changing message formatting', async () => {
   const app = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   const calls = [], saved = [];
-  const context = vm.createContext({ window: { aster: {} }, tr: value => value, api: async (...args) => calls.push(args), localPreferences: { setItem: (...args) => saved.push(args) } });
+  const context = vm.createContext({ window: { aster: {} }, document: { documentElement: { style: { setProperty() {} } } }, tr: value => value, api: async (...args) => calls.push(args), localPreferences: { setItem: (...args) => saved.push(args) } });
   vm.runInContext(app.slice(app.indexOf('let interfaceScale ='), app.indexOf('let toastTimer,')), context);
   await context.applyInterfaceScale('1.25');
   assert.equal(calls[0][0], 'setInterfaceScale'); assert.equal(calls[0][1].scale, 1.25);
