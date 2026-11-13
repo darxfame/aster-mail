@@ -9,7 +9,7 @@ const profile = require('node:fs').mkdtempSync(path.join(require('node:os').tmpd
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 let window;
-const js = code => window.webContents.executeJavaScript(code);
+const js = code => window.webContents.executeJavaScript(code).catch(error => { console.error('Renderer step:', code); throw error; });
 async function waitFor(expression) {
   for (let i = 0; i < 150; i++) {
     if (await js(expression)) return;
@@ -65,6 +65,27 @@ app.whenReady().then(async () => {
         }
       }
     }
+    // A blurred toolbar is a stacking context: its directory popup must remain
+    // above the contacts container, including its clickable actions.
+    window.setSize(1280, 940); window.webContents.setZoomFactor(1);
+    await js("document.documentElement.style.setProperty('--interface-scale','1');state.view='contacts';state.query='';loadView();document.querySelector('#demo-banner').hidden=true");
+    for (const theme of ['light', 'dark']) {
+      await js(`state.theme=${JSON.stringify(theme)};applyTheme();(()=>{const input=document.querySelector('#search');input.focus();input.value='example';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      await waitFor("!document.querySelector('#people-search-suggestions').hidden && Boolean(document.querySelector('[data-person-pin]'))");
+      const point = await js(`(()=>{const button=[...document.querySelectorAll('[data-person-pin]')].at(-1),r=button.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,top:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('[data-person-pin]')===button};})()`);
+      assert.equal(point.top, true, `${theme}: directory actions must be above the contacts surface`);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await fs.writeFile(path.join(output, `contacts-search-${theme}.png`), (await window.webContents.capturePage()).toPNG());
+      await js("document.querySelector('#search').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+      assert.equal(await js("document.querySelector('#people-search-suggestions').hidden"), true);
+    }
+    await js("(()=>{const input=document.querySelector('#search');input.value='Ирина';input.dispatchEvent(new Event('input',{bubbles:true}));})()");
+    await waitFor("Boolean(document.querySelector('[data-person-pin]:not(:disabled)')) && !document.querySelector('#people-search-suggestions').hidden");
+    const pin = await js("(()=>{const r=document.querySelector('[data-person-pin]:not(:disabled)').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()");
+    window.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', x: Math.round(pin.x), y: Math.round(pin.y), clickCount: 1 });
+    window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', x: Math.round(pin.x), y: Math.round(pin.y), clickCount: 1 });
+    await waitFor("Boolean(document.querySelector('[data-person-pin]:disabled'))");
+    await js("document.querySelector('#search').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));state.view='mail';state.query='';loadView()");
     window.setSize(960, 800); window.webContents.setZoomFactor(1);
     await js("document.documentElement.style.setProperty('--interface-scale','1');compose();document.body.classList.add('compose-window')");
     assert.equal(await js("getComputedStyle(document.querySelector('.modal-header')).webkitAppRegion"), 'drag');

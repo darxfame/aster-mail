@@ -66,7 +66,10 @@ body.dark {
 .navigation-sidebar .bottom-dock .view-tab:hover { background: var(--accent-bg); color: var(--text); }
 .navigation-sidebar .bottom-dock .view-tab.active { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
 .sidebar .wordmark, .sidebar-collapsed .sidebar .wordmark { padding-bottom: 22px; }
+/* Keep search popups above workspace surfaces even when blur creates a stacking context. */
 .topbar {
+  position: relative;
+  z-index: 20;
   margin: 10px 10px 8px;
   border: 1px solid var(--air-glass-edge);
   border-radius: 16px;
