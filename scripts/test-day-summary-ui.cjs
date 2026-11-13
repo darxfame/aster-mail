@@ -43,9 +43,19 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelectorAll(".day-stats strong")[2].textContent'), '2 ч');
     assert.equal(await js('document.querySelectorAll(".day-track .day-block").length'), 2, 'Overlapping events share a single busy interval');
     assert.equal(await js('document.querySelector(".day-rhythm").textContent.includes("25%")'), true);
-    await js('daySummary.calendar.events.push({id:"unknown",start:new Date().toISOString(),end:new Date(Date.now()+86400000).toISOString(),showAs:"Free",showAsKnown:false});renderDaySummary();void 0');
-    if (await js('document.querySelector(".day-block.unknown")!==null')) assert.equal(await js('document.querySelector(".day-window").textContent.includes("неуточнённая")'), true);
-    await js('daySummary.calendar.events.pop();renderDaySummary();void 0');
+    await js(`(() => {
+      const at = minute => window.asterWorkSchedule.at(new Date(), minute, timeZone);
+      window.originalSummaryDay = window.asterDaySummary.day;
+      window.asterDaySummary.day = (events, now, zone, work) => originalSummaryDay(events, +at(540), zone, work);
+      daySummary.calendar.events.push({id:'unknown', start:at(660).toISOString(), end:at(720).toISOString(), showAs:'Free', showAsKnown:false});
+      renderDaySummary();
+    })()`);
+    assert.equal(await js('document.querySelector(".day-block.unknown")!==null'), true);
+    assert.equal(await js('document.querySelectorAll(".day-stats strong")[2].textContent'), '3 ч');
+    assert.equal(await js('document.querySelector(".day-stats").textContent.includes("Время встреч")'), true);
+    assert.equal(await js('document.querySelector(".day-window").textContent.includes("13:30–17:00")'), true);
+    assert.equal(await js('document.querySelector(".day-rhythm").textContent.includes("Их время исключено из свободных окон")'), true);
+    await js('daySummary.calendar.events.pop();window.asterDaySummary.day=originalSummaryDay;renderDaySummary();void 0');
     await js('window.expectedOverviewEvent=document.querySelector(".day-meeting").dataset.id;document.querySelector(".day-meeting").click()');
     await waitFor('Boolean(document.querySelector("#modal").open && activeMeeting)');
     assert.equal(await js('activeMeeting.id===expectedOverviewEvent'), true);
@@ -87,5 +97,5 @@ app.whenReady().then(async () => {
     await js('resetDaySummary();api=savedApi;state.account=null;state.demo=true;void 0');
     assert.equal(await js('daySummary===null'), true);
     console.log('PASS: overview counts, overlap scale, read-only previews, message opening, reader/composer preservation, light/dark, narrow/200%, translations and stale-read rejection.');
-  } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true }); }
+  } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

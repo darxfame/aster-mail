@@ -19,11 +19,22 @@ test('cancelled, declined and free events do not block time; tentative and all-d
   const allDay = D.day([{ start: '2026-11-13T00:00Z', end: '2026-11-14T00:00Z', allDay: true, showAs: 'OOF' }], Date.parse('2026-11-13T09:00Z'), 'UTC', schedule);
   assert.equal(allDay.percent, 100); assert.equal(allDay.upcoming.length, 0); assert.equal(allDay.longest, null);
 });
-test('unknown availability never becomes a free-time recommendation', () => {
+test('unknown availability blocks its interval while preserving other gaps', () => {
   for (const extra of [{ showAs: 'Free', showAsKnown: false }, { showAs: 'NoData' }, { showAs: undefined }]) {
     const result = D.day([event('10:00', '11:00', extra)], Date.parse('2026-11-13T09:00Z'), 'UTC', schedule);
-    assert.equal(result.unknown.length, 1); assert.equal(result.longest, null); assert.equal(result.busyMinutes, 0);
+    assert.equal(result.unknown.length, 1); assert.equal(result.busyMinutes, 0);
+    assert.equal(result.scheduledMinutes, 60); assert.equal(result.percent, 13);
+    assert.equal(result.longest.start, Date.parse('2026-11-13T11:00Z'));
+    assert.equal(result.longest.end, Date.parse('2026-11-13T17:00Z'));
   }
+});
+test('unknown and confirmed overlaps count once, with no gap through either kind', () => {
+  const result = D.day([event('10:00', '12:00'), event('11:00', '13:00', { showAsKnown: false }), event('15:00', '17:00', { showAsKnown: false })], Date.parse('2026-11-13T09:00Z'), 'UTC', schedule);
+  assert.equal(result.busyMinutes, 120); assert.equal(result.scheduledMinutes, 300);
+  assert.equal(result.longest.start, Date.parse('2026-11-13T13:00Z')); assert.equal(result.longest.end, Date.parse('2026-11-13T15:00Z'));
+  const allDay = D.day([event('09:00', '17:00', { showAsKnown: false })], Date.parse('2026-11-13T09:00Z'), 'UTC', schedule);
+  assert.equal(allDay.longest, null); assert.equal(allDay.percent, 100);
+  assert.equal(D.day([event('09:00', '10:00', { showAsKnown: false })], Date.parse('2026-11-13T18:00Z'), 'UTC', schedule).longest, null);
 });
 test('empty, non-working and finished days, invalid events and midnight boundaries', () => {
   const now = Date.parse('2026-11-13T09:00Z');

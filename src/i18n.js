@@ -1392,9 +1392,10 @@
   english["Нет ближайших встреч на 7 дней"] = "No upcoming meetings in the next 7 days";
   english["Новых писем нет"] = "No new messages";
   english["Ритм дня"] = "Your day at a glance";
-  english["Есть неуточнённая занятость"] = "Some availability is unknown";
+  english["Время встреч"] = "Scheduled time";
+  english["По времени встреч"] = "Scheduled";
+  english["Статус части встреч не указан. Их время исключено из свободных окон."] = "Some meetings have no availability status. Their times are excluded from free slots.";
   english["Окно без встреч:"] = "Time without meetings:";
-  english["Свободное время не определено: есть неуточнённая занятость."] = "Free time is unavailable: some availability is unknown.";
   english["До конца рабочего дня нет свободных окон."] = "No free slots remain in your working day.";
   english["По загруженному календарю"] = "Based on the loaded calendar";
   english["Часть данных не обновлена. Повторим при восстановлении связи."] = "Some data could not be updated. Retrying when connected.";

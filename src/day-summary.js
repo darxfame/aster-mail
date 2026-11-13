@@ -36,7 +36,9 @@
       cursor = Math.max(cursor, block.end);
     }
     const busyMinutes = busy.reduce((sum, block) => sum + (block.end - block.start) / 60000, 0);
-    return { start, end, today, upcoming: relevant.filter(event => !event.allDay && Date.parse(event.end) > now).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)), working, workStart, workEnd, busy, unknown, busyMinutes, percent: Math.round(busyMinutes * 60000 / (workEnd - workStart) * 100), longest: working && !unknown.length ? longest : null };
+    const scheduledMinutes = occupied.reduce((sum, block) => sum + (block.end - block.start) / 60000, 0);
+    // Unknown statuses block their own intervals, never every other gap in the day.
+    return { start, end, today, upcoming: relevant.filter(event => !event.allDay && Date.parse(event.end) > now).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)), working, workStart, workEnd, busy, unknown, busyMinutes, scheduledMinutes, percent: Math.round(scheduledMinutes * 60000 / (workEnd - workStart) * 100), longest: working ? longest : null };
   }
   const api = { day };
   if (typeof module !== 'undefined') module.exports = api; else root.asterDaySummary = api;
