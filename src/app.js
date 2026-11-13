@@ -256,6 +256,7 @@ function welcome() {
   $('#workspace').innerHTML = `<div class="welcome"><div class="hero-symbol">✳</div><div class="eyebrow">${tr("Пространство для важного")}</div><h1>${tr("Меньше шума.")}<br>${tr("Больше ясности.")}</h1><p>${tr("Почта, встречи и люди — в одном спокойном рабочем пространстве. Подключите корпоративный Exchange и начните свой день с Aster.")}</p><div class="welcome-actions"><button class="primary" data-action="connect">${icon('plus')}${tr("Подключить OWA")}</button><button class="secondary" data-action="demo">${tr("Посмотреть демо")} ${icon('chevron')}</button></div><div class="welcome-foot">${icon('shield')}${tr("Прямое подключение к вашему серверу · Без облака Aster")}</div></div>`;
 }
 async function loadView(append = false) {
+  if (!append) state.dayOverviewOpen = false;
   if (!append) closeMailAttachmentPreview();
   renderSidebar(); clearError();
   const generation = ++state.generation;
@@ -306,12 +307,13 @@ async function loadView(append = false) {
 function filteredMessages() { return state.messages.filter(m => state.filter === 'all' || (state.filter === 'unread' ? !m.read : m.flagged)); }
 function renderMail() {
   if (state.view !== 'mail') return;
-  document.body.classList.toggle('reader-open', Boolean(state.selected));
+  document.body.classList.toggle('reader-open', Boolean(state.selected || state.dayOverviewOpen));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${state.query}» · ${mailSearchScope()}`)}</small>` : ''}</div><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${state.query}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions"><button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
   applyMailListWidth();
   renderMessages();
-  if (state.selected) renderReader(); else $('#reader').innerHTML = `<div class="empty">${icon('mail')}<h2>${tr("Место для ваших мыслей")}</h2><p>${tr("Выберите письмо, чтобы прочитать его, или напишите новое.")}</p></div>`;
+  if (state.selected) renderReader();
+  else { renderDaySummary(); void refreshDaySummary(); }
 }
 function renderMessages() {
   if (state.view !== 'mail' || !$('#messages')) return;
@@ -333,6 +335,7 @@ function renderMessages() {
   renderMailBatchToolbar();
 }
 function applyMessageRead(message, read, folderKey) {
+  if (typeof invalidateDaySummary === 'function') invalidateDaySummary();
   const summary = state.messages.find(item => item.id === message.id);
   const before = summary?.read ?? message.read;
   message.read = read;
@@ -365,7 +368,7 @@ function readerNotice(content) {
 function returnToMailList() {
   closeMailAttachmentPreview();
   const id = state.selected?.id;
-  ++messageOpenSequence; state.selected = null; state.recoverMessage = null;
+  ++messageOpenSequence; state.selected = null; state.recoverMessage = null; state.dayOverviewOpen = false;
   clearError(); renderMail();
   $('#status').textContent = tr('Письма');
   [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === id)?.focus({ preventScroll: true });
@@ -373,6 +376,7 @@ function returnToMailList() {
 async function openMessage(id, generation = state.generation, { markRead = true } = {}) {
   const summary = state.messages.find(m => m.id === id);
   if (!summary) return;
+  state.dayOverviewOpen = false;
   closeMailAttachmentPreview();
   const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
   state.selected = summary; document.body.classList.add('reader-open'); renderMessages();
@@ -970,6 +974,11 @@ async function handleAction(button) {
   if (action === 'mail-star' || action === 'mail-important') { button.disabled = true; try { await toggleMailProperty(button.dataset.id, action === 'mail-star' ? 'Flag' : 'Importance'); } finally { button.disabled = false; } return; }
   if (action === 'important') return toggleMailProperty(state.selected.id, 'Importance');
   if (action === 'message') return openMessage(button.dataset.id);
+  if (action === 'day-overview') { ++messageOpenSequence; state.selected = null; state.dayOverviewOpen = true; renderMail(); return; }
+  if (action === 'day-message') return openDayMessage(button.dataset.id);
+  if (action === 'day-event') { const event = daySummary?.calendar?.events.find(item => item.id === button.dataset.id); if (event) return openMeeting(event); return; }
+  if (action === 'day-inbox') { state.view = 'mail'; state.folder = 'inbox'; state.filter = 'unread'; state.query = ''; state.dayOverviewOpen = false; $('#search').value = ''; return loadView(); }
+  if (action === 'day-calendar') { state.view = 'calendar'; state.week = new Date(); state.query = ''; $('#search').value = ''; return loadView(); }
   if (action === 'compose') return compose();
   if (['reply', 'reply-all', 'forward'].includes(action)) return compose(action);
   if (action === 'save-draft') return sendCompose(true);
@@ -1249,6 +1258,7 @@ document.addEventListener('submit', event => {
   });
 });
 function applyAccount(value) {
+  resetDaySummary(); state.dayOverviewOpen = false;
   closeMailAttachmentPreview();
   loginHint = value ? { server: value.server, username: value.username } : null;
   connectionState = { status: value ? 'connected' : 'disconnected' };

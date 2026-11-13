@@ -288,6 +288,7 @@ function mergeInboxPage(current, page) {
 }
 async function receiveInbox(snapshot) {
   if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || mailWrites) return;
+  if (typeof receiveDayInbox === 'function') receiveDayInbox(snapshot);
   const generation = state.generation, account = state.account, epoch = mailWriteEpoch;
   let inbox = state.folders.find(folder => folder.wellKnown === 'inbox' || folder.id === snapshot.inbox?.id);
   if (!inbox && snapshot.inbox) { inbox = { ...snapshot.inbox, name: tr('Входящие'), wellKnown: 'inbox' }; state.folders.push(inbox); renderSidebar(); }

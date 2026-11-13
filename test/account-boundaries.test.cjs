@@ -18,8 +18,11 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
     document: { body: { classList: { toggle() {} } } }, $: key => nodes[key], renderMailAlerts() {}, renderSidebar() {}, refreshWaitingReplyCount: async () => {},
   });
   vm.runInContext(source.slice(source.indexOf('function applyTheme()'), source.indexOf('let connectionState')), context);
+  vm.runInContext(fs.readFileSync(require.resolve('../src/day-summary-ui.js'), 'utf8'), context);
+  vm.runInContext('daySummary = { mail: { items: [{ preview: "private preview" }] }, calendar: { events: [{ title: "private meeting" }] } }', context);
   vm.runInContext(source.slice(source.indexOf('function applyAccount('), source.indexOf('async function boot()')), context);
   context.applyAccount(null);
+  assert.equal(vm.runInContext('daySummary', context), null);
   assert.equal(nodes.findCleared, true); assert.equal(context.connectedModules.length, 0);
   assert.equal(context.state.account, null); assert.equal(context.state.signature, ''); assert.equal(context.state.selected, null);
   for (const key of ['messages', 'contacts', 'events', 'folders']) assert.equal(context.state[key].length, 0);
