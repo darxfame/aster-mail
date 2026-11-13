@@ -396,6 +396,7 @@
     "Режим презентации доступен в настольном приложении.": "Presentation mode is available in the desktop app.",
     "Предпросмотр": "Preview",
     "Предпросмотр вложения:": "Attachment preview:",
+    "Вложение не найдено во встрече. Откройте карточку заново.": "Attachment not found in this meeting. Reopen the meeting details.",
     "Закрыть предпросмотр": "Close preview",
     "Загружаем предпросмотр…": "Loading preview…",
     "Показаны первые 100 КБ файла.": "Showing the first 100 KB of the file.",

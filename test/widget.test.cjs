@@ -14,14 +14,18 @@ test('widget keeps three readable cards and expands remaining simultaneous meeti
   });
   vm.runInContext(fs.readFileSync(require.resolve('../src/widget.js'), 'utf8'), context);
   const events = Array.from({ length: 7 }, (_, index) => ({ id: `event-${index}`, title: `Meeting ${index}`, start: '2026-10-30T08:30:00Z', end: `2026-10-30T${index % 2 ? '10' : '09'}:30:00Z`, joinUrl: `https://calls.example.com/${index}` }));
-  context.render({ connected: true, timeZone: 'UTC', events: events.slice(0, 5), calendarEvents: [...events, { ...events[0], id: 'declined', response: 'Decline' }, { ...events[0], id: 'future', start: '2026-10-30T09:00:00Z' }], lastPoll: new Date(now).toISOString() });
+  context.render({ connected: true, timeZone: 'UTC', events: events.slice(0, 5), calendarEvents: [...events, { ...events[0], id: 'declined', response: 'Decline' }, { ...events[0], id: 'future', start: '2026-10-30T09:00:00Z' }, { ...events[0], id: 'future-two', start: '2026-10-30T09:00:00Z' }], lastPoll: new Date(now).toISOString() });
   let featured = nodes['#meetings'].innerHTML.split('<section class="day-grid">')[0];
   assert.equal((featured.match(/class="featured is-current"/g) || []).length, 3);
-  assert.match(featured, /Ещё уведомлений: 4/);
+  assert.match(featured, /Ещё уведомлений: 6/);
   await handlers.click({ target: { closest: () => ({ dataset: { action: 'more-alerts' } }) } });
   featured = nodes['#meetings'].innerHTML.split('<section class="day-grid">')[0];
   assert.equal((featured.match(/class="featured is-current"/g) || []).length, 7);
-  assert.doesNotMatch(featured, /data-id="declined"|data-id="future"|Далее/);
+  assert.doesNotMatch(featured, /data-id="declined"/);
+  assert.match(featured, /class="featured is-upcoming"/);
+  assert.match(featured, /Через 8 мин/);
+  assert.equal((featured.match(/class="featured is-upcoming"/g) || []).length, 2);
+  assert.match(featured, /data-action="open" data-id="future-two"/);
   assert.match(nodes['#meetings'].innerHTML.split('<section class="day-grid">')[1], /data-id="future"/);
   for (const event of events) {
     assert.ok(featured.includes(`data-action="dismiss" data-id="${event.id}"`));

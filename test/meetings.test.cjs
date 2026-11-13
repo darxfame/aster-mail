@@ -3,6 +3,24 @@ const assert = require('node:assert/strict');
 const { httpsURL, meetingLink, upcomingMeetings, nearestMeetings, countdown } = require('../desktop/meetings.cjs');
 const now = Date.parse('2026-10-28T10:00:00Z');
 const event = { id: 'next', start: '2026-10-28T10:12:00Z', end: '2026-10-28T11:00:00Z' };
+test('widget grows per visible meeting, shrinks on dismissal and stays within the display at every scale', () => {
+  const { widgetBounds } = require('../desktop/meetings.cjs');
+  const anchor = { x: 900, y: 0, width: 24, height: 24 }, area = { x: 0, y: 24, width: 1200, height: 1200 };
+  const meetings = [event, { ...event, id: 'second' }, { ...event, id: 'third' }];
+  const bounds = count => widgetBounds({ calendarEvents: meetings.slice(0, count) }, anchor, area, 1, now);
+  assert.equal(bounds(0).height, 560);
+  assert.equal(bounds(1).height, 560);
+  assert.equal(bounds(2).height, 710);
+  assert.equal(bounds(3).height, 860);
+  assert.equal(widgetBounds({ calendarEvents: meetings, dismissedMeetings: [`second:${event.start}`] }, anchor, area, 1, now).height, 710);
+  for (const scale of [0.8, 1, 2]) {
+    const result = widgetBounds({ calendarEvents: meetings }, anchor, area, scale, now);
+    assert.ok(result.x >= area.x && result.y >= area.y);
+    assert.ok(result.x + result.width <= area.x + area.width);
+    assert.ok(result.y + result.height <= area.y + area.height);
+    assert.equal(result.height, Math.min(Math.round(860 * scale), area.height - 16));
+  }
+});
 test('meeting links accept HTTPS without credentials and find supported call links', () => {
   assert.equal(httpsURL('javascript:alert(1)'), null);
   assert.equal(httpsURL('https://user:secret@example.com'), null);

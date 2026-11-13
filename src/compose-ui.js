@@ -72,7 +72,8 @@ async function composeAttachmentPayload(file, source) {
 }
 async function previewComposeAttachment(file, source, opener) {
   closeAttachmentPreview();
-  const request = attachmentPreviewRequest, generation = state.generation, compose = composeData;
+  const request = attachmentPreviewRequest, generation = state.generation, compose = composeData, account = state.account;
+  const meeting = source?.kind === 'event' ? activeMeeting : null;
   const dialog = document.createElement('dialog'); dialog.id = 'attachment-preview'; dialog.className = 'attachment-preview-dialog';
   dialog.setAttribute('aria-label', `${tr('Предпросмотр вложения:')} ${file.name}`);
   const header = document.createElement('header'), title = document.createElement('h2'), close = document.createElement('button'), body = document.createElement('div');
@@ -82,10 +83,13 @@ async function previewComposeAttachment(file, source, opener) {
   dialog.append(header, body); document.body.append(dialog);
   dialog.addEventListener('close', () => { if (request === attachmentPreviewRequest) { attachmentPreviewRequest++; if (window.aster) void api('composeAttachment', { action: 'close' }).catch(() => {}); } dialog.remove(); opener?.isConnected && opener.focus(); });
   dialog.showModal();
-  const current = () => request === attachmentPreviewRequest && generation === state.generation && compose === composeData && dialog.open && $('#compose-form');
+  const current = () => request === attachmentPreviewRequest && generation === state.generation && state.account === account && dialog.open && (meeting ? activeMeeting === meeting && $('#modal').open && $('#modal').dataset.meetingCard === 'true' : compose === composeData && $('#compose-form'));
   try {
     let result;
-    if (!window.aster) {
+    if (meeting && state.demo) {
+      result = file.type?.startsWith('image/') ? { kind: 'image', dataURL: file.previewUrl || '../assets/icon.png' }
+        : /\.(txt|log|md|csv|json)$/i.test(file.name) ? { kind: 'text', text: file.previewText || tr('Это демонстрационное вложение Aster Mail. Реальные файлы загружаются из Exchange.') } : { kind: 'external' };
+    } else if (!window.aster) {
       if (!source && /\.(txt|log|md|csv|json)$/i.test(file.name)) result = { kind: 'text', text: await file.slice(0, 100000).text(), truncated: file.size > 100000 };
       else result = { kind: 'external' };
     } else {
@@ -112,6 +116,7 @@ async function previewComposeAttachment(file, source, opener) {
       if (!current()) return;
       open.disabled = true;
       try {
+        if (meeting && state.demo) { toast(tr('Демо: открытие вымышленных вложений недоступно')); return; }
         if (!window.aster) { toast(tr('Открытие вложений доступно в настольном приложении.')); return; }
         const payload = await composeAttachmentPayload(file, source);
         if (current()) await api('composeAttachment', { ...payload, action: 'open' });

@@ -27,13 +27,14 @@ function preview({ name, type, bytes }) {
   }
   return { kind: 'external' };
 }
-async function resolve(data, { client, sources, assertActive }) {
+async function resolve(data, { client, sources, assertActive, allowEvents = false }) {
   assertActive();
   if (data.file && !data.source) return localFile(data.file);
   if (!data.source || data.file || !client || typeof data.source.id !== 'string' || typeof data.id !== 'string' || data.id.length > 16000 || !sources.has(data.source.id)) throw new Error(tr('Вложение не принадлежит этому письму'));
-  const message = await client.message({ id: data.source.id, refresh: true }); assertActive();
+  if (data.source.kind !== undefined && data.source.kind !== 'event' || data.source.kind === 'event' && !allowEvents) throw new Error(tr('Некорректный тип содержимого'));
+  const message = data.source.kind === 'event' ? await client.eventDetails({ id: data.source.id, changeKey: data.source.changeKey }) : await client.message({ id: data.source.id, refresh: true }); assertActive();
   const attachment = message.attachments.find(file => file.id === data.id);
-  if (!attachment) throw new Error(tr('Вложение не найдено в письме. Обновите письмо.'));
+  if (!attachment) throw new Error(tr(data.source.kind === 'event' ? 'Вложение не найдено во встрече. Откройте карточку заново.' : 'Вложение не найдено в письме. Обновите письмо.'));
   if (attachment.size > maxBytes) throw new Error(tr('Некорректное или слишком большое вложение'));
   const bytes = await client.attachment(attachment.id); assertActive();
   return { name: attachment.name, type: attachment.type, bytes };

@@ -50,3 +50,25 @@ test('closing a compose preview during a server read prevents a late external op
   finish({ attachments: [{ id: 'file', name: 'notes.txt', size: 4 }] });
   await assert.rejects(reading, /закрыт/); assert.equal(opened, 0);
 });
+test('meeting attachments use fresh calendar membership and preserve session and compose boundaries', async () => {
+  let active = true, reads = 0, downloads = 0;
+  const source = { id: 'meeting', changeKey: 'version', kind: 'event' };
+  const attachment = { id: 'file', name: 'agenda.txt', size: 4, type: 'text/plain' };
+  const client = {
+    eventDetails: async ref => { assert.deepEqual(ref, { id: 'meeting', changeKey: 'version' }); reads++; return { attachments: [attachment] }; },
+    message: async () => { throw new Error('Must read the calendar item'); },
+    attachment: async () => { downloads++; return Buffer.from('text'); },
+  };
+  const context = { client, sources: new Set(['meeting']), allowEvents: true, assertActive() { if (!active) throw new Error('retired'); } };
+  assert.equal((await resolve({ source, id: 'file' }, context)).bytes.toString(), 'text');
+  await assert.rejects(resolve({ source, id: 'file' }, { ...context, allowEvents: false }), /тип/);
+  await assert.rejects(resolve({ source: { ...source, kind: 'unknown' }, id: 'file' }, context), /тип/);
+  await assert.rejects(resolve({ source, id: 'missing' }, context), /во встрече/);
+  attachment.size = 21 * 1024 * 1024;
+  await assert.rejects(resolve({ source, id: 'file' }, context), /слишком большое/);
+  assert.equal(downloads, 1);
+  attachment.size = 4;
+  client.attachment = async () => { active = false; return Buffer.from('late'); };
+  await assert.rejects(resolve({ source, id: 'file' }, context), /retired/);
+  assert.equal(reads, 4);
+});

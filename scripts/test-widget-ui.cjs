@@ -20,7 +20,16 @@ app.whenReady().then(async () => {
       if(result.error)throw new Error(result.error);return result.value;
     };
     await window.loadFile(path.join(root,'src/index.html'));
-    await js('document.querySelector("[data-action=demo]").click();settingsModal()');
+    await js('document.querySelector("[data-action=demo]").click()');
+    const iconOutput = path.join(root,'release/widget-ui'); await fs.mkdir(iconOutput,{recursive:true});
+    for (const scale of [1, 2]) {
+      window.webContents.setZoomFactor(scale);
+      await js('[...document.querySelectorAll(".dock-settings")].find(button=>button.getBoundingClientRect().width).focus()');
+      await new Promise(resolve=>setTimeout(resolve,100));
+      await fs.writeFile(path.join(iconOutput,`settings-icon-${scale}.png`),(await window.webContents.capturePage()).toPNG());
+    }
+    window.webContents.setZoomFactor(1);
+    await js('settingsModal()');
     assert.equal(await js('document.querySelectorAll("[name=workDay]:checked").length'),5);
     assert.equal(await js('document.querySelector("[name=workStart]").value'),'09:00');
     await js(`window.originalErrorText=errorText;errorText=error=>{window.lastTestError=error.stack;return originalErrorText(error)};window.savedWork=null;window.saveCount=0;state.demo=false;state.account={sessionId:'fictional',server:'https://mail.example.test',username:'fictional'};window.aster={};api=async(operation,data)=>{if(operation==='saveNotifications'){saveCount++;savedWork=data;return data;}if(operation==='notificationSettings')return savedWork;if(operation==='moduleCatalog')return [];return true;};document.querySelectorAll('[name=workDay]').forEach(input=>input.checked=['2','4'].includes(input.value));document.querySelector('[name=workStart]').value='10:00';document.querySelector('[name=workEnd]').value='17:30';document.querySelector('#settings-form').requestSubmit()`);
@@ -39,10 +48,13 @@ app.whenReady().then(async () => {
     await window.loadFile(path.join(root,'src/widget.html'));
     await js(`window.fixedNow=Date.parse('2026-11-12T11:30:00+03:00');Date.now=()=>fixedNow;window.fixtureEvents=[{id:'old',title:'Old meeting',start:'2026-11-12T07:00:00+03:00',end:'2026-11-12T08:00:00+03:00'},{id:'past',title:'Recent meeting',start:'2026-11-12T10:00:00+03:00',end:'2026-11-12T10:30:00+03:00'},{id:'current',title:'Обсуждение проекта',start:'2026-11-12T11:00:00+03:00',end:'2026-11-12T12:00:00+03:00',response:'Accept',joinUrl:true},{id:'next',title:'Груминг',start:'2026-11-12T12:00:00+03:00',end:'2026-11-12T13:00:00+03:00',response:'Accept',joinUrl:true},{id:'late',title:'Вечерний обзор',start:'2026-11-12T19:00:00+03:00',end:'2026-11-12T20:00:00+03:00',response:'Accept'}];selectedDay=null;gridKey=null;render({connected:true,timeZone:'Europe/Moscow',theme:'dark',language:'ru',calendarEvents:fixtureEvents,events:fixtureEvents,lastPoll:new Date(fixedNow).toISOString()})`);
     assert.equal(await js('Boolean(document.querySelector("#privacy-toggle,.privacy-controls,header small"))'),false);
-    assert.deepEqual(await js('[...document.querySelectorAll(".featured .featured-title")].map(el=>el.textContent)'),['Обсуждение проекта']);
-    assert.equal(await js('document.querySelectorAll(".featured [data-action=open]").length'),1);
-    assert.equal(await js('document.querySelectorAll(".featured [data-action=join]").length'),1);
-    assert.doesNotMatch(await js('document.querySelector(".featured-meetings").textContent'),/Далее|Груминг/);
+    assert.deepEqual(await js('[...document.querySelectorAll(".featured .featured-title")].map(el=>el.textContent)'),['Обсуждение проекта', 'Груминг']);
+    assert.equal(await js('document.querySelectorAll(".featured [data-action=open]").length'),2);
+    assert.equal(await js('document.querySelectorAll(".featured [data-action=join]").length'),2);
+    assert.match(await js('document.querySelector(".featured.is-upcoming").textContent'),/Через 30 мин.*Груминг/);
+    assert.equal(await js('document.querySelector(".grid-join svg").getBoundingClientRect().width'),14);
+    assert.equal(await js('document.querySelector(".grid-join").getBoundingClientRect().width'),22);
+    assert.match(await js('document.querySelector(".grid-join").title'),/Войти в звонок/);
     assert.equal(await js('Boolean(document.querySelector(".day-grid [data-action=open][data-id=next]"))'),true,'Future meetings remain in the schedule');
     assert.doesNotMatch(await js('document.querySelector(".day-grid").textContent'),/Old meeting/);
     assert.match(await js('document.querySelector(".day-grid").textContent'),/Recent meeting/);
@@ -68,7 +80,15 @@ app.whenReady().then(async () => {
       await fs.writeFile(path.join(output,`${theme}-${scale}.png`),(await window.webContents.capturePage()).toPNG());
     }
     await js('render({...snapshot,calendarEvents:fixtureEvents.filter(event=>event.id!=="current"),events:[]})');
-    assert.equal(await js('document.querySelectorAll(".featured").length'),0,'Idle widget has no future meeting card');
+    assert.equal(await js('document.querySelectorAll(".featured.is-upcoming").length'),1,'Nearest future meeting remains visible before it starts');
+    assert.equal(await js('Boolean(document.querySelector(".free-state"))'),false);
+    await js('render({...snapshot,calendarEvents:[...snapshot.calendarEvents,{...fixtureEvents.find(event=>event.id==="next"),id:"next-two",title:"Вторая ближайшая"}]})');
+    assert.equal(await js('document.querySelectorAll(".featured.is-upcoming").length'),2,'All simultaneous nearest meetings are visible');
+    assert.equal(await js('document.querySelectorAll(".featured.is-upcoming [data-action=join]").length'),2);
+    await js('render({...snapshot,dismissedMeetings:[`next:${fixtureEvents.find(event=>event.id==="next").start}`]})');
+    assert.equal(await js('Boolean(document.querySelector(".featured [data-id=next-two]"))'),true,'Dismissing one simultaneous meeting preserves the other');
+    await js('render({...snapshot,dismissedMeetings:[]})');
+    await js('render({...snapshot,calendarEvents:[]})');
     assert.match(await js('document.querySelector(".free-state").textContent'),/Сейчас встреч нет/);
     await js('render({...snapshot,mailAlerts:[{id:"fictional-mail",subject:"Fictional mail alert"}]})');
     assert.equal(await js('document.querySelectorAll(".featured.mail-preview").length'),1,'Mail alerts are independent of meeting cards');
@@ -79,6 +99,25 @@ app.whenReady().then(async () => {
     assert.doesNotMatch(await js('document.querySelector("#meetings").textContent'),/Груминг|Обсуждение проекта/);
     await js('render({...snapshot,privacyActive:false,presentationMode:false})');
     assert.match(await js('document.querySelector("#meetings").textContent'),/Груминг/);
-    console.log('PASS: current-only cards, future meetings and early join in the grid, idle state, working hours, two-hour history, late meetings, privacy, light/dark at 100% and 200%.');
+    // Run the production resize function against an actual Electron window.
+    window.webContents.setZoomFactor(1);
+    const source = await fs.readFile(path.join(root,'desktop/main.cjs'),'utf8');
+    const nativeNow = Date.now();
+    const nativeEvents = Array.from({length:4},(_,index)=>({id:`parallel-${index}`,title:`Parallel meeting ${index+1}`,start:new Date(nativeNow-60000).toISOString(),end:new Date(nativeNow+1800000).toISOString(),response:'Accept',joinUrl:true}));
+    const anchor = { x: 500, y: 0, width: 24, height: 24 };
+    const area = require('electron').screen.getPrimaryDisplay().workArea;
+    const context = { widgetWindow:window, widgetState:()=>({calendarEvents:nativeEvents}), tray:{getBounds:()=>anchor}, screen:{getDisplayNearestPoint:()=>({workArea:area})}, notificationSettings:{interfaceScale:1},require:()=>require('../desktop/meetings.cjs') };
+    require('node:vm').runInNewContext(source.slice(source.indexOf('function resizeWidget('),source.indexOf('function toggleWidget(')),context);
+    for (const count of [1,2,3,4,1]) {
+      const state = {calendarEvents:nativeEvents.slice(0,count)};
+      context.resizeWidget(state);
+      assert.equal(window.getBounds().height,Math.min(560+(count-1)*150,area.height-16));
+      await js(`Date.now=()=>${nativeNow};selectedDay=null;render({...snapshot,privacyActive:false,calendarEvents:${JSON.stringify(state.calendarEvents)},dismissedMeetings:[],mailAlerts:[]})`);
+      await new Promise(resolve=>setTimeout(resolve,100));
+      assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true);
+      assert.equal(await js('document.querySelector(".day-grid").getBoundingClientRect().height>=150'),true);
+      await fs.writeFile(path.join(output,`parallel-${count}.png`),(await window.webContents.capturePage()).toPNG());
+    }
+    console.log('PASS: proportional native window sizing and screen limits; current and upcoming cards with countdown, future meetings and early join in the grid, idle state, working hours, two-hour history, late meetings, privacy, light/dark at 100% and 200%.');
   } finally {window?.destroy();await fs.rm(profile,{recursive:true,force:true,maxRetries:3});}
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

@@ -194,15 +194,25 @@ function refreshWidget() {
     if (process.platform === 'darwin') tray.setTitle(client ? `${state.privacyActive ? '⏸ ' : ''}${multiple && state.countdown.active ? `${tr('Встречи')} · ${nearest.length}` : state.countdown.label}` : '');
     tray.setToolTip(state.privacyActive ? tr('Aster Mail · уведомления скрыты') : multiple ? `${tr('Встречи')} · ${nearest.length}\n${nearest.slice(0, 5).map(event => event.title).join('\n')}` : state.events[0] ? `${state.events[0].title} · ${state.countdown.detail}` : tr('Aster Mail · ближайшие встречи'));
   }
-  if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.webContents.send('aster-widget-update', state);
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    if (widgetWindow.isVisible()) resizeWidget(state);
+    widgetWindow.webContents.send('aster-widget-update', state);
+  }
+}
+function resizeWidget(state = widgetState()) {
+  const anchor = tray.getBounds();
+  const area = screen.getDisplayNearestPoint({ x: anchor.x, y: anchor.y }).workArea;
+  const bounds = require('./meetings.cjs').widgetBounds(state, anchor, area, notificationSettings.interfaceScale);
+  const current = widgetWindow.getBounds();
+  if (Object.keys(bounds).some(key => current[key] !== bounds[key])) widgetWindow.setBounds(bounds);
 }
 function toggleWidget() { void showWidget(); }
 async function showWidget() {
   if (widgetWindow?.isVisible()) { widgetWindow.hide(); return; }
   await refreshPrivacy();
-  const bounds = tray.getBounds(), area = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea;
   const scale = notificationSettings.interfaceScale;
-  const width = Math.min(Math.round(380 * scale), area.width - 16), height = Math.min(Math.round(560 * scale), area.height - 16);
+  const anchor = tray.getBounds(), area = screen.getDisplayNearestPoint({ x: anchor.x, y: anchor.y }).workArea;
+  const { width, height } = require('./meetings.cjs').widgetBounds(widgetState(), anchor, area, scale);
   if (!widgetWindow || widgetWindow.isDestroyed()) {
     widgetWindow = new BrowserWindow({ width, height, show: false, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, title: tr('Aster · ближайшие встречи'), backgroundColor: '#f8f6fc',
       webPreferences: { preload: path.join(__dirname, 'widget-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -215,10 +225,7 @@ async function showWidget() {
     widgetWindow.once('ready-to-show', () => { widgetWindow.show(); widgetWindow.focus(); });
   }
   widgetWindow.webContents.setZoomFactor(scale);
-  widgetWindow.setSize(width, height);
-  const x = Math.max(area.x, Math.min(bounds.x + bounds.width / 2 - width / 2, area.x + area.width - width));
-  const y = bounds.y + bounds.height + height + 8 < area.y + area.height ? bounds.y + bounds.height + 8 : Math.max(area.y, bounds.y - height - 8);
-  widgetWindow.setPosition(Math.round(x), Math.round(y));
+  resizeWidget();
   if (!widgetWindow.webContents.isLoading()) { refreshWidget(); widgetWindow.show(); widgetWindow.focus(); }
 }
 function notify(kind, title, body, navigation) {
@@ -635,7 +642,7 @@ app.whenReady().then(async () => {
         const revision = previewRevision = attachmentPreviews.begin(sender);
         const C = require('./compose-attachments.cjs');
         const sources = composeEntry ? composeEntry.attachmentSources : new Set([data.source?.id].filter(Boolean));
-        const file = await C.resolve(data, { client: active, sources, assertActive }); assertActive();
+        const file = await C.resolve(data, { client: active, sources, assertActive, allowEvents: !composeEntry }); assertActive();
         if (data.action === 'preview') {
           attachmentPreviews.assertCurrent(sender, revision);
           const result = C.preview(file);

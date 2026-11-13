@@ -29,7 +29,10 @@ main { padding:10px; gap:10px; }
 .hour time { font-size:11px; }
 .grid-event-main strong { font-size:12px; }
 .grid-event-main small { font-size:11px; }
-.grid-join { width:28px; height:28px; }
+.grid-join { display:grid; place-items:center; width:22px; height:22px; max-height:calc(100% - 4px); padding:0; border-radius:5px; border:1px solid currentColor; background:transparent; color:inherit; }
+.grid-join svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; pointer-events:none; }
+.grid-event.is-live .grid-join,body.dark .grid-event .grid-join { background:transparent; color:inherit; }
+.grid-event .grid-join:hover { background:var(--surface); color:var(--accent); }
 footer { padding:8px 10px; font-size:11px; }
 .free-state,#error { font-size:12px; }
 @media(max-height:440px) { .featured-meetings { max-height:50vh; } .day-grid { min-height:130px; } header small,footer { display:none; } }
@@ -45,7 +48,7 @@ header button { width:28px; height:28px; font-size:18px; }
 .featured.is-current { border-color:var(--live); }
 .focus-label { font-size:11px; color:var(--muted); margin-bottom:4px; }
 .is-current .focus-label { color:var(--live); }
-.featured-meetings { max-height:min(300px,52vh); }
+.featured-meetings { max-height:max(140px,calc(100vh - 310px)); }
 .featured .actions button { flex:1; }
 .featured .actions .dismiss { flex:none; width:26px; min-width:26px; padding:4px; }
 .day-toolbar strong small { display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:3px; }
