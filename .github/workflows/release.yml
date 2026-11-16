@@ -50,6 +50,7 @@ jobs:
       - name: Verify message context menu
         run: npm run test:mail-context
       - name: Verify local MCP integration
+        timeout-minutes: 2
         run: npm run test:mcp
       - name: Verify module sandbox
         run: npm run test:modules

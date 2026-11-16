@@ -8,6 +8,22 @@ const profile = require('node:fs').mkdtempSync(path.join(require('node:os').tmpd
 app.setPath('userData', profile);
 require('../desktop/main.cjs');
 let child, clipboardBackup;
+async function finish(code, error) {
+  if (error) console.error(error);
+  try {
+    child?.kill();
+    if (clipboardBackup !== undefined) await clipboard.writeText(clipboardBackup);
+    // The fixture owns every window; do not invoke production quit/dirty guards.
+    app.removeAllListeners('window-all-closed');
+    for (const window of BrowserWindow.getAllWindows()) window.destroy();
+    await fs.rm(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(error => {
+      // Chromium can retain Windows profile handles until process exit.
+      if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(error.code)) throw error;
+      console.warn(`Temporary fictional profile remains locked until exit: ${error.code}`);
+    });
+  } catch (failure) { console.error(failure); code = 1; }
+  finally { app.exit(code); }
+}
 async function waitFor(check) {
   for (let i = 0; i < 200; i++) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 30)); }
   throw new Error('MCP native fixture timed out');
@@ -87,4 +103,4 @@ app.whenReady().then(async () => {
   await waitFor(async () => { try { await fs.stat(path.join(profile, 'mcp-connection.json')); return false; } catch { return true; } });
   assert.equal((await request('tools/call', { name: 'get_account', arguments: {} })).result.isError, true);
   console.log('PASS: native MCP menu, independent stdio harness, mail/calendar tools, disabled access, preserved reader and unsaved mail/meeting drafts.');
-}).then(async () => { child?.kill(); await clipboard.writeText(clipboardBackup); await fs.rm(profile, { recursive: true, force: true }); app.exit(0); }, async error => { console.error(error); child?.kill(); if (clipboardBackup !== undefined) await clipboard.writeText(clipboardBackup); await fs.rm(profile, { recursive: true, force: true }); app.exit(1); });
+}).then(() => finish(0), error => finish(1, error));
