@@ -24,8 +24,9 @@ function fixture() {
 }
 test('MCP exposes mail and meeting tools, validates arguments, and returns no credentials', async () => {
   const f = fixture();
-  assert.equal(tools.length, 14);
-  assert.equal(tools.some(tool => /send|delete|attachment/.test(tool.name)), false);
+  assert.equal(tools.length, 58);
+  assert.ok(tools.some(tool => tool.name === 'send_mail'));
+  assert.equal(tools.some(tool => tool.name === 'execute_code'), false);
   assert.deepEqual(await f.call('get_account'), { connected: true, sessionId: 'session-a' });
   for (const input of [{}, { sessionId: 'old' }, { sessionId: 'session-a', unexpected: true }]) await assert.rejects(f.call('list_folders', input));
   for (const input of [{ sessionId: 'session-a', offset: -1 }, { sessionId: 'session-a', from: '\"bad' }, { sessionId: 'session-a', start: '2026-02-30' }]) await assert.rejects(f.call('search_mail', input));
@@ -104,9 +105,9 @@ test('real stdio subprocess negotiates MCP and reaches the authenticated loopbac
   assert.equal((await request('tools/list')).error.code, -32002);
   assert.equal((await request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } })).result.protocolVersion, '2025-11-25');
   child.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n');
-  assert.equal((await request('tools/list')).result.tools.length, 14);
+  assert.equal((await request('tools/list')).result.tools.length, 58);
   assert.deepEqual(JSON.parse((await request('tools/call', { name: 'get_account', arguments: {} })).result.content[0].text), { connected: true, sessionId: 'fictional' });
-  assert.equal((await request('tools/call', { name: 'send_mail', arguments: {} })).result.isError, true);
+  assert.equal((await request('tools/call', { name: 'execute_code', arguments: {} })).result.isError, true);
   assert.equal((await request('unknown')).error.code, -32601);
   assert.equal(errors, '');
   const descriptor = JSON.parse(await fs.readFile(path.join(directory, 'mcp-connection.json'), 'utf8'));

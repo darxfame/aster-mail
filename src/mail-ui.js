@@ -146,7 +146,7 @@ function showMailContextMenu(row, x, y) {
   const message = state.messages.find(item => item.id === row.dataset.id); if (!message) return;
   closeMailContextMenu(); closeFolderMenu();
   const account = state.account, scope = mailSelectionKey(), generation = state.generation;
-  const actions = [['open', tr('Открыть письмо')], [message.read ? 'unread' : 'read', message.read ? tr('Пометить непрочитанным') : tr('Пометить прочитанным')], ['archive', tr('В архив')], ['trash', tr('В корзину')]];
+  const actions = [['open', tr('Открыть письмо')], [message.read ? 'unread' : 'read', message.read ? tr('Пометить непрочитанным') : tr('Пометить прочитанным')], ['archive', tr('В архив')], ['trash', tr('В корзину')], ['rule', tr('Создать правило для отправителя')]];
   const menu = document.createElement('div'); mailContextMenu = menu; menu.opener = row.querySelector('.message-open');
   menu.className = 'folder-context-menu mail-context-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tr('Действия с письмом'));
   menu.innerHTML = actions.map(([action, label]) => `<button type="button" role="menuitem" tabindex="-1" data-mail-context="${action}" ${isDraftMessage(message) && ['read','unread'].includes(action) || !state.query && (action === 'archive' && state.folder === 'archive' || action === 'trash' && state.folder === 'deleteditems') ? 'disabled' : ''}>${esc(label)}</button>`).join('');
@@ -159,6 +159,7 @@ function showMailContextMenu(row, x, y) {
     const action = button.dataset.mailContext; closeMailContextMenu();
     if (account !== state.account || scope !== mailSelectionKey() || generation !== state.generation || mailBatchBusy || !state.messages.some(item => item.id === message.id)) return;
     if (action === 'open') void openMessage(message.id).catch(showError);
+    else if (action === 'rule') ruleAfterMove(message, message.parentId || state.folder, false);
     else void runMailBatch(action, undefined, [message.id]).catch(showError);
   };
   menu.querySelector('button:not(:disabled)').focus();
@@ -196,10 +197,10 @@ async function toggleMailProperty(id, field) {
   renderMessages(); if (state.selected?.id === id) renderReader();
 }
 let moveRuleContext;
-function ruleAfterMove(message, folder) {
+function ruleAfterMove(message, folder, moved = true) {
   const name = systemFolders.find(f => f[0] === folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === folder)?.name || tr('Выбранная папка');
   moveRuleContext = { sender: message.from.email, folder };
-  modal(tr('Письмо перемещено'), `${tr("Папка:")} ${name}${tr(". Настроить автоматический перенос новых писем?")}`, `<form id="mail-rule-form">${field('name', tr('Название правила'), `${tr("Письма от")} ${message.from.name || message.from.email}`.slice(0, 100), 'text', true)}${field('sender', tr('Отправитель'), message.from.email, 'email', true)}${field('subject', tr('Тема содержит · необязательно'))}<p class="form-note">${tr("Все новые входящие письма от этого адреса будут перемещаться в выбранную папку на сервере Exchange. Если указать фрагмент темы, должны совпасть оба условия. Старые письма не обрабатываются. Правило добавляется после существующих; их настройки сохраняются.")}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr("Без правила")}</button><button class="primary" type="submit">${tr("Создать правило на сервере")}</button></div></form>`);
+  modal(moved ? tr('Письмо перемещено') : tr('Создать правило для отправителя'), `${tr("Папка:")} ${name}`, `<form id="mail-rule-form">${field('name', tr('Название правила'), `${tr("Письма от")} ${message.from.name || message.from.email}`.slice(0, 100), 'text', true)}${field('sender', tr('Отправитель'), message.from.email, 'email', true)}${field('subject', tr('Тема содержит · необязательно'))}<label class="checkbox"><input type="checkbox" name="move" ${moved ? 'checked' : ''}>${tr('Перемещать в указанную папку')}</label><label class="checkbox"><input type="checkbox" name="markRead" ${moved ? '' : 'checked'}>${tr('Отмечать как прочитанное')}</label><p class="form-note">${tr('Выберите одно или оба действия. Правило применяется только к новым входящим от этого отправителя; при указанной теме должны совпасть оба условия. Существующие письма и правила сохраняются.')}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="close">${tr("Без правила")}</button><button class="primary" type="submit">${tr("Создать правило на сервере")}</button></div></form>`);
 }
 let mailMoveContext;
 document.addEventListener('click', event => {
@@ -272,7 +273,8 @@ document.addEventListener('submit', event => {
   if (event.target.id !== 'mail-rule-form') return;
   event.preventDefault(); const context = moveRuleContext;
   submitForm(event.target, async data => {
-    if (!state.demo) await api('createMailRule', { ...data, folder: context.folder });
+    if (!data.move && !data.markRead) throw new Error(tr('Выберите хотя бы одно действие правила'));
+    if (!state.demo) await api('createMailRule', { name: data.name, sender: data.sender, subject: data.subject, ...(data.move ? { folder: context.folder } : {}), markRead: Boolean(data.markRead) });
     $('#modal').close(); toast(state.demo ? tr('Демо: серверное правило не создавалось') : tr('Правило создано в Exchange'));
   });
 });

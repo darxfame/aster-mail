@@ -44,7 +44,8 @@ async function start({ directory, version, ...options }) {
     await fs.writeFile(descriptor, JSON.stringify({ port: server.address().port, token, version }), { mode: 0o600 });
     await fs.chmod(descriptor, 0o600);
   } catch (error) { server.close(); server.closeAllConnections(); throw error; }
-  return { async close() {
+  return { retire: () => call.retire(), async close() {
+    call.retire();
     closed = true; server.close(); server.closeAllConnections();
     await fs.rm(descriptor, { force: true });
   } };

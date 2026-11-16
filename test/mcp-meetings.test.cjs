@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const { OWAClient } = require('../desktop/owa.cjs');
-const { createTools, meetingPrompt } = require('../desktop/mcp-tools.cjs');
+const { createTools } = require('../desktop/mcp-tools.cjs');
 const T = require('../src/time.js');
 const sessionId = 'fictional-session';
 const start = '2027-03-28T08:00:00Z', end = '2027-03-28T09:00:00Z';
@@ -54,13 +54,12 @@ test('invalid ranges, dates, recipients and meeting changes are rejected before 
   await assert.rejects(f.call('update_meeting', update({ recurrence: {} })));
   assert.equal(f.approvals.length, 0); assert.equal(f.calls.some(call => ['CreateItem', 'UpdateItem'].includes(call.action)), false);
 });
-test('meeting creation requires approval, escapes plain text and sends exactly one invitation write', async () => {
+test('meeting creation skips native approval, escapes plain text and sends exactly one invitation write', async () => {
   const f = fixture(), input = { sessionId, title: 'Planning <&>', body: 'Line 1\n<script>literal</script>', start, end, attendees: ['ANNA@example.test', 'anna@example.test'] };
   f.state.allowed = false;
-  await assert.rejects(f.call('create_meeting', input), /cancelled/); assert.equal(f.calls.length, 0);
-  f.state.allowed = true;
   assert.equal(await f.call('create_meeting', input), true);
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0].action, 'CreateItem');
+  assert.equal(f.approvals.length, 0);
   const xml = f.calls[0].options.body;
   assert.match(xml, /SendMeetingInvitations="SendToAllAndSaveCopy"/);
   assert.match(xml, /Planning &lt;&amp;&gt;/); assert.match(xml, /BodyType="Text"/);
@@ -76,7 +75,7 @@ test('organizer moves preserve duration, use NeverOverwrite and notify attendees
   assert.match(xml, /NeverOverwrite/); assert.match(xml, /ChangeKey="key"/); assert.match(xml, /SendToAllAndSaveCopy/);
   assert.match(xml, /2027-03-28T10:30:00.000Z/); assert.match(xml, /2027-03-28T11:30:00.000Z/);
   assert.doesNotMatch(xml, /item:Body|RequiredAttendees|Recurrence/);
-  assert.equal(f.approvals[0].data.changes.end, '2027-03-28T11:30:00.000Z');
+  assert.equal(f.approvals.length, 0);
 });
 test('invitees can change reminders only; stale keys and changes during approval never overwrite', async () => {
   const invited = fixture(); invited.state.response = 'Accept';
@@ -87,7 +86,9 @@ test('invitees can change reminders only; stale keys and changes during approval
   const stale = fixture(); stale.state.key = 'new';
   await assert.rejects(stale.call('update_meeting', update({ location: 'Room' })), /changed/);
   assert.equal(stale.approvals.length, 0);
-  const raced = fixture(); raced.state.afterApproval = () => { raced.state.key = 'new'; };
+  const raced = fixture(); let reads = 0;
+  const transport = raced.active.transport;
+  raced.active.transport = async (...args) => { if (++reads === 2) raced.state.key = 'new'; return transport(...args); };
   await assert.rejects(raced.call('update_meeting', update({ location: 'Room' })), /uncertain/);
   assert.equal(raced.calls.some(call => call.action === 'UpdateItem'), false);
 });
@@ -95,7 +96,7 @@ test('series updates use the master version; retirement and uncertain writes are
   const series = fixture();
   await series.call('update_meeting', { ...update({ location: 'Room' }), scope: 'series', expectedChangeKey: 'master-key' });
   assert.match(series.calls.at(-1).options.body, /Id="master" ChangeKey="master-key"/);
-  const retired = fixture(); retired.state.afterApproval = () => { retired.state.retired = true; };
+  const retired = fixture(); retired.state.retired = true;
   await assert.rejects(retired.call('create_meeting', { sessionId, title: 'Planning', start, end }), /session ended/);
   assert.equal(retired.calls.length, 0);
   for (const name of ['create_meeting', 'update_meeting']) {
@@ -130,12 +131,6 @@ test('free/busy and slots include self, honor IANA/DST and never treat missing d
   await assert.rejects(f.call('find_meeting_slots', { sessionId, date: '2027-02-30', timeZone: 'UTC', minutes: 60, emails: [] }));
   await assert.rejects(f.call('find_meeting_slots', { sessionId, date: '2027-03-28', timeZone: 'Invalid/Zone', minutes: 60, emails: [] }));
   await assert.rejects(f.call('get_availability', { sessionId, start, end: '2027-04-30T09:00:00Z', emails: [] }));
-});
-test('native meeting prompts disclose time zone, scope, recipients and computed duration', () => {
-  const create = meetingPrompt({ name: 'create_meeting', data: { title: 'Planning', start, end, attendees: 'anna@example.test', body: 'Agenda' } }, 'Europe/Moscow');
-  assert.match(create.message, /создать/); assert.match(create.detail, /Europe\/Moscow/); assert.match(create.detail, /11:00/); assert.match(create.detail, /anna@example.test/); assert.match(create.detail, /приглашение/);
-  const prompt = meetingPrompt({ name: 'update_meeting', meeting: { title: 'Planning', start, end, isOrganizer: true }, data: { scope: 'series', changes: { start: '2027-03-28T10:00:00Z', end: '2027-03-28T11:00:00Z' } } }, 'UTC');
-  assert.match(prompt.detail, /Всему ряду/); assert.match(prompt.detail, /08:00.*→.*10:00/);
 });
 test('calendar background refresh preserves an open draft and discards navigation/account races', async () => {
   const source = fs.readFileSync(require.resolve('../src/calendar-ui.js'), 'utf8');

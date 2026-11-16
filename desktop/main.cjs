@@ -24,6 +24,94 @@ const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.
 const { fetchContentImage, fetchImageResponse } = require('./content-images.cjs');
 let localStore, connection, accountEpoch = 0, connectAttempt = 0;
 let mcpBridge, mcpEnabled = false, mcpChanging = false;
+let dispatchClientOperation;
+function mcpHost() {
+  const allowed = new Set(['notificationSettings', 'updateState', 'saveNotifications', 'setInterfaceScale', 'togglePresentation', 'testNotification', 'dismissMailAlert', 'clearMailCache', 'checkUpdates', 'downloadUpdate', 'pauseUpdateDownload', 'cancelUpdateDownload', 'cancelUpdateInstall', 'openUpdateInstaller', 'saveUpdatePreferences', 'openLink', 'disconnect', 'resetLocalData', 'joinEvent', 'contactHistory', 'autoReplies', 'saveAutoReplies', 'quickReplies', 'saveQuickReplies', 'mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder', 'waitingReplies', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply', 'saveMeetingReminders', 'moduleCatalog', 'moduleConfigure', 'moduleRemove', 'moduleInvoke']);
+  const retiring = new Set(['disconnect', 'resetLocalData', 'openUpdateInstaller']);
+  const ui = async (method, input, guard) => {
+    guard(); if (method !== 'layout') reveal();
+    const sender = window.webContents;
+    const result = await sender.executeJavaScript(`window.asterMcpUI(${JSON.stringify({ method, input, sessionId: client?.syncId || null })})`);
+    guard(); if (result?.error) throw new Error(result.error); return result;
+  };
+  const invoke = async (operation, data, guard) => {
+    if (!allowed.has(operation)) throw new Error('MCP client operation denied');
+    guard();
+    const sender = window.webContents;
+    const result = await dispatchClientOperation({ sender, senderFrame: sender.mainFrame }, operation, { ...data, sessionId: client?.syncId });
+    if (!retiring.has(operation)) guard();
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  };
+  return {
+    capture: () => {
+      const epoch = accountEpoch;
+      return () => { if (!mcpEnabled || quitting || resettingLocalData || epoch !== accountEpoch) throw new Error('MCP session ended'); };
+    },
+    invoke,
+    sanitize: async (html, guard) => {
+      guard();
+      const result = await window.webContents.executeJavaScript(`(() => { const doc=window.asterRichContent.sanitize(${JSON.stringify(html)},{images:true}); for(const image of doc.querySelectorAll('img')) if(!/^cid:[a-z0-9@._+%=-]{1,500}$/i.test(image.getAttribute('src')||''))image.remove(); return doc.body.innerHTML; })()`);
+      guard(); return result;
+    },
+    local: (name, input, guard) => ui('local', { name, ...input }, guard),
+    signature: (kind, guard) => ui('signature', { kind }, guard),
+    panel: (panel, guard) => ui('panel', { panel }, guard),
+    settings: async guard => ({ notifications: await invoke('notificationSettings', {}, guard), updates: await invoke('updateState', {}, guard), alerts: mailWindowAlerts(), layout: await ui('layout', {}, guard) }),
+    pickFiles: async (files, owner, guard) => {
+      guard(); reveal();
+      const selected = await dialog.showOpenDialog(window, { properties: ['openFile', 'multiSelections'] }); guard();
+      const result = [];
+      for (const filename of selected.filePaths) {
+        const stat = await fs.stat(filename); guard();
+        if (!stat.isFile() || stat.size > 20 * 1024 * 1024) throw new Error('Attachment exceeds 20 MiB');
+        const bytes = await fs.readFile(filename); guard();
+        result.push(files.upload({ name: path.basename(filename), type: 'application/octet-stream', content: bytes.toString('base64'), offset: 0, final: true }, owner));
+      }
+      return result;
+    },
+    attachment: async (action, file, guard) => {
+      guard(); const owner = window.webContents;
+      if (action === 'close_preview') { attachmentPreviews.close(owner); return true; }
+      if (action === 'open') return attachmentFiles.open({ name: file.name, load: async () => file.bytes, assertActive: guard });
+      if (action === 'save') {
+        reveal(); const chosen = await dialog.showSaveDialog(window, { defaultPath: safeName(file.name) }); guard();
+        if (chosen.canceled) return false;
+        await writeAttachment(chosen.filePath, file.bytes, { assertActive: guard }); guard(); return true;
+      }
+      const revision = attachmentPreviews.begin(owner), preview = require('./compose-attachments.cjs').preview(file);
+      if (preview.kind === 'pdf') return attachmentPreviews.open(file, { owner, revision, assertActive: guard, parent: window });
+      // Text and validated raster previews return bounded content to the harness.
+      return preview;
+    },
+    action: async (input, guard) => {
+      guard();
+      if (input.action === 'save_settings') {
+        if (!input.settings || !Object.keys(input.settings).length) throw new Error('Supply settings changes');
+        const next = await invoke('saveNotifications', { ...notificationSettings, ...input.settings }, guard);
+        await invoke('setInterfaceScale', { scale: next.interfaceScale }, guard);
+        await ui('preferences', { notifications: next, layout: input.settings }, guard); return next;
+      }
+      if (input.action === 'show_app') { reveal(); return true; }
+      if (input.action === 'show_widget') { if (!widgetWindow?.isVisible()) toggleWidget(); return true; }
+      if (input.action === 'hide_widget') { widgetWindow?.hide(); return true; }
+      if (input.action === 'quit') { app.quit(); return true; }
+      if (input.action === 'disconnect') {
+        if (activeServerWrites) throw new Error('Wait for active writes before logging out');
+        if (!confirmDiscardChanges()) throw new Error(tr('Закрытие писем отменено'));
+        const previousSession = client?.syncId;
+        const result = await invoke('disconnect', {}, guard);
+        if (window && !window.isDestroyed()) window.webContents.send('aster-mcp-account-retired', { sessionId: previousSession });
+        return result;
+      }
+      const operations = { reset_local_data: 'resetLocalData', set_presentation: 'togglePresentation', test_notification: 'testNotification', dismiss_mail_alert: 'dismissMailAlert', clear_mail_cache: 'clearMailCache', check_updates: 'checkUpdates', download_update: 'downloadUpdate', pause_update_download: 'pauseUpdateDownload', cancel_update_download: 'cancelUpdateDownload', cancel_update_install: 'cancelUpdateInstall', install_update: 'openUpdateInstaller', save_update_preferences: 'saveUpdatePreferences', open_link: 'openLink' };
+      const operation = operations[input.action];
+      if (!operation) throw new Error('Unknown MCP client control');
+      const result = await invoke(operation, input, guard);
+      return result;
+    },
+  };
+}
 async function setMcpEnabled(enabled) {
   if (mcpChanging) return;
   mcpChanging = true;
@@ -33,17 +121,17 @@ async function setMcpEnabled(enabled) {
     if (mcpBridge) return;
     mcpBridge = await require('./mcp-bridge.cjs').start({
       directory: app.getPath('userData'), version: app.getVersion(),
+      host: mcpHost(),
       current: () => mcpEnabled && !quitting && !resettingLocalData ? client : null,
-      confirm: async ({ name, input, folder, messages, meeting, data }) => {
-        if (require('./mcp-tools.cjs').calendarWrites.has(name)) {
+      confirm: async ({ name, input, folder, messages, meeting, data, prompt }) => {
+        if (prompt) {
           reveal();
-          const prompt = require('./mcp-tools.cjs').meetingPrompt({ name, data, meeting }, notificationSettings.timeZone);
           return (await dialog.showMessageBox(window, { type: 'question', ...prompt, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 })).response === 1;
         }
         const title = { create_folder: tr('MCP: создать папку?'), move_mail: tr('MCP: переместить письма?'), create_rule: tr('MCP: создать правило?') }[name];
         const detail = name === 'create_folder' ? `${input.name}\n→ ${folder}` : name === 'move_mail'
           ? `${messages.length} → ${folder}\n\n${messages.map(message => `${message.from?.email || ''}: ${message.subject}`).join('\n')}`
-          : `${input.name}\n${tr('Отправитель')}: ${input.sender}\n${tr('Тема')}: ${input.subject || '*'}\n→ ${folder}\n\n${tr('Правило применяется к новым входящим письмам.')}`;
+          : `${input.name}\n${tr('Отправитель')}: ${input.sender}\n${tr('Тема')}: ${input.subject || '*'}${input.folder ? `\n→ ${folder}` : ''}${input.markRead ? `\n${tr('Отмечать как прочитанное')}` : ''}\n\n${tr('Правило применяется к новым входящим письмам.')}`;
         reveal();
         return (await dialog.showMessageBox(window, { type: 'question', message: title, detail, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 })).response === 1;
       },
@@ -362,6 +450,7 @@ async function pollNotifications() {
 
 
 function retireAccount() {
+  mcpBridge?.retire();
   moduleHost?.closeAll(); moduleProfile?.retire();
   attachmentPreviews?.closeAll();
   composeWindows?.destroyAll();
@@ -564,7 +653,7 @@ app.whenReady().then(async () => {
     if (composeEntry && event.senderFrame === event.sender.mainFrame && typeof value === 'boolean') composeEntry.dirty = value;
     if (event.sender === window?.webContents && event.senderFrame === window.webContents.mainFrame && typeof value === 'boolean') unsavedChanges = value;
   });
-  ipcMain.handle('aster', async (event, operation, data) => {
+  ipcMain.handle('aster', dispatchClientOperation = async (event, operation, data) => {
     let composeEntry, composeWrite = false, serverWrite = false;
     const debugErrors = notificationSettings.debugErrors;
     try {

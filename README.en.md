@@ -24,7 +24,8 @@ without an Aster cloud or application telemetry.
 - **Interface:** light/dark Air Glass themes, 80–200% scale, Russian/English UI and notification privacy.
 - **Modules:** additional capabilities from [Aster Mail Modules](https://github.com/darxfame/aster-mail-modules).
 - **MCP:** connect a local agent to mail search/read, folders, moves and rules,
-  meeting search/details, availability, common slots, meeting creation and updates.
+  mail sending/replies/forwards, drafts and attachments, meeting operations,
+  contacts, reminders, automatic replies, settings and installed module commands.
 
 ## Requirements and installation
 
@@ -76,13 +77,16 @@ Example requests: “Find mail from anna@example.com about the contract”,
 “Find an hour when Anna and I are free tomorrow and create a meeting after
 approval.” Availability checks and invitations require exact email addresses.
 
-Writes require approval in Aster. Moving a meeting's start without supplying
+Mail sends and calendar operations have no Aster confirmation; the agent/harness
+handles send authorization. Other writes retain approval in Aster. Moving a meeting's start without supplying
 an end preserves its duration; stale meeting versions cannot overwrite newer
 ones. Unknown availability is never free. An uncertain write must be checked
 in Exchange before another attempt.
 
-Mail sending, deletion, attachment downloads, meeting RSVP and cancellation
-are not exposed. Aster must remain running; remote access from another machine
+Drafts, attachment transfers, meeting RSVP/cancellation, contacts, automatic
+replies, reminders, signatures, templates, settings and module commands are
+available. Rules can move mail, mark it read, or both. Permanent deletion is
+not exposed. Account/service sign-in and module installation use the existing UI. Aster must remain running; remote access from another machine
 is not supported. Use a trusted harness: it may send retrieved data to your
 chosen AI provider. [Full tool reference and limitations (Russian)](docs/MCP.md).
 

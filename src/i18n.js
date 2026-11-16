@@ -1,6 +1,15 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Создать правило для отправителя": "Create a rule for this sender",
+    "Перемещать в указанную папку": "Move to this folder",
+    "Отмечать как прочитанное": "Mark as read",
+    "Выберите хотя бы одно действие правила": "Choose at least one rule action",
+    "Укажите имя правила, отправителя и действие: перенос или отметку прочитанным": "Specify the rule name, sender and an action: move or mark as read",
+    "Выберите одно или оба действия. Правило применяется только к новым входящим от этого отправителя; при указанной теме должны совпасть оба условия. Существующие письма и правила сохраняются.": "Choose one or both actions. The rule applies only to future incoming mail from this sender; a supplied subject must also match. Existing messages and rules are preserved.",
+    "Exchange хранит совместимые правила Outlook. Чтобы не удалить их, создайте новое правило в OWA.": "Exchange stores compatible Outlook rules. Create the new rule in OWA to preserve them.",
+    "MCP: выполнить изменение?": "MCP: apply change?",
+    "Завершите работу с открытым окном перед действием MCP.": "Finish working in the open dialog before this MCP action.",
     "Место": "Location",
     "Необязательные участники": "Optional attendees",
     "Занятость": "Availability",

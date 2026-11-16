@@ -62,7 +62,7 @@ test('a superseded login cannot publish a client or credentials after another ac
     authenticate() { return new Promise(resolve => { this.finish = resolve; }); }
   }
   const context = vm.createContext({ WaitingReplies: require('../desktop/waiting-replies.cjs').WaitingReplies, MailReminders: require('../desktop/mail-reminders.cjs').MailReminders, tr: value => value, i18n: { language: 'ru', setLanguage() {} }, updateTrayMenu() {},
-    moduleHost: undefined, moduleProfile: undefined, composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, connectAttempt: 0, quitting: false, resettingLocalData: false, AbortController,
+    mcpBridge: undefined, moduleHost: undefined, moduleProfile: undefined, composeWindows: undefined, OWAClient: FakeClient, client: null, connection: null, account: null, accountEpoch: 0, connectAttempt: 0, quitting: false, resettingLocalData: false, AbortController,
     attachmentPreviews: undefined, attachmentFiles: { clear: async () => {} },
     crypto: require('node:crypto'), normalizeServer: value => new URL(value).origin,
     session: { fromPartition: id => { const value = { id, clearStorageData: async () => {}, cookies: { get: async () => [{ value: id }] } }; sessions.push(value); return value; } },

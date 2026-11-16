@@ -7,6 +7,77 @@ const avatar = (name, tone = 0, email = '') => `<div class="avatar tone-${tone %
 // Discard legacy plaintext preferences instead of importing unscoped corporate data.
 for (const key of Object.keys(window.localStorage)) if (key.startsWith('aster-') && key !== 'aster-language') window.localStorage.removeItem(key);
 let localValues = {}, localSave = Promise.resolve(), loginHint = null;
+let pendingMcpPreferences = null;
+window.asterMcpUI = async request => {
+  const account = state.account;
+  const guard = () => { if ((state.account?.sessionId || null) !== request.sessionId || state.account !== account) throw new Error(tr('Сессия аккаунта завершена')); };
+  guard();
+  const { method, input } = request;
+  if (method === 'layout') return { navigationPlacement, calendarView: calendarPreference, sidebarHidden: sidebarCollapsed, mailListWidth: preferredMailListWidth };
+  if (method === 'signature') {
+    if (!syncSignature) return state.signature ? { text: state.signature } : null;
+    const signature = await getServerSignature(); guard();
+    if (!(input.kind === 'new' ? signature.autoAddSignature : signature.autoAddSignatureOnReply)) return null;
+    if (Object.keys(signature.errors || {}).length) throw new Error(tr('Не удалось загрузить картинки подписи. Обновите подпись в настройках или отключите синхронизацию перед отправкой.'));
+    const doc = new DOMParser().parseFromString(signature.html || '', 'text/html'), attachments = [];
+    for (const image of doc.querySelectorAll('img')) {
+      const match = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(image.getAttribute('src') || '');
+      if (!match) throw new Error(tr('Изображение подписи не загружено'));
+      const contentId = `aster-mcp-${crypto.randomUUID()}@aster.local`;
+      attachments.push({ name: `signature-${attachments.length}.${match[1].split('/')[1]}`, type: match[1], content: match[2], inline: true, contentId });
+      image.setAttribute('src', `cid:${contentId}`);
+    }
+    return { text: signature.text, html: doc.body.innerHTML, attachments };
+  }
+  if (method === 'preferences') {
+    if ($('#modal').open || modalBusy) { pendingMcpPreferences = request; return { deferred: true }; }
+    notificationPreferences = input.notifications; timeZone = input.notifications.timeZone;
+    state.theme = input.notifications.theme; applyLanguage(input.notifications.language); applyTheme(); renderSidebar();
+    const layout = input.layout || {};
+    if (layout.navigationPlacement !== undefined) { navigationPlacement = layout.navigationPlacement; localPreferences.setItem('aster-navigation-placement-v2', navigationPlacement); renderSidebar(); }
+    if (layout.calendarView !== undefined) { calendarPreference = layout.calendarView; localPreferences.setItem('aster-calendar-view', calendarPreference); }
+    if (layout.sidebarHidden !== undefined) { sidebarCollapsed = layout.sidebarHidden; compactSidebarExpanded = !sidebarCollapsed; localPreferences.setItem('aster-sidebar-collapsed', String(sidebarCollapsed)); renderSidebar(); }
+    if (layout.mailListWidth !== undefined) { preferredMailListWidth = layout.mailListWidth; localPreferences.setItem('aster-mail-list-width', String(preferredMailListWidth)); applyMailListWidth(); }
+    await localSave; guard();
+    invalidateDaySummary();
+    if (state.view === 'calendar') await loadView();
+    return true;
+  }
+  if (method === 'local') {
+    if (!state.account || state.demo) throw new Error(tr('Сначала подключите аккаунт OWA'));
+    await localSave; guard();
+    if (input.name === 'get_signature') {
+      let server = null, serverError = '';
+      try { server = await api('signature'); } catch (error) { serverError = errorText(error); }
+      guard(); return { signature: state.signature, sync: syncSignature, server, serverError };
+    }
+    if (input.name === 'set_signature') {
+      state.signature = input.signature; syncSignature = input.sync;
+      localPreferences.setItem('aster-signature', input.signature); localPreferences.setItem('aster-signature-sync', String(input.sync));
+    } else if (input.name === 'get_colleagues') return colleagues();
+    else if (input.name === 'set_colleagues') await saveColleagues(input.people);
+    else throw new Error('Unknown local MCP action');
+    await localSave; guard();
+    return true;
+  }
+  if (method !== 'panel') throw new Error('Unknown MCP UI operation');
+  if ($('#modal').open || modalBusy) throw new Error(tr('Завершите работу с открытым окном перед действием MCP.'));
+  const settingsPanels = ['settings', 'modules', 'account', 'signature', 'auto-replies', 'notifications'];
+  if (settingsPanels.includes(input.panel)) {
+    await settingsModal(); guard();
+    if (input.panel !== 'settings') document.querySelector(`#settings-tab-${input.panel}`)?.click();
+  } else if (input.panel === 'updates') await updatesModal();
+  else if (input.panel === 'compose' || input.panel === 'quick-replies') {
+    await compose(); guard();
+    if (input.panel === 'quick-replies') document.querySelector('.quick-replies').open = true;
+  } else if (input.panel === 'meeting') eventModal();
+  else if (input.panel === 'contact') contactModal();
+  else if (input.panel === 'directory') directoryModal();
+  else if (input.panel === 'waiting-replies') await waitingRepliesModal();
+  else if (input.panel === 'mail-reminders') await mailRemindersModal();
+  else throw new Error('Unknown MCP panel');
+  guard(); return { opened: input.panel };
+};
 const localPreferences = {
   getItem: key => localValues[key] ?? null,
   setItem(key, value) {
@@ -1322,6 +1393,10 @@ async function boot() {
     window.aster.onInbox(snapshot => { void receiveInbox(snapshot); });
     window.aster.onMailboxChanged?.(snapshot => { void receiveMailboxChange(snapshot); });
     window.aster.onCalendarChanged?.(snapshot => { void receiveCalendarChange(snapshot); });
+    window.aster.onMcpAccountRetired?.(snapshot => {
+      if (snapshot.sessionId !== state.account?.sessionId) return;
+      applyAccount(null); welcome();
+    });
     window.aster.onConnection?.(receiveConnection);
     window.aster.onModuleAction?.(receiveModuleAction);
     renderMailAlerts(await api('mailAlerts'));
@@ -1381,7 +1456,14 @@ function confirmDiscardChanges() {
 for (const name of ['input', 'change']) document.addEventListener(name, event => {
   if (event.target.closest('#compose-form, #event-form, #meeting-message-form, #meeting-reminder-form, #meeting-local-reminders-form')) setModalDirty(true);
 });
-$('#modal').addEventListener('close', () => { if ($('#modal').open) return; if (typeof unmountModuleViews === 'function') unmountModuleViews(); closeAttachmentPreview(); setModalDirty(false); resumeConnectionReads(); });
+$('#modal').addEventListener('close', () => {
+  if ($('#modal').open) return;
+  if (typeof unmountModuleViews === 'function') unmountModuleViews(); closeAttachmentPreview(); setModalDirty(false); resumeConnectionReads();
+  if (pendingMcpPreferences) {
+    const request = pendingMcpPreferences; pendingMcpPreferences = null;
+    setTimeout(() => { void window.asterMcpUI(request).catch(() => {}); }, 0);
+  }
+});
 document.addEventListener('click', event => {
   if (event.target.closest('[data-action="planner-slot"]') && $('#event-form')) setModalDirty(true);
   if (!event.target.closest('[data-action="meeting-return"]') || !modalDirty) return;
