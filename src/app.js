@@ -789,12 +789,53 @@ function contactModal() {
   if (!ready()) return connectModal();
   modal(tr('Новый контакт'), tr('Сохранится в личных контактах Exchange.'), `<form id="contact-form">${field('name', tr('Имя'), '', 'text', true)}${field('email', 'Email', '', 'email', true)}${field('company', tr('Компания / команда'))}${field('phone', tr('Телефон'), '', 'tel')}${formError()}<div class="modal-footer"><button class="primary" type="submit">${tr("Сохранить контакт")}</button></div></form>`);
 }
+async function refreshMcpSettings() {
+  const panel = $('#settings-panel-mcp');
+  if (!panel) return;
+  const format = panel.querySelector('[data-mcp-harness]').value;
+  const guides = {
+    claude: [tr('Claude Code: добавьте сервер из блока ниже в файл .mcp.json в корне проекта, сохранив остальные серверы. Перезапустите Claude Code, разрешите сервер проекта и проверьте подключение командой /mcp.'), 'https://code.claude.com/docs/en/mcp'],
+    'claude-desktop': [tr('Claude Desktop: откройте Settings → Developer → Edit Config. Добавьте сервер из блока ниже в claude_desktop_config.json, сохранив остальные серверы, затем полностью перезапустите Claude Desktop.'), 'https://modelcontextprotocol.io/docs/develop/connect-local-servers'],
+    codex: [tr('Codex (приложение, CLI, IDE): добавьте блок ниже в ~/.codex/config.toml, сохранив существующие настройки, и перезапустите MCP-подключение или Codex. В CLI проверить сервер можно командой codex mcp list.'), 'https://learn.chatgpt.com/docs/extend/mcp'],
+    dsh: [tr('DeepSeek Harness (dsh): добавьте YAML-запись ниже в Cordis-конфигурацию нужного профиля и перезагрузите его. Это запись плагина dsh-mcp-client, а не mcpServers JSON. В Web/Desktop с MCP manager можно вместо этого добавить сервер в Settings: имя aster-mail, транспорт stdio, command node, args — путь из блока ниже.'), 'https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md'],
+    continue: [tr('Continue: создайте в проекте файл .continue/mcpServers/aster-mail.yaml и вставьте весь YAML ниже. Перезагрузите Continue и выберите Agent mode: MCP-инструменты работают в режиме агента.'), 'https://docs.continue.dev/customize/deep-dives/mcp'],
+    kilo: [tr('Kilo Code: откройте Settings → MCP → Add Server → Local (stdio). Имя — aster-mail; команда — node; аргумент — путь из блока ниже. Для текущего Kilo CLI добавьте показанный блок mcp в ~/.config/kilo/kilo.jsonc, сохранив остальные настройки. В старых версиях с mcpServers выберите формат «Другой harness · JSON».'), 'https://kilo.ai/docs/automate/mcp/using-in-kilo-code'],
+    json: [tr('Другой harness: добавьте сервер aster-mail из JSON ниже в его MCP-настройки. Транспорт — stdio, command — node, args — массив с путём к скрипту. Если формат настроек отличается, перенесите эти поля без изменения пути.'), 'https://modelcontextprotocol.io/docs/develop/connect-local-servers'],
+  };
+  const [guide, source] = guides[format];
+  panel.querySelector('[data-mcp-guide]').textContent = guide;
+  panel.querySelector('[data-mcp-source]').dataset.url = source;
+  panel.querySelector('[data-mcp-config]').value = '';
+  panel.querySelector('[data-mcp-instructions]').value = '';
+  panel.querySelector('[data-action="mcp-copy"]').disabled = true;
+  panel.querySelector('[data-action="mcp-copy-instructions"]').disabled = true;
+  if (!window.aster) return;
+  const status = await api('mcpState', { format });
+  if ($('#settings-panel-mcp') !== panel || panel.querySelector('[data-mcp-harness]').value !== format) return;
+  const toggle = panel.querySelector('[data-action="mcp-toggle"]');
+  toggle.disabled = status.changing;
+  toggle.dataset.enabled = String(status.enabled);
+  toggle.textContent = status.enabled ? tr('Выключить MCP') : tr('Включить MCP');
+  panel.querySelector('[data-action="mcp-copy"]').disabled = !status.enabled || status.changing;
+  panel.querySelector('[data-mcp-status]').textContent = status.enabled ? tr('MCP включён') : tr('MCP выключен');
+  panel.querySelector('[data-mcp-config]').value = status.configuration;
+  panel.querySelector('[data-mcp-instructions]').value = status.instructions;
+  panel.querySelector('[data-action="mcp-copy-instructions"]').disabled = false;
+}
+async function openMcpSettings() {
+  if (!$('#settings-form')) {
+    if ($('#modal').open || modalBusy) { toast(tr('Завершите работу с открытым окном перед действием MCP.')); return; }
+    await settingsModal();
+  }
+  const tab = $('#settings-tab-mcp');
+  selectSettingsTab(tab); tab.focus();
+}
 function selectSettingsTab(selected) {
   const form = selected.closest('form');
   const autoRepliesSave = form.querySelector('#auto-replies-save');
   const settingsSave = form.querySelector('.settings-footer [type="submit"]');
   if (autoRepliesSave) autoRepliesSave.hidden = selected.id !== 'settings-tab-auto-replies';
-  if (settingsSave) settingsSave.hidden = selected.id === 'settings-tab-auto-replies';
+  if (settingsSave) settingsSave.hidden = ['settings-tab-auto-replies', 'settings-tab-mcp'].includes(selected.id);
   for (const tab of form.querySelectorAll('[role="tab"]')) {
     const active = tab === selected;
     tab.setAttribute('aria-selected', String(active));
@@ -802,6 +843,7 @@ function selectSettingsTab(selected) {
     form.querySelector(`#${tab.getAttribute('aria-controls')}`).hidden = !active;
   }
   if (selected.id === 'settings-tab-signature' && form.elements.syncSignature.checked && !serverSignature) void refreshSignatureField();
+  if (selected.id === 'settings-tab-mcp') void refreshMcpSettings().catch(showError);
 }
 async function settingsModal() {
   if (window.aster) notificationPreferences = await api('notificationSettings');
@@ -810,7 +852,7 @@ async function settingsModal() {
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal(tr('Настройки Aster'), tr('Спокойное пространство, настроенное под вас.'), `<form id="settings-form">
     <div class="settings-tabs" role="tablist" aria-label="${tr("Разделы настроек")}">
-      ${[['general', tr('Общие')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
+      ${[['general', tr('Общие')], ['mcp', tr('MCP · Агенты')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
     </div>
     <div class="settings-panels">
     <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
@@ -830,6 +872,34 @@ async function settingsModal() {
     <label class="field"><span>${tr("Расположение меню")}</span><select name="navigationPlacement"><option value="sidebar" ${navigationPlacement === 'sidebar' ? 'selected' : ''}>${tr("Слева · под папками, над аккаунтом")}</option><option value="bottom" ${navigationPlacement === 'bottom' ? 'selected' : ''}>${tr("Внизу окна · горизонтальная панель")}</option></select></label>
     </section>
     <section id="settings-panel-modules" role="tabpanel" aria-labelledby="settings-tab-modules" tabindex="0" hidden>${moduleSettingsMarkup()}</section>
+    <section id="settings-panel-mcp" role="tabpanel" aria-labelledby="settings-tab-mcp" tabindex="0" hidden>
+    <h3 class="settings-section-title">${tr('Подключить AI-агента к Aster Mail')}</h3>
+    <p class="form-note">${tr('Агент на этом компьютере сможет искать письма, отправлять ответы, работать с папками, правилами и встречами через MCP.')}</p>
+    <p data-mcp-status role="status">${window.aster ? tr('Загрузка…') : tr('MCP доступен в настольном приложении Aster Mail.')}</p>
+    <button type="button" class="secondary" data-action="mcp-toggle" disabled>${tr('Включить MCP')}</button>
+    <h3 class="settings-heading">${tr('Как подключить')}</h3>
+    <details><summary>${tr('Требования и проверка подключения')}</summary>
+    <ol class="form-note">
+      <li>${tr('Установите Node.js 22 или новее на этом компьютере. Команда node должна быть доступна вашему агенту.')}</li>
+      <li>${tr('Включите MCP кнопкой выше и скопируйте конфигурацию. Aster Mail должен оставаться запущенным.')}</li>
+      <li>${tr('В настройках агента добавьте MCP-сервер с транспортом stdio. Вставьте JSON или перенесите поля command и args в формат вашего harness. Если node не найден, укажите полный путь к нему.')}</li>
+      <li>${tr('Подключите Exchange в Aster и перезапустите MCP-подключение в агенте. Попросите его найти письмо от нужного отправителя. Демо-почта через MCP недоступна.')}</li>
+    </ol>
+    </details>
+    <label class="field"><span>${tr('Ваш агент / harness')}</span><select data-mcp-harness>${[['claude', 'Claude Code'], ['claude-desktop', 'Claude Desktop'], ['codex', 'Codex'], ['dsh', 'DeepSeek Harness (dsh)'], ['continue', 'Continue'], ['kilo', 'Kilo Code'], ['json', tr('Другой harness · JSON')]].map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
+    <p class="form-note">${tr('Скопируйте 5 строк и вставьте в чат агента — он настроит подключение.')}</p>
+    <button type="button" class="primary" data-action="mcp-copy-instructions" disabled>${tr('Скопировать инструкцию для агента')}</button>
+    <details><summary>${tr('Текст задачи для агента')}</summary><label class="field"><span>${tr('Готовая задача для агента')}</span><textarea data-mcp-instructions rows="5" readonly spellcheck="false"></textarea></label></details>
+    <details><summary>${tr('Ручная настройка и конфигурация')}</summary>
+    <p class="form-note" data-mcp-guide></p>
+    <button type="button" class="secondary" data-action="link" data-mcp-source>${tr('Официальная инструкция агента')}</button>
+    <button type="button" class="secondary" data-action="mcp-copy" disabled>${tr('Скопировать конфигурацию MCP')}</button>
+    <label class="field"><span>${tr('Конфигурация для выбранного агента')}</span><textarea data-mcp-config rows="8" readonly spellcheck="false" aria-label="${tr('Конфигурация для выбранного агента')}"></textarea></label>
+    <p class="form-note">${tr('Если node не найден, замените его полным путём к Node.js. Используйте путь к скрипту из конфигурации, не путь к приложению. После подключения попросите агента вызвать get_account и найти письмо от нужного отправителя.')}</p>
+    </details>
+    <p class="form-note">${tr('Доступ выключается при завершении Aster. После следующего запуска включите MCP снова; конфигурацию агента менять не нужно.')}</p>
+    <p class="form-note">${tr('Пароль Exchange агенту не передаётся. Отправка писем и операции со встречами выполняются без подтверждения в Aster; разрешение может запросить агент. Другие изменения требуют подтверждения в клиенте.')}</p>
+    </section>
     <section id="settings-panel-auto-replies" role="tabpanel" aria-labelledby="settings-tab-auto-replies" tabindex="0" hidden>${autoRepliesMarkup()}</section>
     <section id="settings-panel-signature" role="tabpanel" aria-labelledby="settings-tab-signature" tabindex="0" hidden>
     <h3 class="settings-section-title">${tr("Подпись в письмах")}</h3>
@@ -1019,6 +1089,14 @@ async function handleAction(button) {
   }
   if (action === 'updates') return updatesModal();
   if (action === 'settings') return settingsModal();
+  if (action === 'mcp-toggle') {
+    button.disabled = true;
+    try { await api('setMcpEnabled', { enabled: button.dataset.enabled !== 'true' }); }
+    finally { await refreshMcpSettings(); }
+    return;
+  }
+  if (action === 'mcp-copy') { await api('copyMcpConfiguration', { format: $('#settings-panel-mcp [data-mcp-harness]').value }); toast(tr('Конфигурация MCP скопирована')); return; }
+  if (action === 'mcp-copy-instructions') { await api('copyMcpConfiguration', { format: $('#settings-panel-mcp [data-mcp-harness]').value, instructions: true }); toast(tr('Задача для агента скопирована')); return; }
   if (action === 'settings-tab') return selectSettingsTab(button);
   if (action === 'refresh-signature') {
     $('#settings-form').elements.syncSignature.checked = true;
@@ -1218,6 +1296,7 @@ document.addEventListener('input', event => {
   if (form && $('#planner-results') && ['start', 'end', 'attendees'].includes(event.target.name)) $('#planner-results').innerHTML = tr('<p class="form-note">Данные изменились. Проверьте занятость повторно.</p>');
 });
 document.addEventListener('change', event => {
+  if (event.target.matches('[data-mcp-harness]')) void refreshMcpSettings().catch(showError);
   if (event.target.name === 'protocol') refreshProtocolNote();
   if (event.target.name === 'useMeetingMinutes') event.target.closest('form').querySelector('.meeting-reminder-times').disabled = !event.target.checked;
   if (event.target.name === 'allDay' && event.target.closest('#event-form')) {
@@ -1397,6 +1476,8 @@ async function boot() {
       if (snapshot.sessionId !== state.account?.sessionId) return;
       applyAccount(null); welcome();
     });
+    window.aster.onMcpHelp?.(() => { void openMcpSettings().catch(showError); });
+    window.aster.onMcpState?.(() => { void refreshMcpSettings().catch(showError); });
     window.aster.onConnection?.(receiveConnection);
     window.aster.onModuleAction?.(receiveModuleAction);
     renderMailAlerts(await api('mailAlerts'));

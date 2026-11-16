@@ -59,12 +59,17 @@ same computer. The agent uses the current Exchange session in Aster and does
 not need your Exchange password.
 
 1. Install Node.js 22+ for the MCP process and launch Aster Mail.
-2. Enable **MCP → Agent access to mail and calendar** in the application menu.
-3. Select **MCP → Copy MCP configuration**, add it to your harness settings,
-   and sign in to Exchange in Aster. For TOML, YAML or CLI configuration, use
-   the copied `command` and `args` in your harness's stdio server format.
+2. Open **Settings (gear icon) → MCP · Agents** and select **Enable MCP**.
+   This section also provides connection instructions and server status.
+3. Select **Copy setup task for agent** and paste the task into your agent chat.
+   For manual setup, expand **Manual setup and configuration** and copy its config.
+   Sign in to Exchange in Aster.
 4. Restart the MCP connection after updating Aster to refresh its tool list.
-   Access is disabled by default and must be enabled after each Aster restart.
+
+The MCP settings include dedicated setup and copyable configuration for
+**Claude Code / Desktop, Codex, DeepSeek Harness (dsh), Continue and Kilo Code**.
+[Harness setup examples (Russian)](docs/MCP.md#настройка-популярных-harness).
+Access is disabled by default and must be enabled after each Aster restart.
 
 | Mail | Meetings |
 | --- | --- |

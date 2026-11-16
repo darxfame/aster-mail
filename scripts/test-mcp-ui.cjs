@@ -41,12 +41,54 @@ app.whenReady().then(async () => {
   const item = Menu.getApplicationMenu().getMenuItemById('aster-mcp');
   assert.equal(item.checked, false);
   await assert.rejects(fs.readFile(path.join(profile, 'mcp-connection.json')), { code: 'ENOENT' });
-  item.click();
+  Menu.getApplicationMenu().getMenuItemById('aster-mcp-help').click();
+  await waitFor(() => js('Boolean(document.querySelector("#settings-panel-mcp") && !document.querySelector("#settings-panel-mcp").hidden && document.querySelector("[data-mcp-config]").value)'));
+  assert.equal(await js('document.querySelector("[data-action=mcp-copy]").disabled'), true);
+  assert.equal(await js('document.querySelector("[data-action=mcp-copy-instructions]").disabled'), false);
+  assert.match(await js('document.querySelector("#settings-panel-mcp").textContent'), /Node.js 22|stdio/);
+  await js('document.querySelector("[data-action=mcp-toggle]").click()');
   await waitFor(async () => { try { return Boolean(JSON.parse(await fs.readFile(path.join(profile, 'mcp-connection.json'), 'utf8')).port); } catch { return false; } });
   const menu = Menu.getApplicationMenu().items.find(item => item.label === 'MCP');
   menu.submenu.items[1].click();
   const config = JSON.parse(await clipboard.readText()).mcpServers['aster-mail'];
   assert.equal(config.command, 'node'); assert.deepEqual(config.args, [path.join(profile, 'mcp-stdio.cjs')]);
+  assert.equal(item.checked, true);
+  await waitFor(() => js('!document.querySelector("[data-action=mcp-copy]").disabled'));
+  clipboard.writeText('fictional-before-copy');
+  await js('document.querySelector("[data-action=mcp-copy]").click()');
+  await waitFor(async () => (await clipboard.readText()) !== 'fictional-before-copy');
+  const copied = await clipboard.readText();
+  await waitFor(() => js('document.querySelector("[data-mcp-config]").value === ' + JSON.stringify(copied)));
+  for (const format of ['claude', 'claude-desktop', 'codex', 'dsh', 'continue', 'kilo', 'json']) {
+    await js(`(() => {const select=document.querySelector('[data-mcp-harness]');select.value=${JSON.stringify(format)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await waitFor(() => js('Boolean(document.querySelector("[data-mcp-config]").value)'));
+    const text = await js('document.querySelector("[data-mcp-config]").value');
+    assert.match(text, /mcp-stdio.cjs/);
+    if (format === 'codex') assert.match(text, /\[mcp_servers.aster-mail\]/);
+    else if (format === 'dsh') { assert.match(text, /@deepseek-ai\/dsh-mcp-client/); assert.match(text, /transport: stdio/); }
+    else if (format === 'continue') { assert.match(text, /schema: v1/); assert.match(text, /mcpServers:/); }
+    else if (format === 'kilo') assert.deepEqual(JSON.parse(text).mcp['aster-mail'].command, ['node', ...config.args]);
+    else assert.deepEqual(JSON.parse(text).mcpServers['aster-mail'].args, config.args);
+    clipboard.writeText('fictional-before-copy');
+    await js('document.querySelector("[data-action=mcp-copy]").click()');
+    await waitFor(async () => (await clipboard.readText()) === text);
+    assert.ok(await js('document.querySelector("[data-mcp-guide]").textContent.length > 50'));
+    const instructions = await js('document.querySelector("[data-mcp-instructions]").value');
+    assert.equal(instructions.split('\n').length, 5); assert.ok(instructions.includes(JSON.stringify(config.args))); assert.match(instructions, /get_account/);
+    assert.match(instructions, /не отправляй письма/); assert.match(instructions, /Сохрани остальные настройки/);
+    clipboard.writeText('fictional-before-copy');
+    await js('document.querySelector("[data-action=mcp-copy-instructions]").click()');
+    await waitFor(async () => (await clipboard.readText()) === instructions);
+  }
+  const denied = await window.webContents.executeJavaScript("window.aster.invoke('mcpState',{format:'unknown'})");
+  assert.equal(denied.ok, false);
+  await js(`(() => {const select=document.querySelector('[data-mcp-harness]');select.value='codex';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await waitFor(() => js('Boolean(document.querySelector("[data-mcp-instructions]").value)'));
+  assert.equal(await js('document.querySelector("[data-action=mcp-copy-instructions]").getBoundingClientRect().bottom < document.querySelector(".settings-footer").getBoundingClientRect().top'), true);
+  await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  const helpOutput = path.join(__dirname, '../release/mcp-ui'); await fs.mkdir(helpOutput, { recursive: true });
+  await fs.writeFile(path.join(helpOutput, 'mcp-settings.png'), (await window.webContents.capturePage()).toPNG());
+  await js('document.querySelector("#modal").close();void 0');
   child = spawn(config.command, config.args, { stdio: ['pipe', 'pipe', 'pipe'] });
   let buffer = ''; const replies = new Map(); let id = 0;
   child.stdout.on('data', chunk => { buffer += chunk; let end; while ((end = buffer.indexOf('\n')) >= 0) { const value = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); replies.get(value.id)?.(value); replies.delete(value.id); } });
@@ -112,6 +154,8 @@ app.whenReady().then(async () => {
   assert.equal(await js('state.messages[0].id'), 'after-move');
   const output = path.join(__dirname, '../release/mcp-ui'); await fs.mkdir(output, { recursive: true });
   await fs.writeFile(path.join(output, 'preserved-compose.png'), (await window.webContents.capturePage()).toPNG());
+  Menu.getApplicationMenu().getMenuItemById('aster-mcp-help').click();
+  assert.equal(await js('Boolean(document.querySelector("#compose-form"))'), true);
   await js(`(() => {
     mcpDialog.close();state.demo=true;state.account=null;state.view='calendar';state.selected=null;state.query='';
     return loadView();
@@ -131,6 +175,10 @@ app.whenReady().then(async () => {
   await js('mcpDialog.close();state.account=null;state.demo=true;window.aster.setUnsavedChanges(false);void 0');
   item.click();
   await waitFor(async () => { try { await fs.stat(path.join(profile, 'mcp-connection.json')); return false; } catch { return true; } });
+  await js('settingsModal().then(()=>document.querySelector("#settings-tab-mcp").click())');
+  await waitFor(() => js('document.querySelector("[data-mcp-status]").textContent === "MCP выключен"'));
+  assert.equal(await js('document.querySelector("[data-action=mcp-copy]").disabled'), true);
+  assert.equal(await js('document.querySelector("[data-action=mcp-copy-instructions]").disabled'), false);
   assert.equal((await request('tools/call', { name: 'get_account', arguments: {} })).result.isError, true);
   console.log('PASS: native MCP menu, independent stdio harness, mail/calendar tools, disabled access, preserved reader and unsaved mail/meeting drafts.');
 }).then(() => finish(0), error => finish(1, error));

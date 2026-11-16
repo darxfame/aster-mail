@@ -8,12 +8,15 @@ MCP даёт локальному агенту доступ к запущенн�
 
 ## Подключение
 
-1. Запустите Aster Mail и включите **MCP → Доступ агента к почте и календарю** в меню
-   приложения. Доступ выключен по умолчанию и не сохраняется между запусками.
+1. Запустите Aster Mail, откройте **Настройки (шестерёнка) → MCP · Агенты**
+   и нажмите **Включить MCP**. В этом разделе есть инструкция и текущий статус. Доступ выключен по умолчанию и не сохраняется между запусками.
    При запуске из исходников можно использовать `npm start -- --mcp`.
-2. Выберите **MCP → Скопировать конфигурацию MCP**. Вставьте конфигурацию
-   в настройки MCP вашего агента. Если harness использует TOML, YAML или CLI,
-   перенесите значения `command` и `args` в его формат настройки stdio-сервера.
+2. Выберите **Claude Code / Desktop, Codex, DeepSeek Harness (dsh), Continue
+   или Kilo Code**. Нажмите **Скопировать инструкцию для агента** и вставьте
+   задачу из пяти строк в его чат. В ней уже есть настоящий путь, место
+   настройки выбранного harness и проверка подключения без отправки писем.
+   Для настройки вручную раскройте **Ручная настройка и конфигурация**
+   и скопируйте конфигурацию выбранного harness.
    Требуется установленный Node.js 22 или новее;
    если агент не находит `node`, укажите полный путь к нему в `command`.
    Используется стандартный транспорт stdio, версия MCP 2025-11-25
@@ -22,9 +25,148 @@ MCP даёт локальному агенту доступ к запущенн�
    вымышленные или настоящие письма. Перезапустите подключение MCP у агента,
    если его настройки требуют этого после добавления сервера.
 
+Раздел также открывается через меню приложения **MCP → Как подключить агента · инструкция**.
+В меню MCP остаются переключатель доступа и копирование конфигурации.
+
 Конфигурация содержит `command: "node"` и абсолютный путь к `mcp-stdio.cjs`
 в профиле Aster. Скрипт создаётся при включении MCP, работает и в установленном
 приложении и не требует исходников. Не меняйте его путь на `app.asar`.
+
+## Настройка популярных harness
+
+В **Настройки → MCP · Агенты** выберите свой harness: Aster покажет его
+инструкцию и готовую задачу для вставки в чат агента. Копируемая задача занимает пять строк
+и включает настоящий абсолютный путь к скрипту. В примерах ниже `/ABSOLUTE/PATH/mcp-stdio.cjs` нужно заменить путём из
+Aster. Сохраняйте существующие настройки и серверы при добавлении блока.
+Если `node` не найден, замените его полным путём к Node.js. Aster и harness
+должны работать на одном компьютере под тем же пользователем.
+
+### Claude Code
+
+Добавьте сервер в `.mcp.json` в корне проекта:
+
+```json
+{
+  "mcpServers": {
+    "aster-mail": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/mcp-stdio.cjs"]
+    }
+  }
+}
+```
+
+Или зарегистрируйте его для своего пользователя через CLI:
+
+```sh
+claude mcp add --transport stdio --scope user aster-mail -- node "/ABSOLUTE/PATH/mcp-stdio.cjs"
+```
+
+Перезапустите Claude Code. Для проектного сервера подтвердите подключение;
+статус доступен через `/mcp` или `claude mcp get aster-mail`.
+[Официальная инструкция Claude Code](https://code.claude.com/docs/en/mcp).
+
+### Claude Desktop
+
+Откройте **Settings → Developer → Edit Config** и добавьте сервер в
+`claude_desktop_config.json` под ключом `mcpServers`: `command: "node"`,
+`args: ["/ABSOLUTE/PATH/mcp-stdio.cjs"]`. Можно взять полный JSON из Aster,
+выбрав **Claude Desktop**. Полностью перезапустите Claude Desktop.
+[Официальная инструкция локальных серверов MCP](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+
+### Codex: приложение, CLI и IDE
+
+Добавьте в `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.aster-mail]
+command = "node"
+args = ["/ABSOLUTE/PATH/mcp-stdio.cjs"]
+```
+
+Альтернатива для CLI:
+
+```sh
+codex mcp add aster-mail -- node "/ABSOLUTE/PATH/mcp-stdio.cjs"
+```
+
+Перезапустите подключение или Codex; `codex mcp list` показывает регистрацию.
+[Официальная инструкция Codex](https://learn.chatgpt.com/docs/extend/mcp).
+
+### DeepSeek Harness (dsh)
+
+Добавьте запись в Cordis-конфигурацию нужного профиля:
+
+```yaml
+- id: mcp-aster-mail
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: aster-mail
+    transport: stdio
+    command: node
+    args: ["/ABSOLUTE/PATH/mcp-stdio.cjs"]
+```
+
+Перезагрузите профиль. В Web/Desktop с MCP manager можно вместо этого
+добавить сервер через Settings: имя `aster-mail`, транспорт `stdio`, команда
+`node`, единственный аргумент — путь к скрипту Aster. Выберите один способ
+подключения, чтобы не регистрировать одинаковый сервер дважды.
+[Конфигурация dsh-mcp-client](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md),
+[MCP manager](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-manager/README.md).
+
+### Continue
+
+Создайте `.continue/mcpServers/aster-mail.yaml` в проекте:
+
+```yaml
+name: Aster Mail
+version: 1.0.0
+schema: v1
+mcpServers:
+  - name: aster-mail
+    command: node
+    args: ["/ABSOLUTE/PATH/mcp-stdio.cjs"]
+```
+
+Перезагрузите Continue и включите **Agent mode**. Также Continue принимает
+обычный `mcpServers` JSON в `.continue/mcpServers/aster-mail.json`.
+[Официальная инструкция Continue](https://docs.continue.dev/customize/deep-dives/mcp).
+
+### Kilo Code
+
+В расширении откройте **Settings → MCP → Add Server → Local (stdio)**:
+имя `aster-mail`, команда `node`, единственный аргумент — абсолютный путь к
+`mcp-stdio.cjs` из Aster.
+
+В текущем Kilo CLI добавьте в `~/.config/kilo/kilo.jsonc`:
+
+```json
+{
+  "mcp": {
+    "aster-mail": {
+      "type": "local",
+      "command": ["node", "/ABSOLUTE/PATH/mcp-stdio.cjs"]
+    }
+  }
+}
+```
+
+В старых версиях с ключом `mcpServers` используйте формат **Другой harness · JSON**
+из Aster. Проверьте, что сервер включён в списке MCP.
+[Официальная инструкция Kilo Code](https://kilo.ai/docs/automate/mcp/using-in-kilo-code).
+
+### Проверка подключения и частые ошибки
+
+- Попросите агента: «Вызови `get_account` в Aster Mail и найди письма от anna@example.com».
+- `connected: false`: подключите Exchange в Aster; демо-письма через MCP недоступны.
+- Сервер недоступен: проверьте статус в **Настройки → MCP · Агенты** и включите MCP.
+- `node` не найден: укажите полный путь к установленному Node.js 22+.
+- Файл скрипта не найден: скопируйте конфигурацию из запущенного Aster; не используйте путь к `app.asar`.
+- После обновления Aster переподключите MCP в harness, чтобы обновились инструменты.
+- Запрос с неизвестным результатом отправки не повторяйте: сначала проверьте папку «Отправленные».
+
+## Примеры запросов
 
 Примеры команд агенту:
 

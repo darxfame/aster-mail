@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('aster', {
   onMailboxChanged: callback => ipcRenderer.on('aster-mailbox-changed', (_event, data) => callback(data)),
   onCalendarChanged: callback => ipcRenderer.on('aster-calendar-changed', (_event, data) => callback(data)),
   onMcpAccountRetired: callback => ipcRenderer.on('aster-mcp-account-retired', (_event, data) => callback(data)),
+  onMcpHelp: callback => ipcRenderer.on('aster-mcp-help', () => callback()),
+  onMcpState: callback => ipcRenderer.on('aster-mcp-state', () => callback()),
   onConnection: callback => ipcRenderer.on('aster-connection', (_event, data) => callback(data)),
   onMailAlerts: callback => ipcRenderer.on('aster-mail-alerts', (_event, data) => callback(data)),
   onPrivacy: callback => ipcRenderer.on('aster-privacy', (_event, data) => callback(data)),

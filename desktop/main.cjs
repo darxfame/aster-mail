@@ -112,6 +112,37 @@ function mcpHost() {
     },
   };
 }
+function mcpConfiguration(format = 'json') {
+  const script = path.join(app.getPath('userData'), 'mcp-stdio.cjs');
+  const server = { command: 'node', args: [script] }, quoted = JSON.stringify(script);
+  if (format === 'codex') return `[mcp_servers.aster-mail]\ncommand = "node"\nargs = [${quoted}]\n`;
+  if (format === 'dsh') return `- id: mcp-aster-mail\n  name: '@deepseek-ai/dsh-mcp-client'\n  config:\n    serverName: aster-mail\n    transport: stdio\n    command: node\n    args: [${quoted}]\n`;
+  if (format === 'continue') return `name: Aster Mail\nversion: 1.0.0\nschema: v1\nmcpServers:\n  - name: aster-mail\n    command: node\n    args: [${quoted}]\n`;
+  if (format === 'kilo') return JSON.stringify({ mcp: { 'aster-mail': { type: 'local', command: ['node', script] } } }, null, 2);
+  if (format === 'claude') return JSON.stringify({ mcpServers: { 'aster-mail': { type: 'stdio', ...server } } }, null, 2);
+  if (!['json', 'claude-desktop'].includes(format)) throw new Error('Unknown MCP configuration format');
+  return JSON.stringify({ mcpServers: { 'aster-mail': server } }, null, 2);
+}
+function mcpAgentInstructions(format = 'json') {
+  const targets = {
+    claude: ['Claude Code', tr('Пользовательская настройка: claude mcp add --transport stdio --scope user aster-mail -- node <script>.')],
+    'claude-desktop': ['Claude Desktop', tr('Конфиг: claude_desktop_config.json → mcpServers.aster-mail (Settings → Developer → Edit Config).')],
+    codex: ['Codex', tr('Конфиг: ~/.codex/config.toml → mcp_servers.aster-mail.')],
+    dsh: ['DeepSeek Harness (dsh)', tr('Cordis активного профиля: плагин @deepseek-ai/dsh-mcp-client, serverName=aster-mail, transport=stdio.')],
+    continue: ['Continue', tr('Конфиг: .continue/mcpServers/aster-mail.yaml; включи Agent mode.')],
+    kilo: ['Kilo Code', tr('Конфиг текущего Kilo: ~/.config/kilo/kilo.jsonc → mcp.aster-mail, type=local, command=[node, script].')],
+    json: ['MCP harness', tr('Добавь aster-mail в MCP-конфиг текущего harness, используя его формат stdio.')],
+  };
+  if (!Object.hasOwn(targets, format)) throw new Error('Unknown MCP configuration format');
+  const [name, target] = targets[format];
+  return [
+    `${tr('Настрой MCP-сервер aster-mail для')} ${name}.`,
+    `stdio; Node.js 22+; command=node; args=${JSON.stringify([path.join(app.getPath('userData'), 'mcp-stdio.cjs')])}`,
+    target,
+    tr('Сохрани остальные настройки; для проверки не отправляй письма и встречи.'),
+    tr('Переподключи MCP, проверь tools/list и get_account; если Aster/MCP выключен — попроси включить.'),
+  ].join('\n');
+}
 async function setMcpEnabled(enabled) {
   if (mcpChanging) return;
   mcpChanging = true;
@@ -156,6 +187,9 @@ async function setMcpEnabled(enabled) {
     mcpChanging = false;
     const item = Menu.getApplicationMenu()?.getMenuItemById('aster-mcp');
     if (item) item.checked = mcpEnabled;
+    const copy = Menu.getApplicationMenu()?.getMenuItemById('aster-mcp-copy');
+    if (copy) copy.enabled = mcpEnabled;
+    if (window && !window.isDestroyed()) window.webContents.send('aster-mcp-state');
   }
 }
 const { normalizeServer } = require('./protocol.cjs');
@@ -628,7 +662,8 @@ app.whenReady().then(async () => {
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
     { label: 'MCP', submenu: [
       { id: 'aster-mcp', label: tr('Доступ агента к почте и календарю'), type: 'checkbox', checked: false, click: item => { void setMcpEnabled(item.checked); } },
-      { label: tr('Скопировать конфигурацию MCP'), click: () => clipboard.writeText(JSON.stringify({ mcpServers: { 'aster-mail': { command: 'node', args: [path.join(app.getPath('userData'), 'mcp-stdio.cjs')] } } }, null, 2)) },
+      { id: 'aster-mcp-copy', label: tr('Скопировать конфигурацию MCP'), enabled: false, click: () => clipboard.writeText(mcpConfiguration()) },
+      { id: 'aster-mcp-help', label: tr('Как подключить агента · инструкция'), click: () => { reveal(); window.webContents.send('aster-mcp-help'); } },
     ] },
   ]));
   composeWindows = new ComposeWindows({ BrowserWindow, dialog, page, tr });
@@ -700,6 +735,17 @@ app.whenReady().then(async () => {
         return { ok: true, value: i18n.language };
       }
       if (operation === 'resetLocalData') return { ok: true, value: await resetLocalData() };
+      if (operation === 'mcpState') return { ok: true, value: { enabled: mcpEnabled, changing: mcpChanging, configuration: mcpConfiguration(data.format), instructions: mcpAgentInstructions(data.format) } };
+      if (operation === 'setMcpEnabled') {
+        if (typeof data.enabled !== 'boolean') throw new Error('Invalid MCP setting');
+        await setMcpEnabled(data.enabled);
+        return { ok: true, value: mcpEnabled };
+      }
+      if (operation === 'copyMcpConfiguration') {
+        if (data.instructions !== undefined && typeof data.instructions !== 'boolean') throw new Error('Invalid MCP copy mode');
+        if ((!mcpEnabled || mcpChanging) && !data.instructions) throw new Error(tr('Сначала включите MCP'));
+        clipboard.writeText(data.instructions ? mcpAgentInstructions(data.format) : mcpConfiguration(data.format)); return { ok: true, value: true };
+      }
       if (operation === 'updateState') return { ok: true, value: updates.snapshot() };
       if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
       if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
