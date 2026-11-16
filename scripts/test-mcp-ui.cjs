@@ -1,5 +1,5 @@
 // Real Electron host and independent Node stdio harness; fictional UI data only.
-const { app, BrowserWindow, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, ipcMain } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -7,6 +7,14 @@ const { spawn } = require('node:child_process');
 const vm = require('node:vm');
 const profile = require('node:fs').mkdtempSync(path.join(require('node:os').tmpdir(), 'aster-mcp-native-'));
 app.setPath('userData', profile);
+// Hold the renderer's first boot request while exercising the real menu/IPC.
+let releaseBoot, bootBlocked = false;
+const bootGate = new Promise(resolve => { releaseBoot = resolve; });
+const handle = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (channel, listener) => handle(channel, channel === 'aster' ? async (event, operation, ...args) => {
+  if (operation === 'setLanguage') { bootBlocked = true; await bootGate; }
+  return listener(event, operation, ...args);
+} : listener);
 require('../desktop/main.cjs');
 let child, clipboardBackup;
 async function finish(code, error) {
@@ -31,7 +39,7 @@ async function waitFor(check) {
 }
 app.whenReady().then(async () => {
   clipboardBackup = await clipboard.readText();
-  await waitFor(() => Menu.getApplicationMenu()?.getMenuItemById('aster-mcp') && BrowserWindow.getAllWindows().some(window => window.webContents.getURL().endsWith('/src/index.html') && !window.webContents.isLoading()));
+  await waitFor(() => bootBlocked && Menu.getApplicationMenu()?.getMenuItemById('aster-mcp') && BrowserWindow.getAllWindows().some(window => window.webContents.getURL().endsWith('/src/index.html') && !window.webContents.isLoading()));
   const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().endsWith('/src/index.html'));
   const js = async code => {
     const result = await window.webContents.executeJavaScript(`try { ${code} } catch (error) { ({ fixtureError: error.stack }); }`);
@@ -46,6 +54,7 @@ app.whenReady().then(async () => {
   assert.equal(await js('document.querySelector("[data-action=mcp-copy]").disabled'), true);
   assert.equal(await js('document.querySelector("[data-action=mcp-copy-instructions]").disabled'), false);
   assert.match(await js('document.querySelector("#settings-panel-mcp").textContent'), /Node.js 22|stdio/);
+  releaseBoot();
   await js('document.querySelector("[data-action=mcp-toggle]").click()');
   await waitFor(async () => { try { return Boolean(JSON.parse(await fs.readFile(path.join(profile, 'mcp-connection.json'), 'utf8')).port); } catch { return false; } });
   const menu = Menu.getApplicationMenu().items.find(item => item.label === 'MCP');

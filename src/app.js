@@ -1450,6 +1450,9 @@ function applyAccount(value) {
 async function boot() {
   applyTheme();
   if (isComposeWindow && window.aster) return bootComposeWindow();
+  // Menu actions can arrive as soon as the page loads, before boot IPC resolves.
+  window.aster?.onMcpHelp?.(() => { void openMcpSettings().catch(showError); });
+  window.aster?.onMcpState?.(() => { void refreshMcpSettings().catch(showError); });
   if (window.aster) await api('setLanguage', { language: window.asterI18n.language });
   installMailLayout();
   renderSidebar(); welcome();
@@ -1476,8 +1479,6 @@ async function boot() {
       if (snapshot.sessionId !== state.account?.sessionId) return;
       applyAccount(null); welcome();
     });
-    window.aster.onMcpHelp?.(() => { void openMcpSettings().catch(showError); });
-    window.aster.onMcpState?.(() => { void refreshMcpSettings().catch(showError); });
     window.aster.onConnection?.(receiveConnection);
     window.aster.onModuleAction?.(receiveModuleAction);
     renderMailAlerts(await api('mailAlerts'));
