@@ -23,6 +23,8 @@ without an Aster cloud or application telemetry.
 - **macOS widget:** ongoing meetings, countdowns and the day schedule.
 - **Interface:** light/dark Air Glass themes, 80–200% scale, Russian/English UI and notification privacy.
 - **Modules:** additional capabilities from [Aster Mail Modules](https://github.com/darxfame/aster-mail-modules).
+- **MCP:** connect a local agent to mail search/read, folders, moves and rules,
+  meeting search/details, availability, common slots, meeting creation and updates.
 
 ## Requirements and installation
 
@@ -48,6 +50,41 @@ One account is supported. There is no offline database, shared-mailbox or
 PGP/S/MIME support yet. Compatibility depends on your Exchange configuration;
 working OWA access does not guarantee every feature.
 [Detailed limitations (Russian)](docs/USER-GUIDE.md#ограничения).
+
+## Connect an AI agent through MCP
+
+Aster provides a local **stdio** MCP server for any compatible harness on the
+same computer. The agent uses the current Exchange session in Aster and does
+not need your Exchange password.
+
+1. Install Node.js 22+ for the MCP process and launch Aster Mail.
+2. Enable **MCP → Agent access to mail and calendar** in the application menu.
+3. Select **MCP → Copy MCP configuration**, add it to your harness settings,
+   and sign in to Exchange in Aster. For TOML, YAML or CLI configuration, use
+   the copied `command` and `args` in your harness's stdio server format.
+4. Restart the MCP connection after updating Aster to refresh its tool list.
+   Access is disabled by default and must be enabled after each Aster restart.
+
+| Mail | Meetings |
+| --- | --- |
+| Search by text, sender, recipient, dates and folder; read messages | List, search and read meetings, occurrences and series |
+| Create folders and move up to 100 messages per request | Check availability, including your own, and find common free slots |
+| Create Exchange rules for future incoming messages from an exact sender | Create meetings with invitations and update existing meetings |
+
+Example requests: “Find mail from anna@example.com about the contract”,
+“Move these invoices into a new folder and create a rule for future mail” or
+“Find an hour when Anna and I are free tomorrow and create a meeting after
+approval.” Availability checks and invitations require exact email addresses.
+
+Writes require approval in Aster. Moving a meeting's start without supplying
+an end preserves its duration; stale meeting versions cannot overwrite newer
+ones. Unknown availability is never free. An uncertain write must be checked
+in Exchange before another attempt.
+
+Mail sending, deletion, attachment downloads, meeting RSVP and cancellation
+are not exposed. Aster must remain running; remote access from another machine
+is not supported. Use a trusted harness: it may send retrieved data to your
+chosen AI provider. [Full tool reference and limitations (Russian)](docs/MCP.md).
 
 ## Documentation and contributions
 

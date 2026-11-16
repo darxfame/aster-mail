@@ -286,8 +286,33 @@ function mergeInboxPage(current, page) {
   const seen = new Set(head.map(message => message.id));
   return [...head, ...current.slice(boundary + 1).filter(message => !seen.has(message.id))];
 }
+async function receiveMailboxChange(snapshot) {
+  if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId) return;
+  mailWriteEpoch++;
+  agentMailSession = snapshot.busy ? snapshot.sessionId : null;
+  if (snapshot.busy) {
+    if (state.view === 'mail') { state.generation++; state.mailLoading = 0; }
+    return;
+  }
+  const generation = state.generation, account = state.account, epoch = mailWriteEpoch;
+  void refreshMailFolders(generation);
+  if (state.view !== 'mail' || state.mailLoading) return;
+  if (!$('#messages')) { void loadView().catch(showError); return; }
+  try {
+    const criteria = state.mailSearch?.query === state.query ? state.mailSearch.criteria : null;
+    const page = state.query ? await searchMailbox(state.query, state.filter, 0, criteria) : await api('messages', { folder: state.folder, filter: state.filter, offset: 0, refresh: true });
+    if (account !== state.account || generation !== state.generation || epoch !== mailWriteEpoch || mailboxWriting() || !$('#messages')) return;
+    const list = $('#messages'), scroll = list.scrollTop;
+    state.messages = page.items; state.more = page.more; state.offset = page.nextOffset ?? page.items.length;
+    renderMessages(); list.scrollTop = scroll;
+    const more = document.querySelector('.mail-list .load-more');
+    if (more) more.hidden = !state.more;
+    else if (state.more) list.insertAdjacentHTML('afterend', tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>'));
+    // The reader and any open compose dialog remain mounted, even after a move.
+  } catch { /* Keep the current list usable; ordinary reads can refresh it later. */ }
+}
 async function receiveInbox(snapshot) {
-  if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || mailWrites) return;
+  if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || mailboxWriting()) return;
   if (typeof receiveDayInbox === 'function') receiveDayInbox(snapshot);
   const generation = state.generation, account = state.account, epoch = mailWriteEpoch;
   let inbox = state.folders.find(folder => folder.wellKnown === 'inbox' || folder.id === snapshot.inbox?.id);
@@ -298,7 +323,7 @@ async function receiveInbox(snapshot) {
   if (state.mailLoading || state.view !== 'mail' || state.query || !['inbox', inbox?.id].includes(state.folder) || !$('#messages')) return;
   try {
     const page = state.filter === 'all' ? snapshot.page : await api('messages', { folder: state.folder, filter: state.filter, offset: 0, refresh: true });
-    if (account !== state.account || generation !== state.generation || epoch !== mailWriteEpoch || mailWrites || !$('#messages')) return;
+    if (account !== state.account || generation !== state.generation || epoch !== mailWriteEpoch || mailboxWriting() || !$('#messages')) return;
     const next = mergeInboxPage(state.messages, page);
     if (JSON.stringify(next) === JSON.stringify(state.messages) && state.more === page.more) return;
     const list = $('#messages'), atTop = list.scrollTop < 2;
@@ -323,7 +348,7 @@ async function refreshMailFolders(generation) {
     const folders = await api('folders');
     if (account !== state.account || generation !== state.generation) return;
     // Keep local read counts when a mailbox write overtook the folder read.
-    if (epoch !== mailWriteEpoch || mailWrites) for (const folder of folders) {
+    if (epoch !== mailWriteEpoch || mailboxWriting()) for (const folder of folders) {
       const known = state.folders.find(previous => previous.id === folder.id);
       if (known) folder.unread = known.unread;
       else if (folder.wellKnown === 'inbox') folder.unread = undefined;

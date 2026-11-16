@@ -56,7 +56,7 @@ async function refreshDaySummary(force = false) {
     state.demo ? Promise.resolve({ items: structuredClone(window.asterDemo.messages.filter(message => message.folder === 'inbox' && !message.read)), more: false }) : api('messages', { folder: 'inbox', filter: 'unread', offset: 0, refresh: true }),
     state.demo ? Promise.resolve(structuredClone(window.asterDemo.events).filter(event => Date.parse(event.start) < +end && Date.parse(event.end) > +range.start)) : api('calendar', { start: range.start.toISOString(), end: end.toISOString() }),
   ]);
-  if (request !== daySummaryRequest || scope !== daySummaryScope() || generation !== state.generation || epoch !== mailWriteEpoch || mailWrites) { if (request === daySummaryRequest && daySummary) daySummary.pending = null; return; }
+  if (request !== daySummaryRequest || scope !== daySummaryScope() || generation !== state.generation || epoch !== mailWriteEpoch || mailboxWriting()) { if (request === daySummaryRequest && daySummary) daySummary.pending = null; return; }
   const [mail, calendar] = results;
   if (daySummary.day !== key) return;
   daySummary.pending = null; daySummary.epoch = epoch;

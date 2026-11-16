@@ -54,6 +54,9 @@ test('IANA work boundaries and DST days use wall-time arithmetic', () => {
 function renderer() {
   const pending = [], calls = [], state = { account: {}, view: 'mail', generation: 1, selected: null };
   const context = vm.createContext({ window: { asterCalendar: C }, state, T, timeZone: 'UTC', Date, mailWriteEpoch: 0, mailWrites: 0, ready: () => true, $: () => ({}), dayKey: value => T.wall(value, 'UTC').slice(0, 10), api: (operation, data) => { calls.push({ operation, data }); return new Promise((resolve, reject) => pending.push({ resolve, reject })); } });
+  context.agentMailSession = null;
+  const appSource = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+  vm.runInContext(appSource.slice(appSource.indexOf('function mailboxWriting()'), appSource.indexOf('async function api(')), context);
   vm.runInContext(fs.readFileSync(require.resolve('../src/day-summary-ui.js'), 'utf8'), context);
   let renders = 0; context.renderDaySummary = () => { renders++; };
   return { context, state, calls, pending, summary: () => vm.runInContext('daySummary', context), get renders() { return renders; } };

@@ -120,6 +120,8 @@ function applyTheme() {
 }
 let connectionState = { status: 'disconnected' };
 let mailWrites = 0, mailWriteEpoch = 0;
+let agentMailSession = null;
+function mailboxWriting() { return mailWrites || Boolean(agentMailSession && agentMailSession === state.account?.sessionId); }
 async function api(operation, data = {}) {
   if (!window.aster) throw new Error(tr('Подключение OWA доступно в настольном приложении. В браузере можно открыть деморежим.'));
   const writing = ['change','move','mailBatch','folderOperation','send','draft','createMailRule','connect','disconnect'].includes(operation) || operation === 'editDraft' && data.action !== 'read';
@@ -1318,6 +1320,8 @@ async function boot() {
     window.aster.onMailAlerts(renderMailAlerts);
     window.aster.onWaitingReplies?.(receiveWaitingReplyCount);
     window.aster.onInbox(snapshot => { void receiveInbox(snapshot); });
+    window.aster.onMailboxChanged?.(snapshot => { void receiveMailboxChange(snapshot); });
+    window.aster.onCalendarChanged?.(snapshot => { void receiveCalendarChange(snapshot); });
     window.aster.onConnection?.(receiveConnection);
     window.aster.onModuleAction?.(receiveModuleAction);
     renderMailAlerts(await api('mailAlerts'));

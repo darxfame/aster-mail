@@ -49,6 +49,8 @@ jobs:
         run: npm run test:content-images
       - name: Verify message context menu
         run: npm run test:mail-context
+      - name: Verify local MCP integration
+        run: npm run test:mcp
       - name: Verify module sandbox
         run: npm run test:modules
       - name: Verify shared module SDK

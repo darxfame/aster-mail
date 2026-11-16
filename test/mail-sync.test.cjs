@@ -10,6 +10,9 @@ function renderer(api = async () => assert.fail('Unexpected request')) {
   const list = {scrollTop:0,querySelectorAll:()=>[],insertAdjacentHTML(){}}, status = {};
   let renders = 0;
   const context = vm.createContext({ tr: value => value,state,api,mailWrites:0,mailWriteEpoch:0,$:selector=>selector==='#messages'?list:status,document:{querySelector:()=>null},renderSidebar(){},renderMessages(){renders++;},time:()=> '10:00'});
+  context.agentMailSession = null;
+  const appSource = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+  vm.runInContext(appSource.slice(appSource.indexOf('function mailboxWriting()'), appSource.indexOf('async function api(')), context);
   vm.runInContext(functions,context);
   return {state,context,selected,list,get renders(){return renders;}};
 }
@@ -29,6 +32,28 @@ test('old accounts, another folder, search, mailbox writes and pending page load
 test('unread refresh uses a server filter and discards reads overtaken by navigation or mutation',async()=>{
   let finish; const r=renderer((operation,data)=>{assert.equal(operation,'messages'); assert.equal(data.filter,'unread'); assert.equal(data.refresh,true); return new Promise(resolve=>{finish=resolve;});});
   r.state.filter='unread'; const pending=r.context.receiveInbox(snapshot); r.context.mailWriteEpoch++; finish(snapshot.page); await pending; assert.equal(r.renders,0);
+});
+test('MCP updates refresh the current folder without replacing the reader and discard obsolete snapshots', async () => {
+  const r = renderer(async operation => operation === 'folders' ? [] : { items: [{ id: 'after-move' }], more: false });
+  r.state.folder = 'target'; r.list.scrollTop = 80;
+  const epoch = r.context.mailWriteEpoch;
+  await r.context.receiveMailboxChange({ sessionId: 'session', busy: true });
+  assert.equal(r.context.mailboxWriting(), true); assert.ok(r.context.mailWriteEpoch > epoch);
+  await r.context.receiveInbox(snapshot); assert.equal(r.renders, 0);
+  await r.context.receiveMailboxChange({ sessionId: 'session', busy: false });
+  assert.equal(r.context.mailboxWriting(), false); assert.equal(r.renders, 1);
+  assert.equal(r.state.messages[0].id, 'after-move'); assert.equal(r.state.selected, r.selected); assert.equal(r.list.scrollTop, 80);
+  r.context.agentMailSession = 'old-session';
+  assert.equal(r.context.mailboxWriting(), false, 'A retired account cannot leave the new account blocked');
+});
+test('navigation and a later write discard an in-flight MCP list refresh', async () => {
+  for (const invalidate of [r => { r.state.generation++; }, r => { r.context.mailWriteEpoch++; }, r => { r.state.account = { sessionId: 'other' }; }]) {
+    let finish;
+    const r = renderer(async operation => operation === 'folders' ? [] : new Promise(resolve => { finish = resolve; }));
+    const refresh = r.context.receiveMailboxChange({ sessionId: 'session', busy: false });
+    invalidate(r); finish({ items: [{ id: 'obsolete' }], more: false }); await refresh;
+    assert.equal(r.renders, 0); assert.equal(r.state.selected, r.selected);
+  }
 });
 test('first-page merge preserves contiguous older pages, removes obsolete head items and avoids duplicates',()=>{
   const r=renderer(), old=Array.from({length:100},(_,i)=>({id:String(i)}));

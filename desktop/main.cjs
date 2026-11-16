@@ -1,7 +1,7 @@
 const i18n = require('../src/i18n.js');
 const tr = i18n.text;
 const errorMessage = require('../src/errors.js').message;
-const { app, autoUpdater, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor } = require('electron');
+const { app, autoUpdater, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor, clipboard } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
@@ -23,6 +23,53 @@ const { WaitingReplies } = require('./waiting-replies.cjs');
 const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.cjs');
 const { fetchContentImage, fetchImageResponse } = require('./content-images.cjs');
 let localStore, connection, accountEpoch = 0, connectAttempt = 0;
+let mcpBridge, mcpEnabled = false, mcpChanging = false;
+async function setMcpEnabled(enabled) {
+  if (mcpChanging) return;
+  mcpChanging = true;
+  try {
+    mcpEnabled = enabled;
+    if (!enabled) { await mcpBridge?.close(); mcpBridge = null; return; }
+    if (mcpBridge) return;
+    mcpBridge = await require('./mcp-bridge.cjs').start({
+      directory: app.getPath('userData'), version: app.getVersion(),
+      current: () => mcpEnabled && !quitting && !resettingLocalData ? client : null,
+      confirm: async ({ name, input, folder, messages, meeting, data }) => {
+        if (require('./mcp-tools.cjs').calendarWrites.has(name)) {
+          reveal();
+          const prompt = require('./mcp-tools.cjs').meetingPrompt({ name, data, meeting }, notificationSettings.timeZone);
+          return (await dialog.showMessageBox(window, { type: 'question', ...prompt, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 })).response === 1;
+        }
+        const title = { create_folder: tr('MCP: создать папку?'), move_mail: tr('MCP: переместить письма?'), create_rule: tr('MCP: создать правило?') }[name];
+        const detail = name === 'create_folder' ? `${input.name}\n→ ${folder}` : name === 'move_mail'
+          ? `${messages.length} → ${folder}\n\n${messages.map(message => `${message.from?.email || ''}: ${message.subject}`).join('\n')}`
+          : `${input.name}\n${tr('Отправитель')}: ${input.sender}\n${tr('Тема')}: ${input.subject || '*'}\n→ ${folder}\n\n${tr('Правило применяется к новым входящим письмам.')}`;
+        reveal();
+        return (await dialog.showMessageBox(window, { type: 'question', message: title, detail, buttons: [tr('Отмена'), tr('Разрешить')], defaultId: 0, cancelId: 0 })).response === 1;
+      },
+      writing: (delta, active, name) => {
+        activeServerWrites += delta;
+        const channel = require('./mcp-tools.cjs').calendarWrites.has(name) ? 'aster-calendar-changed' : 'aster-mailbox-changed';
+        if (client === active && window && !window.isDestroyed()) window.webContents.send(channel, { sessionId: active.syncId, busy: delta > 0 });
+      },
+      changed: (active, name) => {
+        if (client !== active) return;
+        if (require('./mcp-tools.cjs').calendarWrites.has(name)) {
+          widgetDetail = null;
+          try { moduleHost?.publish('calendar.changed', { operation: name }); } catch { /* Module delivery cannot change an Exchange result. */ }
+          void pollNotifications();
+        } else void pollMail();
+      },
+    });
+  } catch {
+    mcpEnabled = false;
+    await dialog.showMessageBox(window, { type: 'error', message: tr('Не удалось запустить MCP-сервер'), buttons: [tr('Закрыть')] });
+  } finally {
+    mcpChanging = false;
+    const item = Menu.getApplicationMenu()?.getMenuItemById('aster-mcp');
+    if (item) item.checked = mcpEnabled;
+  }
+}
 const { normalizeServer } = require('./protocol.cjs');
 const { NotificationTracker, preferences, mailAlert } = require('./notifications.cjs');
 const { httpsURL, meetingLink, upcomingMeetings, nearestMeetings, countdown, pollingRange } = require('./meetings.cjs');
@@ -149,6 +196,7 @@ function confirmQuit() {
   return true;
 }
 function retireForQuit() {
+  mcpEnabled = false; void mcpBridge?.close();
   quitting = true; moduleHost?.closeAll(); moduleProfile?.retire(); attachmentPreviews?.closeAll(); composeWindows?.destroyAll(); connection?.controller.abort();
 }
 async function resetLocalData() {
@@ -489,6 +537,10 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
+    { label: 'MCP', submenu: [
+      { id: 'aster-mcp', label: tr('Доступ агента к почте и календарю'), type: 'checkbox', checked: false, click: item => { void setMcpEnabled(item.checked); } },
+      { label: tr('Скопировать конфигурацию MCP'), click: () => clipboard.writeText(JSON.stringify({ mcpServers: { 'aster-mail': { command: 'node', args: [path.join(app.getPath('userData'), 'mcp-stdio.cjs')] } } }, null, 2)) },
+    ] },
   ]));
   composeWindows = new ComposeWindows({ BrowserWindow, dialog, page, tr });
   createWindow = () => {
@@ -823,6 +875,7 @@ app.whenReady().then(async () => {
     finally { if (composeWrite) composeEntry.busy = false; if (serverWrite) activeServerWrites--; }
   });
   createWindow();
+  if (process.argv.includes('--mcp')) void setMcpEnabled(true);
   ipcMain.handle('aster-widget', async (event, operation, data) => {
     try {
       if (!widgetWindow || event.sender !== widgetWindow.webContents || event.senderFrame !== widgetWindow.webContents.mainFrame) throw new Error('Untrusted widget sender');

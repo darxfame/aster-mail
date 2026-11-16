@@ -1,4 +1,23 @@
 let calendarScrollKey, currentSystemZone;
+let agentCalendarRevision = 0;
+async function receiveCalendarChange(snapshot) {
+  if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId) return;
+  const revision = ++agentCalendarRevision;
+  if (state.view === 'calendar') state.generation++;
+  if (snapshot.busy) return;
+  invalidateDaySummary();
+  if (state.view === 'mail') { void refreshDaySummary(true); return; }
+  if (state.view !== 'calendar') return;
+  const account = state.account, generation = state.generation, mode = calendarMode();
+  const { start, end } = window.asterCalendar.range(state.week, mode, timeZone);
+  try {
+    const events = await api('calendar', { start: start.toISOString(), end: end.toISOString() });
+    if (revision !== agentCalendarRevision || account !== state.account || generation !== state.generation || state.view !== 'calendar' || mode !== calendarMode()) return;
+    state.events = events;
+    // Refresh the grid beneath any open dialog; its draft and ChangeKey stay intact.
+    renderCalendar();
+  } catch { /* Keep the visible calendar usable until the next ordinary read. */ }
+}
 function timelineMarkup(start, mode, events) {
   const days = Array.from({ length: mode === 'day' ? 1 : 7 }, (_, i) => addDays(start, i));
   const schedule = window.asterWorkSchedule;
