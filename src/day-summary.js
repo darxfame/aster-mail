@@ -3,6 +3,7 @@
   const T = typeof module !== 'undefined' ? require('./time.js') : root.asterTime;
   const C = typeof module !== 'undefined' ? require('./calendar.js') : root.asterCalendar;
   const W = typeof module !== 'undefined' ? require('./work-schedule.js') : root.asterWorkSchedule;
+  const E = typeof module !== 'undefined' ? require('./events.js') : root.asterEvents;
   function merge(intervals) {
     const result = [];
     for (const interval of intervals.sort((a, b) => a.start - b.start)) {
@@ -12,33 +13,35 @@
     }
     return result;
   }
-  function day(events, now = Date.now(), timeZone = 'system', workSchedule) {
+  function day(events, now = Date.now(), timeZone = 'system', workSchedule, email = '') {
     const { start, end } = C.range(now, 'day', timeZone);
     const settings = W.normalize(workSchedule);
     const working = settings.days.includes(T.civil(start, timeZone).getUTCDay());
     const workStart = +W.at(start, Number(settings.start.slice(0, 2)) * 60 + Number(settings.start.slice(3)), timeZone);
     const workEnd = +W.at(start, Number(settings.end.slice(0, 2)) * 60 + Number(settings.end.slice(3)), timeZone, true);
-    const relevant = events.filter(event => !event.cancelled && !['Decline', 'Declined'].includes(event.response) && Number.isFinite(Date.parse(event.start)) && Date.parse(event.end) > Date.parse(event.start));
+    const relevant = events.filter(event => !event.cancelled && Number.isFinite(Date.parse(event.start)) && Date.parse(event.end) > Date.parse(event.start));
     const today = relevant.filter(event => Date.parse(event.start) < +end && Date.parse(event.end) > +start);
-    const blocks = { busy: [], unknown: [] };
+    const intervals = [], kinds = { organized: [], accepted: [], pending: [], declined: [] };
     for (const event of today) {
-      if (!working || ['Free', 'WorkingElsewhere'].includes(event.showAs) && event.showAsKnown !== false) continue;
+      if (!working) continue;
       const interval = { start: Math.max(workStart, Date.parse(event.start)), end: Math.min(workEnd, Date.parse(event.end)) };
       if (interval.end <= interval.start) continue;
-      const known = event.showAsKnown !== false && ['Busy', 'Tentative', 'OOF'].includes(event.showAs);
-      blocks[known ? 'busy' : 'unknown'].push(interval);
+      const kind = E.kind(event, email);
+      kinds[kind].push(interval);
+      if (kind !== 'declined') intervals.push(interval);
     }
-    const busy = merge(blocks.busy), unknown = merge(blocks.unknown);
-    const occupied = merge([...busy, ...unknown]);
-    let cursor = Math.max(workStart, now), longest = null;
-    for (const block of [...occupied, { start: workEnd, end: workEnd }]) {
-      if (block.start > cursor && (!longest || block.start - cursor > longest.end - longest.start)) longest = { start: cursor, end: block.start };
+    const blocks = merge(intervals);
+    const segments = Object.entries(kinds).flatMap(([kind, intervals]) => merge(intervals).map(interval => ({ ...interval, kind })));
+    let cursor = Math.max(workStart, now), longest = null, next = null;
+    for (const block of [...blocks, { start: workEnd, end: workEnd }]) {
+      if (block.start > cursor) {
+        if (!next) next = { start: cursor, end: block.start };
+        if (!longest || block.start - cursor > longest.end - longest.start) longest = { start: cursor, end: block.start };
+      }
       cursor = Math.max(cursor, block.end);
     }
-    const busyMinutes = busy.reduce((sum, block) => sum + (block.end - block.start) / 60000, 0);
-    const scheduledMinutes = occupied.reduce((sum, block) => sum + (block.end - block.start) / 60000, 0);
-    // Unknown statuses block their own intervals, never every other gap in the day.
-    return { start, end, today, upcoming: relevant.filter(event => !event.allDay && Date.parse(event.end) > now).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)), working, workStart, workEnd, busy, unknown, busyMinutes, scheduledMinutes, percent: Math.round(scheduledMinutes * 60000 / (workEnd - workStart) * 100), longest: working ? longest : null };
+    const scheduledMinutes = blocks.reduce((sum, block) => sum + (block.end - block.start) / 60000, 0);
+    return { start, end, today, upcoming: relevant.filter(event => !event.allDay && E.kind(event, email) !== 'declined' && Date.parse(event.end) > now).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)), working, workStart, workEnd, blocks, segments, scheduledMinutes, next: working ? next : null, percent: Math.round(scheduledMinutes * 60000 / (workEnd - workStart) * 100), longest: working ? longest : null };
   }
   const api = { day };
   if (typeof module !== 'undefined') module.exports = api; else root.asterDaySummary = api;

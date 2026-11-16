@@ -1412,6 +1412,11 @@
   english["Нет ближайших встреч на 7 дней"] = "No upcoming meetings in the next 7 days";
   english["Новых писем нет"] = "No new messages";
   english["Ритм дня"] = "Your day at a glance";
+  english["Ближайшее окно"] = "Next free window";
+  english["Самое длинное окно:"] = "Longest free window:";
+  english["Окна без встреч"] = "Time without meetings";
+  english["До конца рабочего дня"] = "Until the end of your working day";
+  english["Без отменённых"] = "Excluding cancelled";
   english["Время встреч"] = "Scheduled time";
   english["По времени встреч"] = "Scheduled";
   english["Статус части встреч не указан. Их время исключено из свободных окон."] = "Some meetings have no availability status. Their times are excluded from free slots.";

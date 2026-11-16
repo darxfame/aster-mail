@@ -36,12 +36,12 @@ app.whenReady().then(async () => {
       const start = window.asterCalendar.range(new Date(),'day',timeZone).start;
       const at = (hours,minutes=0) => {const date=civil(start);date.setUTCHours(hours,minutes,0,0);return T.fromWall(date.toISOString().slice(0,19),timeZone,false).toISOString();};
       notificationPreferences.workSchedule={days:[0,1,2,3,4,5,6],start:'09:00',end:'17:00'};
-      window.asterDemo.events=[{id:'overview-1',title:'Планирование команды',start:at(9,30),end:at(10,30),showAs:'Busy',location:'Переговорная 3'},{id:'overview-2',title:'Обсуждение макетов',start:at(10),end:at(11),showAs:'Busy'},{id:'overview-3',title:'Итоги недели',start:at(13),end:at(13,30),showAs:'Tentative'},{id:'overview-next',title:'Следующая встреча',start:addDays(at(11),1).toISOString(),end:addDays(at(11,45),1).toISOString(),showAs:'Busy'}];
+      window.asterDemo.events=[{id:'overview-1',title:'Планирование команды',start:at(9,30),end:at(10,30),showAs:'Busy',response:'Organizer',isOrganizer:true,location:'Переговорная 3'},{id:'overview-2',title:'Обсуждение макетов',start:at(10),end:at(11),showAs:'Busy',response:'Accept',isOrganizer:false},{id:'overview-3',title:'Итоги недели',start:at(13),end:at(13,30),showAs:'Tentative',response:'Tentative',isOrganizer:false},{id:'overview-next',title:'Следующая встреча',start:addDays(at(11),1).toISOString(),end:addDays(at(11,45),1).toISOString(),showAs:'Busy'}];
       resetDaySummary();return refreshDaySummary(true);
     })()`);
     assert.equal(await js('document.querySelectorAll(".day-stats strong")[1].textContent'), '3');
     assert.equal(await js('document.querySelectorAll(".day-stats strong")[2].textContent'), '2 ч');
-    assert.equal(await js('document.querySelectorAll(".day-track .day-block").length'), 2, 'Overlapping events share a single busy interval');
+    assert.equal(await js('document.querySelectorAll(".day-track .day-block").length'), 3, 'Overlapping categories remain visible in separate lanes');
     assert.equal(await js('document.querySelector(".day-rhythm").textContent.includes("25%")'), true);
     await js(`(() => {
       const at = minute => window.asterWorkSchedule.at(new Date(), minute, timeZone);
@@ -50,11 +50,16 @@ app.whenReady().then(async () => {
       daySummary.calendar.events.push({id:'unknown', start:at(660).toISOString(), end:at(720).toISOString(), showAs:'Free', showAsKnown:false});
       renderDaySummary();
     })()`);
-    assert.equal(await js('document.querySelector(".day-block.unknown")!==null'), true);
+    assert.equal(await js('document.querySelector(".day-block.unknown")===null'), true);
+    assert.equal(await js('getComputedStyle(document.querySelector(".day-block.pending")).backgroundImage.includes("repeating-linear-gradient")'), true);
+    for (const kind of ['organized', 'accepted']) {
+      assert.equal(await js(`getComputedStyle(document.querySelector('.day-block.${kind}')).backgroundColor === getComputedStyle(document.querySelector('.day-legend .${kind}'),'::before').backgroundColor`), true);
+    }
     assert.equal(await js('document.querySelectorAll(".day-stats strong")[2].textContent'), '3 ч');
     assert.equal(await js('document.querySelector(".day-stats").textContent.includes("Время встреч")'), true);
     assert.equal(await js('document.querySelector(".day-window").textContent.includes("13:30–17:00")'), true);
-    assert.equal(await js('document.querySelector(".day-rhythm").textContent.includes("Их время исключено из свободных окон")'), true);
+    assert.equal(await js('document.querySelectorAll(".day-stats strong")[3].textContent'), '09:00–09:30');
+    assert.equal(await js('document.querySelector(".day-rhythm").textContent.includes("Статус части встреч")'), false);
     await js('daySummary.calendar.events.pop();window.asterDaySummary.day=originalSummaryDay;renderDaySummary();void 0');
     await js('window.expectedOverviewEvent=document.querySelector(".day-meeting").dataset.id;document.querySelector(".day-meeting").click()');
     await waitFor('Boolean(document.querySelector("#modal").open && activeMeeting)');
@@ -64,6 +69,9 @@ app.whenReady().then(async () => {
       await js(`state.theme=${JSON.stringify(theme)};applyTheme();renderDaySummary();void 0`);
       await new Promise(resolve => setTimeout(resolve, 100));
       assert.equal(await js('document.querySelector(".day-summary").scrollWidth<=document.querySelector(".day-summary").clientWidth'), true);
+      assert.equal(await js('(() => {const values=[...document.querySelectorAll(".day-stats strong")].map(el=>el.getBoundingClientRect().top);return values.length===4 && Math.max(...values)-Math.min(...values)<1;})()'), true, 'All four values share a compact baseline');
+      assert.equal(await js('document.querySelector(".day-stats").getBoundingClientRect().height<65'), true, 'Summary metrics use two compact lines');
+      assert.equal(await js('document.querySelector(".day-footer").getBoundingClientRect().bottom<=document.querySelector("#reader").getBoundingClientRect().bottom'), true, 'The time zone remains visible without scrolling');
       await fs.writeFile(path.join(output, `${theme}.png`), (await window.webContents.capturePage()).toPNG());
     }
     await js('document.querySelector(".day-mail").click()');
