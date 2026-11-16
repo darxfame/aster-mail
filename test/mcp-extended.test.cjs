@@ -116,6 +116,7 @@ test('existing client handlers receive only whitelisted operations, including se
   f.state.live = false;
   assert.deepEqual(await f.call('get_client_settings'), { theme: 'light' });
   assert.deepEqual(await f.call('open_client_panel', { panel: 'modules' }), { opened: 'modules' });
+  assert.deepEqual(await f.call('open_client_panel', { panel: 'rules' }), { opened: 'rules' });
   await assert.rejects(f.call('client_action', { action: 'restore' }), /string argument/);
   await assert.rejects(f.call('open_client_panel', { panel: 'executeJavaScript' }), /string argument/);
   for (const name of ['send_mail', 'create_meeting', 'respond_meeting', 'remove_meeting', 'message_meeting', 'send_draft']) assert.equal(tools.find(tool => tool.name === name).annotations.readOnlyHint, false);

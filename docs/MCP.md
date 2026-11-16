@@ -229,7 +229,7 @@ mcpServers:
 
 ## Почта, вложения и остальные функции клиента
 
-MCP предоставляет 58 инструментов. Их полные схемы harness получает через
+MCP предоставляет 61 инструментов. Их полные схемы harness получает через
 `tools/list`; ниже — группы новых операций.
 
 | Группа | Инструменты |
@@ -367,3 +367,23 @@ MCP не предоставляет прямого чтения сервисны
 
 Протокол: [stdio](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),
 [инструменты MCP](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
+
+## Существующие правила
+
+`open_client_panel({panel: "rules"})` открывает **Настройки → Правила**.
+
+`list_rules(sessionId)` возвращает `items` с `id`, `revision`, `name`, `sender`,
+`subject`, `folder`, `markRead`, `enabled`, `priority`, `editable`, а также
+`outlookRuleBlobExists`. Поля условий и действий у сложного правила — только
+поддерживаемая часть, не полное описание. `editable=false` запрещает изменение.
+
+`update_rule(sessionId, id, revision, changes)` меняет выбранные поля:
+`name`, `sender`, `subject`, `folder` (пустая строка отменяет перенос),
+`markRead`, `enabled`, `priority` (0–2147483647).
+`delete_rule(sessionId, id, revision)` удаляет одно правило.
+Обе операции требуют нативного подтверждения. Перед записью правило читается
+заново и сравнивается с revision; это проверка свежести, а не атомарная блокировка
+Exchange. Не повторяйте запись после неопределённого ответа; сначала перечитайте
+список. Старые письма не обрабатываются. Блок Outlook не удаляется.
+
+Формат операций: [Microsoft EWS UpdateInboxRules](https://learn.microsoft.com/en-us/exchange/client-developer/web-service-reference/updateinboxrules-operation).

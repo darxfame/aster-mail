@@ -62,7 +62,7 @@ window.asterMcpUI = async request => {
   }
   if (method !== 'panel') throw new Error('Unknown MCP UI operation');
   if ($('#modal').open || modalBusy) throw new Error(tr('Завершите работу с открытым окном перед действием MCP.'));
-  const settingsPanels = ['settings', 'modules', 'account', 'signature', 'auto-replies', 'notifications'];
+  const settingsPanels = ['settings', 'modules', 'account', 'signature', 'auto-replies', 'rules', 'notifications'];
   if (settingsPanels.includes(input.panel)) {
     await settingsModal(); guard();
     if (input.panel !== 'settings') document.querySelector(`#settings-tab-${input.panel}`)?.click();
@@ -195,7 +195,7 @@ let agentMailSession = null;
 function mailboxWriting() { return mailWrites || Boolean(agentMailSession && agentMailSession === state.account?.sessionId); }
 async function api(operation, data = {}) {
   if (!window.aster) throw new Error(tr('Подключение OWA доступно в настольном приложении. В браузере можно открыть деморежим.'));
-  const writing = ['change','move','mailBatch','folderOperation','send','draft','createMailRule','connect','disconnect'].includes(operation) || operation === 'editDraft' && data.action !== 'read';
+  const writing = ['change','move','mailBatch','folderOperation','send','draft','createMailRule','changeMailRule','connect','disconnect'].includes(operation) || operation === 'editDraft' && data.action !== 'read';
   if (writing) { mailWrites++; mailWriteEpoch++; }
   try {
     const sessionId = state.account?.sessionId;
@@ -835,7 +835,7 @@ function selectSettingsTab(selected) {
   const autoRepliesSave = form.querySelector('#auto-replies-save');
   const settingsSave = form.querySelector('.settings-footer [type="submit"]');
   if (autoRepliesSave) autoRepliesSave.hidden = selected.id !== 'settings-tab-auto-replies';
-  if (settingsSave) settingsSave.hidden = ['settings-tab-auto-replies', 'settings-tab-mcp'].includes(selected.id);
+  if (settingsSave) settingsSave.hidden = ['settings-tab-auto-replies', 'settings-tab-mcp', 'settings-tab-rules'].includes(selected.id);
   for (const tab of form.querySelectorAll('[role="tab"]')) {
     const active = tab === selected;
     tab.setAttribute('aria-selected', String(active));
@@ -843,6 +843,7 @@ function selectSettingsTab(selected) {
     form.querySelector(`#${tab.getAttribute('aria-controls')}`).hidden = !active;
   }
   if (selected.id === 'settings-tab-signature' && form.elements.syncSignature.checked && !serverSignature) void refreshSignatureField();
+  if (selected.id === 'settings-tab-rules' && !form.querySelector('#settings-panel-rules').dataset.loaded) { form.querySelector('#settings-panel-rules').dataset.loaded = 'true'; form.querySelector('[data-rules-load]').click(); }
   if (selected.id === 'settings-tab-mcp') void refreshMcpSettings().catch(showError);
 }
 async function settingsModal() {
@@ -852,7 +853,7 @@ async function settingsModal() {
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   modal(tr('Настройки Aster'), tr('Спокойное пространство, настроенное под вас.'), `<form id="settings-form">
     <div class="settings-tabs" role="tablist" aria-label="${tr("Разделы настроек")}">
-      ${[['general', tr('Общие')], ['mcp', tr('MCP · Агенты')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
+      ${[['general', tr('Общие')], ['mcp', tr('MCP · Агенты')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['rules', tr('Правила')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
     </div>
     <div class="settings-panels">
     <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
@@ -900,6 +901,7 @@ async function settingsModal() {
     <p class="form-note">${tr('Доступ выключается при завершении Aster. После следующего запуска включите MCP снова; конфигурацию агента менять не нужно.')}</p>
     <p class="form-note">${tr('Пароль Exchange агенту не передаётся. Отправка писем и операции со встречами выполняются без подтверждения в Aster; разрешение может запросить агент. Другие изменения требуют подтверждения в клиенте.')}</p>
     </section>
+    <section id="settings-panel-rules" role="tabpanel" aria-labelledby="settings-tab-rules" tabindex="0" hidden>${mailRulesMarkup()}</section>
     <section id="settings-panel-auto-replies" role="tabpanel" aria-labelledby="settings-tab-auto-replies" tabindex="0" hidden>${autoRepliesMarkup()}</section>
     <section id="settings-panel-signature" role="tabpanel" aria-labelledby="settings-tab-signature" tabindex="0" hidden>
     <h3 class="settings-section-title">${tr("Подпись в письмах")}</h3>
@@ -947,6 +949,7 @@ async function settingsModal() {
   $('#modal').classList.add('settings-dialog');
   receivePresentation(p);
   setupAutoReplies($('#settings-panel-auto-replies'));
+  setupMailRules($('#settings-panel-rules'));
   void refreshModuleList().catch(showError);
   $('#settings-form').addEventListener('keydown', event => {
     if (!event.target.matches('[role="tab"]')) return;
@@ -1359,8 +1362,10 @@ document.addEventListener('submit', event => {
   if (form.id === 'module-github-form') { void installModuleFromGitHub(form).catch(showError); return; }
   if (form.id === 'compose-form') { sendCompose(false); return; }
   if (form.id === 'settings-form') {
+    if (!form.querySelector('#settings-panel-rules').hidden) return;
     if (!form.querySelector('#settings-panel-auto-replies').hidden) { form.querySelector('#auto-replies-save').click(); return; }
     submitForm(form, async data => {
+      if (form.querySelector('#settings-panel-rules').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните правило или загрузите список заново.'));
       if (form.querySelector('#settings-panel-auto-replies').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните автоответы отдельной кнопкой или загрузите их заново.'));
       const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), privacyApps: [...form.querySelectorAll('[name="privacyApp"]:checked')].map(input => input.value), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
       next.workSchedule = window.asterWorkSchedule.normalize({ days: [...form.querySelectorAll('[name="workDay"]:checked')].map(input => Number(input.value)), start: data.workStart, end: data.workEnd }, true);

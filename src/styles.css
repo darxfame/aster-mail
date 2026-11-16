@@ -196,3 +196,9 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .day-window strong { color:var(--text);font-weight:500; }
 .day-footer { display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6; }
 @container(max-width:520px) { .day-columns{grid-template-columns:1fr;gap:24px}.day-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.day-stats>div{display:grid}.day-stats strong{font-size:18px}.day-stats span{display:block;font-size:11px}.day-stats small{font-size:10px}.day-mail-meta{flex-wrap:wrap;gap:4px} }
+
+[data-rules-editor]{border:0;padding:12px 0 0;margin:0;min-width:0}
+[data-rules-editor]:disabled{opacity:.6}
+[data-rules-list]{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+[data-rules-list] p{margin:0}
+[data-rules-list] button{white-space:normal;overflow-wrap:anywhere;text-align:left}

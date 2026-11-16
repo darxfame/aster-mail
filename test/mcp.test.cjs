@@ -24,7 +24,7 @@ function fixture() {
 }
 test('MCP exposes mail and meeting tools, validates arguments, and returns no credentials', async () => {
   const f = fixture();
-  assert.equal(tools.length, 58);
+  assert.equal(tools.length, 61);
   assert.ok(tools.some(tool => tool.name === 'send_mail'));
   assert.equal(tools.some(tool => tool.name === 'execute_code'), false);
   assert.deepEqual(await f.call('get_account'), { connected: true, sessionId: 'session-a' });
@@ -105,7 +105,7 @@ test('real stdio subprocess negotiates MCP and reaches the authenticated loopbac
   assert.equal((await request('tools/list')).error.code, -32002);
   assert.equal((await request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } })).result.protocolVersion, '2025-11-25');
   child.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n');
-  assert.equal((await request('tools/list')).result.tools.length, 58);
+  assert.equal((await request('tools/list')).result.tools.length, 61);
   assert.deepEqual(JSON.parse((await request('tools/call', { name: 'get_account', arguments: {} })).result.content[0].text), { connected: true, sessionId: 'fictional' });
   assert.equal((await request('tools/call', { name: 'execute_code', arguments: {} })).result.isError, true);
   assert.equal((await request('unknown')).error.code, -32601);

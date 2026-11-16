@@ -566,8 +566,8 @@ async function installModuleBundle(bundle, guard) {
   guard();
 }
 
-const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'removeEvent', 'eventMessage', 'eventImage', 'contentImages']);
-const serverWrites = new Set(['send', 'draft', 'editDraft', 'mailBatch', 'folderOperation', 'change', 'move', 'createEvent', 'updateEvent', 'removeEvent', 'respond', 'createContact', 'createMailRule', 'saveAutoReplies']);
+const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'mailRules', 'changeMailRule', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'removeEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const serverWrites = new Set(['send', 'draft', 'editDraft', 'mailBatch', 'folderOperation', 'change', 'move', 'createEvent', 'updateEvent', 'removeEvent', 'respond', 'createContact', 'createMailRule', 'changeMailRule', 'saveAutoReplies']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');
   if (['message', 'event', 'eventDetails', 'joinEvent'].includes(operation) && (typeof data.id !== 'string' || data.id.length > 16000)) throw new Error('Invalid item reference');

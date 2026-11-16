@@ -214,6 +214,8 @@ class OWAClient {
     const updated = P.walk(json, o => o.ItemId?.Id)[0]?.ItemId;
     return updated ? { id: updated.Id, changeKey: updated.ChangeKey } : data.ref;
   }
+  async mailRules() { return require('./mail-rules.cjs').list(this); }
+  async changeMailRule(data) { return require('./mail-rules.cjs').change(this, data); }
   async createMailRule(data) { return require('./mail-rules.cjs').create(this, data); }
   async move(data) {
     await this.call('MoveItem', P.request('MoveItem', { ItemIds: [P.item(data.ref)], ToFolderId: P.target(data.folder) }), { retry: false });

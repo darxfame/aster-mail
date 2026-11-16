@@ -113,7 +113,7 @@ app.whenReady().then(async () => {
   await request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'independent-node-fixture', version: '1' } });
   child.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n');
   const exposed = (await request('tools/list')).result.tools;
-  assert.equal(exposed.length, 58);
+  assert.equal(exposed.length, 61);
   for (const name of ['list_meetings', 'search_meetings', 'read_meeting', 'get_availability', 'find_meeting_slots', 'create_meeting', 'update_meeting']) assert.ok(exposed.some(tool => tool.name === name));
   assert.deepEqual(JSON.parse((await request('tools/call', { name: 'get_account', arguments: {} })).result.content[0].text), { connected: false, sessionId: null });
   const settings = (await request('tools/call', { name: 'get_client_settings', arguments: {} })).result;
