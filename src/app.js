@@ -1495,7 +1495,6 @@ async function boot() {
       state.filter = 'all';
       state.view = data.view; state.folder = 'inbox'; state.query = ''; $('#search').value = '';
       if (data.date) state.week = new Date(data.date);
-      if (data.eventId) calendarPreference = 'day';
       const loading = loadView(), generation = state.generation;
       await loading;
       if (generation !== state.generation || state.view !== data.view || $('#modal').open) return;

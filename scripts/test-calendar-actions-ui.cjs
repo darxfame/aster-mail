@@ -17,10 +17,33 @@ async function waitFor(expression) {
 app.whenReady().then(async () => {
   try {
     window = new BrowserWindow({ width: 1280, height: 900, show: true, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
-    const js = code => window.webContents.executeJavaScript(code);
+    const js = async code => {
+      const body = code.includes(';') ? `${code};return {value:undefined};` : `return {value:await (${code})};`;
+      const result = await window.webContents.executeJavaScript(`(async()=>{try{${body}}catch(error){return {error:error.stack}}})()`);
+      if (result.error) throw new Error(result.error);
+      return result.value;
+    };
     await window.loadFile(path.join(root, 'src/index.html'));
     await js('document.querySelector("[data-action=demo]").click()');
     await js(`window.fixtureEvent={...structuredClone(window.asterDemo.events[0]),id:'fixture-occurrence',title:'Вымышленная встреча',isOrganizer:true,isMeeting:true,canDelete:true,recurring:true,calendarType:'Occurrence',seriesId:'fixture-series',attachments:[],attendees:[{email:'fictional@example.test',name:'Участник',role:'required'}]};window.asterDemo.events.push(fixtureEvent,{...structuredClone(fixtureEvent),id:'fixture-other'});state.week=new Date(fixtureEvent.start);state.view='calendar';calendarPreference='week';loadView()`);
+    const source = await fs.readFile(path.join(root, 'src/app.js'), 'utf8');
+    const navigation = source.slice(source.indexOf('    window.aster.onNavigate(async data => {'), source.indexOf("    try { loginHint = await api('loginHint'); }"));
+    await js(`window.navigationTest={onNavigate:callback=>window.navigateFromWidget=callback};${navigation.replace('window.aster.onNavigate', 'window.navigationTest.onNavigate')};void 0`);
+    await js(`window.navigationEvent={...structuredClone(fixtureEvent),id:'fixture-navigation',isOrganizer:false,response:'Unknown',recurring:false,seriesId:undefined};window.asterDemo.events.push(navigationEvent)`);
+    for (const preference of ['week', 'quarter', 'day', 'auto']) {
+      await js(`calendarPreference=${JSON.stringify(preference)};localPreferences.setItem('aster-calendar-view',calendarPreference);state.view='mail';state.week=new Date('2020-01-01');navigateFromWidget({view:'calendar',date:navigationEvent.start,eventId:navigationEvent.id})`);
+      assert.equal(await js('calendarPreference'), preference, 'Opening a meeting preserves the current calendar view');
+      assert.equal(await js('document.querySelector("#calendar-mode").value'), preference);
+      assert.equal(await js("localPreferences.getItem('aster-calendar-view')"), preference);
+      assert.equal(await js('state.week.toISOString()'), await js('new Date(navigationEvent.start).toISOString()'));
+      assert.equal(await js('activeMeeting.id'), 'fixture-navigation');
+      if (preference === 'week') {
+        await js(`document.querySelector('[data-action=rsvp][data-response=AcceptItem]').click()`);
+        await waitFor(`!document.querySelector('#modal').open && state.events.some(event=>event.id==='fixture-navigation' && event.response==='Accept')`);
+        assert.equal(await js('document.querySelector("#calendar-mode").value'), preference, 'Accepting the meeting preserves the calendar view');
+      } else await js(`document.querySelector('#modal').close()`);
+    }
+    await js(`window.asterDemo.events=window.asterDemo.events.filter(event=>event.id!=='fixture-navigation');calendarPreference='week';await loadView()`);
     const menu = () => js(`document.querySelector('[data-action=event][data-id=fixture-occurrence]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:900,clientY:400}))`);
     await menu();
     assert.equal(await js('document.querySelectorAll(".calendar-context-menu [role=menuitem]").length>=6'), true);
@@ -66,6 +89,6 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("#meeting-removal-form [type=submit]").disabled'),true);
     await js('document.querySelector("#meeting-removal-form").requestSubmit()');
     assert.equal(await js('removeCalls'),1);
-    console.log('PASS: calendar context menu, Escape/focus, card removal, occurrence/series distinction, organizer/invitee messaging, denied rights and no replay after a lost response.');
+    console.log('PASS: meeting navigation preserves week/quarter/day/auto and accepting preserves week; calendar context menu, Escape/focus, card removal, occurrence/series distinction, organizer/invitee messaging, denied rights and no replay after a lost response.');
   } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});
