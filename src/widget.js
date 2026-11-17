@@ -10,7 +10,8 @@ function inRange(day) {
   const start = dayStart(day);
   return !snapshot.range || (+start >= Date.parse(snapshot.range.start) && +start < Date.parse(snapshot.range.end));
 }
-function render(state) {
+function render(state, { resetDay = false } = {}) {
+  if (resetDay) { selectedDay = null; gridKey = null; }
   const previousScroll = document.querySelector('.day-scroll')?.scrollTop;
   const focused = document.activeElement?.closest?.('button[data-action]');
   const focusIdentity = focused && document.querySelector('#meetings')?.contains?.(focused) ? { action: focused.dataset.action, id: focused.dataset.id } : null;

@@ -1,5 +1,5 @@
 // Exercise the widget and local working-hour settings in actual Chromium with fictional data.
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -13,6 +13,7 @@ async function waitFor(code) {
 }
 app.whenReady().then(async () => {
   try {
+    ipcMain.handle('aster-widget', () => ({ ok: true, value: { connected: false, timeZone: 'UTC', events: [] } }));
     window = new BrowserWindow({ width:1280,height:850,show:true,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false} });
     const js = async code => {
       const body = code.includes(';') ? code+';return {value:undefined};' : 'return {value:await ('+code+')};';
@@ -123,6 +124,36 @@ app.whenReady().then(async () => {
       assert.equal(await js('document.querySelector(".day-grid").getBoundingClientRect().height>=150'),true);
       await fs.writeFile(path.join(output,`parallel-${count}.png`),(await window.webContents.capturePage()).toPNG());
     }
-    console.log('PASS: proportional native window sizing and screen limits; current and upcoming cards with countdown, future meetings and early join in the grid, idle state, working hours, two-hour history, late meetings, privacy, light/dark at 100% and 200%.');
+    // Exercise production reopen/update IPC through the sandboxed preload.
+    window.destroy();
+    window = new BrowserWindow({ width:380,height:560,show:true,webPreferences:{preload:path.join(root,'desktop/widget-preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false} });
+    await window.loadFile(path.join(root,'src/widget.html'));
+    await waitFor('snapshot?.connected===false');
+    await js(`window.fixedNow=Date.parse('2026-11-12T23:30:00+03:00');Date.now=()=>fixedNow;selectedDay=null;render({connected:true,timeZone:'Europe/Moscow',events:[],calendarEvents:[],theme:'light',language:'ru'})`);
+    const reopenState = await js('snapshot');
+    const reopenContext = {
+      ...context, widgetWindow: window, tr: value => value, process, client: null,
+      widgetState: () => reopenState, refreshPrivacy: async () => {},
+      tray: { getBounds: () => anchor, setTitle() {}, setToolTip() {} },
+      nearestMeetings: () => [],
+    };
+    require('node:vm').runInNewContext(source.slice(source.indexOf('function refreshWidget('),source.indexOf('function notify(')),reopenContext);
+    await js(`document.querySelector('[data-action=day-prev]').click();document.querySelector('.day-scroll').scrollTop=100`);
+    reopenContext.refreshWidget();
+    await waitFor(`selectedDay==='2026-11-11' && document.querySelector('.day-scroll').scrollTop===100`);
+    window.hide();
+    await reopenContext.showWidget();
+    await waitFor(`selectedDay==='2026-11-12' && document.querySelector('.day-scroll').scrollTop===0`);
+    window.hide();
+    await js(`fixedNow=Date.parse('2026-11-13T00:30:00+03:00')`);
+    await reopenContext.showWidget();
+    await waitFor(`selectedDay==='2026-11-13' && document.querySelector('.day-toolbar').textContent.includes('Сегодня, 13 ноября')`);
+    await js(`document.querySelector('[data-action=day-next]').click()`);
+    reopenContext.refreshWidget();
+    await waitFor(`selectedDay==='2026-11-14'`);
+    await js(`document.querySelector('[data-action=today]').click()`);
+    assert.equal(await js('selectedDay'), '2026-11-13');
+    await fs.writeFile(path.join(output,'reopened-today.png'),(await window.webContents.capturePage()).toPNG());
+    console.log('PASS: reopen resets to today across midnight in the configured time zone; background updates preserve navigation and scroll; proportional native window sizing and screen limits; current and upcoming cards with countdown, future meetings and early join in the grid, idle state, working hours, two-hour history, late meetings, privacy, light/dark at 100% and 200%.');
   } finally {window?.destroy();await fs.rm(profile,{recursive:true,force:true,maxRetries:3});}
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

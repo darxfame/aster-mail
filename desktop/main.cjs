@@ -357,7 +357,7 @@ function widgetState() {
   const events = upcomingMeetings(calendarEvents).slice(0, 5);
   return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), workSchedule: notificationSettings.workSchedule, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
 }
-function refreshWidget() {
+function refreshWidget(resetDay = false) {
   const state = widgetState();
   if (tray) {
     const nearest = nearestMeetings(state.calendarEvents);
@@ -367,7 +367,7 @@ function refreshWidget() {
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     if (widgetWindow.isVisible()) resizeWidget(state);
-    widgetWindow.webContents.send('aster-widget-update', state);
+    widgetWindow.webContents.send('aster-widget-update', state, { resetDay });
   }
 }
 function resizeWidget(state = widgetState()) {
@@ -397,7 +397,7 @@ async function showWidget() {
   }
   widgetWindow.webContents.setZoomFactor(scale);
   resizeWidget();
-  if (!widgetWindow.webContents.isLoading()) { refreshWidget(); widgetWindow.show(); widgetWindow.focus(); }
+  if (!widgetWindow.webContents.isLoading()) { refreshWidget(true); widgetWindow.show(); widgetWindow.focus(); }
 }
 function notify(kind, title, body, navigation) {
   if (privacyHidden()) return false;
