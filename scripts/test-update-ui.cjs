@@ -72,9 +72,35 @@ app.whenReady().then(async () => {
         document.querySelector('.update-notes').open = true;
       } catch (error) { return error.message; }
     })()`), undefined);
+    assert.equal(await window.webContents.executeJavaScript(`(async () => {
+      try {
+        const initial = structuredClone(updateSnapshot);
+        window.fixtureCheckRequests = 0;
+        window.aster.invoke = async operation => {
+          if (operation === 'checkUpdates') fixtureCheckRequests++;
+          return { ok: true, value: updateSnapshot };
+        };
+        receiveUpdate({ ...initial, checkRetryAt: Date.now() + 200 });
+        const button = document.querySelector('[data-update=checkUpdates]');
+        if (!button.disabled) throw new Error('Repeated check is not disabled');
+        button.click();
+        if (fixtureCheckRequests) throw new Error('Disabled check made a request');
+        if (!document.querySelector('#updates-panel').textContent.includes('Повторная проверка доступна после')) throw new Error('Missing retry time');
+        await new Promise(resolve => setTimeout(resolve, 350));
+        if (document.querySelector('[data-update=checkUpdates]').disabled) throw new Error('Check did not unlock after cooldown');
+        if (!document.querySelector('.update-notes').open) throw new Error('Cooldown collapsed release notes');
+        document.querySelector('[data-update=checkUpdates]').click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (fixtureCheckRequests !== 1) throw new Error('Unlocked check did not make exactly one request');
+        receiveUpdate({ ...initial, error: 'GitHub: HTTP 403' });
+        const error = document.querySelector('#updates-panel [role=alert]').textContent;
+        if (!error.includes('GitHub') || error.includes('администратор')) throw new Error('GitHub refusal was confused with mailbox access');
+        receiveUpdate(initial);
+      } catch (error) { return error.message; }
+    })()`), undefined);
     await fs.mkdir(path.join(root, 'release'), { recursive: true });
     await fs.writeFile(path.join(root, 'release/update-restart-ui.png'), (await window.webContents.capturePage()).toPNG());
-    console.log('PASS: restart-update dialog, automatic/manual prompts, release-note disclosure and keyboard focus across checks/downloads/pause/retry/install/error, manual collapse and version changes');
+    console.log('PASS: restart-update dialog, automatic/manual prompts, release-note disclosure and keyboard focus across checks/downloads/pause/retry/install/error, manual collapse, version changes, cooldown/unlock and GitHub errors');
   } finally { window.destroy(); }
   app.exit(0);
 }).catch(error => { console.error(error); app.exit(1); });

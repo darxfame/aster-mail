@@ -46,8 +46,19 @@ async function request(fetch, url, signal, headers = {}) {
       url = new URL(location, url).href; continue;
     }
     if (!response.ok && !(response.status === 416 && headers.Range)) {
+      const retryAfter = response.headers.get('retry-after');
+      const limited = response.status === 429 || response.status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || retryAfter !== null);
+      if (limited) {
+        const now = Date.now();
+        const retryAt = retryAfter !== null && /^\d+$/.test(retryAfter) ? now + Number(retryAfter) * 1000 : Date.parse(retryAfter || '');
+        const resetAt = response.headers.get('x-ratelimit-remaining') === '0' ? Number(response.headers.get('x-ratelimit-reset')) * 1000 : 0;
+        await response.body?.cancel();
+        throw Object.assign(new Error(tr('GitHub временно ограничил частоту запросов. Повторите проверку позже.')), {
+          retryable: false, checkRetryAt: Math.max(now + 60000, Number.isFinite(retryAt) ? retryAt : 0, Number.isFinite(resetAt) ? resetAt : 0),
+        });
+      }
       await response.body?.cancel();
-      throw Object.assign(new Error(`GitHub: HTTP ${response.status}`), { retryable: [408, 429, 500, 502, 503, 504].includes(response.status) });
+      throw Object.assign(new Error(`GitHub: HTTP ${response.status}`), { retryable: [408, 500, 502, 503, 504].includes(response.status) });
     }
     return response;
   }
@@ -114,11 +125,11 @@ class Updates {
     this.lastAutomaticAttempt = now;
     return this.check();
   }
-  async check() {
-    if (this.busy || this.state.staged) return this.snapshot();
+  async check({ manual = false } = {}) {
+    if (this.busy || this.state.staged || this.state.checkRetryAt > Date.now()) return this.snapshot();
     this.busy = true;
     const previous = this.state.status;
-    this.publish({ status: 'checking', error: '' });
+    this.publish({ status: 'checking', error: '', checkRetryAt: manual ? Date.now() + 60000 : null });
     try {
       const response = await request(this.fetch, apiURL, AbortSignal.timeout(30000));
       const chunks = []; let size = 0;
@@ -127,7 +138,7 @@ class Updates {
       const same = this.state.available?.sha256 === available?.sha256 && this.state.available?.name === available?.name && this.state.available?.size === available?.size;
       const ready = previous === 'ready' && same;
       return this.publish({ available, status: ready ? 'ready' : previous === 'paused' && same ? 'paused' : available ? 'available' : 'current', lastChecked: new Date().toISOString(), progress: ready ? 100 : same ? this.state.progress : 0, received: same ? this.state.received : 0, speed: 0, retryAt: null });
-    } catch (error) { return this.publish({ status: previous, error: error.message }); }
+    } catch (error) { return this.publish({ status: previous, error: error.message, checkRetryAt: Math.max(this.state.checkRetryAt || 0, error.checkRetryAt || 0) || null }); }
     finally { this.busy = false; }
   }
   async pauseDownload() {

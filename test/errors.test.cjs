@@ -58,3 +58,12 @@ test('plain-language validation and write-uncertainty instructions survive prese
   assert.doesNotMatch(message(network), /ERR_CERT/);
   assert.match(message(network, { debug: true }), /ERR_CERT_AUTHORITY_INVALID/);
 });
+
+test('GitHub refusals never ask for Exchange permissions or reconnecting the mailbox', () => {
+  for (const status of [401, 403, 429, 503]) {
+    const text = message(new Error(`GitHub: HTTP ${status}`));
+    assert.match(text, /GitHub/);
+    assert.doesNotMatch(text, /администратор|аккаунт|OWA|Exchange/);
+  }
+  assert.match(message(new Error('OWA GetItem: HTTP 403')), /Проверьте права/);
+});

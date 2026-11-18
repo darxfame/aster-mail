@@ -11,7 +11,7 @@ function fixture(api = async () => assert.fail('Unexpected request')) {
     addEventListener(name, callback) { listeners[name] = callback; } };
   const context = vm.createContext({ errorText: require('../src/errors.js').message, document, window: { aster: {}, asterI18n: { locale: 'en-GB' }, addEventListener() {} },
     tr: value => value, bytes: value => `${value} B`, esc: value => String(value).replaceAll('<', '&lt;'), modalBusy: false, modalDirty: false, modalSequence: 0, api,
-    modal(title, description, body) { context.modalSequence++; dialog.open = true; shown.push({ title, description, body }); }, toast() {}, setTimeout: callback => callback() });
+    modal(title, description, body) { context.modalSequence++; dialog.open = true; shown.push({ title, description, body }); }, toast() {}, clearTimeout() {}, setTimeout: callback => callback() });
   vm.runInContext(source, context);
   return { context, dialog, panel, listeners, shown };
 }

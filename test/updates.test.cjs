@@ -264,7 +264,7 @@ test('paused download can be discarded and symlink replacement cannot be resumed
   assert.equal(await fs.readFile(other, 'utf8'), 'private data');
 });
 test('HTTP retries are bounded and permanent HTTP or TLS errors are not retried', async t => {
-  for (const failure of [503, 403, 'CERT_HAS_EXPIRED']) {
+  for (const failure of [503, 403, 429, 'CERT_HAS_EXPIRED']) {
     let attempts = 0;
     const { updater, opened } = await fixture(t, async url => {
       if (url === apiURL) return new Response(JSON.stringify(release()));
@@ -325,4 +325,47 @@ test('closing the update prompt cancels a pending verified installer open withou
   const opening = updater.openInstaller(); await started;
   updater.cancelInstall(); finish(); await assert.rejects(opening);
   assert.equal(activated, false); assert.equal(updater.state.status, 'ready'); assert.equal(updater.state.error, '');
+});
+
+test('manual update checks are throttled in the backend and resume after one minute', async t => {
+  let now = Date.now(), requests = 0;
+  t.mock.method(Date, 'now', () => now);
+  const { updater } = await fixture(t, async () => { requests++; return new Response(JSON.stringify(release())); });
+  await updater.check({ manual: true });
+  assert.equal(updater.state.checkRetryAt, now + 60000);
+  for (let i = 0; i < 20; i++) await updater.check({ manual: true });
+  assert.equal(requests, 1);
+  now += 59999; await updater.check({ manual: true }); assert.equal(requests, 1);
+  now++; await updater.check({ manual: true }); assert.equal(requests, 2);
+  assert.equal(updater.state.available.version, '0.1.9');
+});
+test('rate-limited checks honor GitHub reset and Retry-After without retrying or discarding a known release', async t => {
+  let now = Date.now(), requests = 0;
+  t.mock.method(Date, 'now', () => now);
+  const { updater } = await fixture(t, async () => { requests++; return new Response(JSON.stringify(release())); });
+  await updater.check();
+  const reset = Math.ceil(now / 1000) + 3600;
+  updater.fetch = async () => { requests++; return new Response(null, { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) } }); };
+  await updater.check({ manual: true });
+  assert.equal(updater.state.checkRetryAt, reset * 1000);
+  assert.match(updater.state.error, /GitHub.*частоту запросов/);
+  assert.equal(updater.state.available.version, '0.1.9');
+  now += 120000;
+  await updater.check({ manual: true }); await updater.checkAutomatically(now); assert.equal(requests, 2);
+  now = reset * 1000;
+  updater.fetch = async () => { requests++; return new Response(null, { status: 429, headers: { 'retry-after': '120', 'x-ratelimit-remaining': '40', 'x-ratelimit-reset': String(reset + 3600) } }); };
+  await updater.check({ manual: true });
+  assert.equal(requests, 3); assert.equal(updater.state.checkRetryAt, now + 120000);
+  now += 120000;
+  updater.fetch = async () => { requests++; return new Response(JSON.stringify(release())); };
+  await updater.check({ manual: true });
+  assert.equal(requests, 4); assert.equal(updater.state.error, '');
+});
+test('Retry-After supports HTTP dates and a headerless 429 uses a bounded fallback', async () => {
+  const after = new Date(Date.now() + 180000).toUTCString();
+  for (const [headers, until] of [[{ 'retry-after': after }, Date.parse(after)], [{}, Date.now() + 60000]]) {
+    await assert.rejects(request(async () => new Response(null, { status: 429, headers }), apiURL), error => {
+      assert.equal(error.retryable, false); assert.ok(error.checkRetryAt >= until); return true;
+    });
+  }
 });

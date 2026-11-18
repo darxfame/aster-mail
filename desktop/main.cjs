@@ -765,7 +765,7 @@ app.whenReady().then(async () => {
         clipboard.writeText(data.instructions ? mcpAgentInstructions(data.format) : mcpConfiguration(data.format)); return { ok: true, value: true };
       }
       if (operation === 'updateState') return { ok: true, value: updates.snapshot() };
-      if (operation === 'checkUpdates') return { ok: true, value: await updates.check() };
+      if (operation === 'checkUpdates') return { ok: true, value: await updates.check({ manual: true }) };
       if (operation === 'downloadUpdate') return { ok: true, value: await updates.download() };
       if (operation === 'pauseUpdateDownload') return { ok: true, value: await updates.pauseDownload() };
       if (operation === 'cancelUpdateDownload') return { ok: true, value: await updates.cancelDownload() };

@@ -1,7 +1,7 @@
 let updateSnapshot = { installed: '0.2.39', status: 'idle', autoCheck: true, available: null, error: '' };
 const promptedUpdateVersions = new Set();
 let updatePromptsReady = false;
-let updateInstallAttempt = 0, updateOpening = false;
+let updateInstallAttempt = 0, updateOpening = false, updateCheckTimer;
 function maybePromptUpdate() {
   const value = updateSnapshot;
   if (!updatePromptsReady || !window.aster || !value.autoCheck || !value.available || value.error || !['available', 'ready'].includes(value.status) || promptedUpdateVersions.has(value.available.version)) return;
@@ -36,9 +36,12 @@ function receiveUpdate(value) {
   maybePromptUpdate();
 }
 function renderUpdates() {
+  clearTimeout(updateCheckTimer);
   const panel = document.querySelector('#updates-panel'); if (!panel) return;
   const focused = panel.contains?.(document.activeElement) ? document.activeElement.dataset.update : null;
   const value = updateSnapshot, busy = updateOpening || value.installing || ['checking', 'downloading'].includes(value.status);
+  const checkWaiting = value.checkRetryAt > Date.now();
+  if (checkWaiting) updateCheckTimer = setTimeout(renderUpdates, Math.min(value.checkRetryAt - Date.now() + 10, 2147483647));
   const notesFocused = Boolean(document.activeElement && document.activeElement === panel.querySelector?.('.update-notes summary'));
   const notesOpen = panel.dataset.notesVersion === value.available?.version && panel.querySelector?.('.update-notes')?.open;
   panel.dataset.notesVersion = value.available?.version || '';
@@ -46,8 +49,9 @@ function renderUpdates() {
     ${value.lastChecked ? `<p class="form-note">${tr("Последняя проверка:")} ${esc(new Date(value.lastChecked).toLocaleString(window.asterI18n.locale))}</p>` : ''}
     ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="${tr("Загрузка обновления")}"></progress>` : ''}
     ${value.available?.notes ? `<details class="update-notes" ${notesOpen ? 'open' : ''}><summary>${tr("Что нового в")} ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
+    ${checkWaiting ? `<p class="form-note">${tr('Повторная проверка доступна после')} ${esc(new Date(value.checkRetryAt).toLocaleTimeString(window.asterI18n.locale))}</p>` : ''}
     ${value.error ? `<p class="form-error" role="alert">${esc(errorText(value.error))}</p>` : ''}
-    <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy || value.staged ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
+    <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy || value.staged || checkWaiting ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
     ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow || value.available.restart ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'paused' ? tr('Продолжить загрузку') : value.available.restart ? tr('Обновить и перезапустить') : panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}
     ${value.status === 'downloading' ? `<button class="secondary" data-update="pauseUpdateDownload">${tr('Пауза')}</button>` : ''}
     ${['downloading', 'paused'].includes(value.status) ? `<button class="secondary" data-update="cancelUpdateDownload">${tr('Отменить загрузку')}</button>` : ''}</div>`;

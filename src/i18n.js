@@ -1478,6 +1478,9 @@
   english["Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка."] = "Scaling enlarges text and interface controls. In a narrow window the message opens separately from the list.";
   english["Справочник"] = "Directory";
   english["Выбрать из справочника:"] = "Choose from directory:";
+  english["GitHub временно ограничил частоту запросов. Повторите проверку позже."] = "GitHub has temporarily limited requests. Try checking again later.";
+  english["Не удалось получить обновление с GitHub. Повторите попытку позже или проверьте доступ к GitHub."] = "Could not retrieve the update from GitHub. Try again later or check access to GitHub.";
+  english["Повторная проверка доступна после"] = "You can check again after";
   english["Искать по"] = "Search by";
   english["Текст письма"] = "Message text";
   english["От кого"] = "From";

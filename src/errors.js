@@ -10,7 +10,8 @@
     const technical = status || code || native || transport || /^(?:OWA |EWS |Exchange:|Invalid |ENOENT|EACCES|EPERM)|\b(?:ChangeKey|CANARY)\b/.test(raw);
     if (!technical) return raw;
     let text;
-    if (code === 'ErrorItemNotFound') text = operation === 'message' ? tr('Письмо не найдено на сервере. Обновите список писем.') : tr('Объект не найден на сервере. Обновите список и откройте его заново.');
+    if (/^GitHub: HTTP /.test(raw)) text = tr('Не удалось получить обновление с GitHub. Повторите попытку позже или проверьте доступ к GitHub.');
+    else if (code === 'ErrorItemNotFound') text = operation === 'message' ? tr('Письмо не найдено на сервере. Обновите список писем.') : tr('Объект не найден на сервере. Обновите список и откройте его заново.');
     else if ([401, 440, 449].includes(status) || ['ErrorInvalidClientAccessToken', 'ErrorInvalidUserSid'].includes(code)) text = tr('Сервер отклонил авторизацию. Подключите аккаунт заново.');
     else if (status === 403 || code === 'ErrorAccessDenied') text = tr('Сервер запретил доступ к этой операции. Проверьте права доступа у администратора.');
     else if (status === 501 || code === 'ErrorInvalidOperation' || code === 'ErrorNotImplemented') text = tr('Сервер не поддерживает эту операцию. Обратитесь к администратору.');
