@@ -64,7 +64,15 @@ app.whenReady().then(async () => {
     assert.equal(await js('state.messages.length'), await js('originalCount'));
     // Enter retains scope and all structured conditions; the visible text has no AQS.
     assert.equal(await js('document.querySelector("#search").value'), '');
-    await js(`document.querySelector('#search').value='Анна';document.querySelector('#search-form').requestSubmit()`);
+    await js(`document.querySelector('#search').value='Анна';document.querySelector('#search').focus()`);
+    const input = window.webContents.debugger;
+    input.attach();
+    try {
+      const key = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
+      await input.sendCommand('Input.dispatchKeyEvent', { ...key, type: 'keyDown', text: '\r' });
+      await input.sendCommand('Input.dispatchKeyEvent', { ...key, type: 'keyUp' });
+    } finally { input.detach(); }
+    await waitFor('state.query === "Анна" && !state.mailLoading');
     await waitFor('!state.mailLoading');
     assert.equal(await js('state.mailSearch.criteria.folder'), 'inbox');
     assert.equal(await js('state.messages.every(message=>message.folder==="inbox")'), true);
@@ -79,6 +87,9 @@ app.whenReady().then(async () => {
     await waitFor('state.mailSearch.criteria.text==="Анна" && !state.mailLoading');
     assert.equal(await js('state.mailSearch.criteria.folder'), '');
     assert.equal(await js('Boolean(state.searchObjects.calendar && state.searchObjects.contacts)'), true);
+    await js(`document.querySelector('#search').value='No matches for this fictional query';document.querySelector('#search-form').requestSubmit()`);
+    await waitFor('!state.mailLoading && Boolean(document.querySelector("#messages .empty"))');
+    assert.match(await js('document.querySelector("#messages .empty").textContent'), /Совпадений нет/);
     await js(`document.querySelector('[data-action=search-filters]').click();document.querySelector('#mail-search-form').elements.from.value=fixture.from.email;document.querySelector('#mail-search-form').elements.text.value='';document.querySelector('#mail-search-form').elements.folder.value='inbox';document.querySelector('#mail-search-form').elements.attachments.value='yes';document.querySelector('#mail-search-form').requestSubmit()`);
     await waitFor('!modalBusy && !state.mailLoading');
     await js(`document.querySelector('#search-form').requestSubmit()`);

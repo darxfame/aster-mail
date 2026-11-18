@@ -17,12 +17,12 @@
   function query(input) {
     const value = normalize(input), parts = [];
     const date = value => `${value.slice(5, 7)}/${value.slice(8, 10)}/${value.slice(0, 4)}`;
-    if (value.text) parts.push(`(${value.text})`);
     for (const key of ['from', 'to']) if (value[key]) parts.push(`${key}:"${value[key]}"`);
     if (value.start && value.end) parts.push(`received:${date(value.start)}..${date(value.end)}`);
     else if (value.start) parts.push(`received:>=${date(value.start)}`);
     else if (value.end) parts.push(`received:<=${date(value.end)}`);
     if (value.attachments !== 'any') parts.push(`hasattachment:${value.attachments === 'yes' ? 'true' : 'false'}`);
+    if (value.text) parts.unshift(parts.length ? `(${value.text})` : value.text);
     const result = parts.join(' AND ') || (value.folder ? '*' : '');
     if (result.length > 2000) throw new Error(tr('Поисковый запрос слишком длинный. Сократите условия.'));
     return result;

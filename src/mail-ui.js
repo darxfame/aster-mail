@@ -424,7 +424,7 @@ async function openContactCard(person, lookup = false) {
 async function searchMailbox(query, filter, offset = 0, criteria = null) {
   const globalText = !criteria || !criteria.folder && !criteria.from && !criteria.to && !criteria.start && !criteria.end && (!criteria.attachments || criteria.attachments === 'any');
   const kinds = globalText && filter === 'all' && offset === 0 ? ['mail', 'calendar', 'contacts'] : ['mail'];
-  const constraint = filter === 'unread' ? criteria?.folder ? 'isread:false' : 'read:no' : filter === 'flagged' ? 'isflagged:true' : '';
+  const constraint = filter === 'unread' ? 'read:no' : filter === 'flagged' ? 'isflagged:true' : '';
   const settled = await Promise.allSettled(kinds.map(kind => api('search', { kind, query: kind === 'mail' && constraint ? query === '*' ? constraint : `(${query}) AND ${constraint}` : query, offset, ...(kind === 'mail' && criteria?.folder ? { folder: criteria.folder } : {}) })));
   const groups = {};
   for (let i = 0; i < kinds.length; i++) groups[kinds[i]] = settled[i].status === 'fulfilled' ? settled[i].value : { items: [], more: false, error: settled[i].reason.message, connectionError: settled[i].reason.connectionError === true };

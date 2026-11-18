@@ -263,7 +263,7 @@ class OWAClient {
   async editDraft(data) { return require('./mail-drafts.cjs').run(this, data); }
   async search(data) {
     if (data.folder !== undefined && (typeof data.folder !== 'string' || data.folder.length > 16000 || /[\u0000-\u001f]/.test(data.folder) || data.folder && !data.folder.trim())) throw new Error(tr('Проверьте папку поиска.'));
-    if ((!data.kind || data.kind === 'mail') && data.folder) {
+    if ((!data.kind || data.kind === 'mail') && data.folder && typeof data.query === 'string' && data.query.trim() === '*') {
       return this.searchObjects({ ...data, kind: 'mail' });
     }
     if (data.kind && data.kind !== 'mail') return this.searchObjects(data);
@@ -281,9 +281,11 @@ class OWAClient {
       ItemShape: P.typed('ItemResponseShape', { BaseShape: 'AllProperties' }),
       QueryString: P.typed('QueryStringType', { Value: query.trim() }),
     }, 'Exchange2016');
-    if (kind === 'mail' && query.trim() !== '*') payload.Body.QueryString = P.typed('QueryStringType', { Value: query.trim() });
     const json = await this.call('FindItem', payload);
     const root = P.walk(json, value => value.RootFolder)[0]?.RootFolder;
+    if (root?.Items === undefined && root?.TotalItemsInView === 0 && root.IncludesLastItemInRange !== false) {
+      return { items: [], more: false, nextOffset: offset };
+    }
     if (!root || !Array.isArray(root.Items)) throw new Error(tr('OWA FindItem: неподдерживаемый формат результатов поиска'));
     const items = root.Items.filter(value => value.ItemId?.Id).map(kind === 'mail' ? P.message : kind === 'calendar' ? calendarEvents.normalize : P.contact);
     const more = root.IncludesLastItemInRange === false;
@@ -291,12 +293,15 @@ class OWAClient {
     if (more && (!items.length || Number.isFinite(nextOffset) && nextOffset <= offset)) throw new Error(tr('OWA FindItem: сервер не продвинул страницу поиска'));
     return { items, more, nextOffset: Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : offset + root.Items.length };
   }
-  async performSearch({ query, offset = 0 }) {
+  async performSearch({ query, offset = 0, folder }) {
     if (typeof query !== 'string' || !query.trim() || query.length > 2000 || !Number.isSafeInteger(offset) || offset < 0) throw new Error(tr('Введите поисковый запрос'));
-    const scope = [P.typed('PrimaryMailboxSearchScopeType', { FolderScope: P.typed('SearchFolderScopeType', { BaseFolderId: P.folder('msgfolderroot') }) })];
-    if (!offset || !this.searchSession || this.searchQuery !== query) {
+    const scope = [P.typed('PrimaryMailboxSearchScopeType', {
+      FolderScope: P.typed('SearchFolderScopeType', { BaseFolderId: P.folder(folder || 'msgfolderroot') }),
+      ...(folder ? { IsDeepTraversal: false } : {}),
+    })];
+    if (!offset || !this.searchSession || this.searchQuery !== query || this.searchFolder !== folder) {
       if (this.searchSession) await this.call('EndSearchSession', P.request('EndSearchSession', { SearchSessionId: this.searchSession }));
-      this.searchSession = require('node:crypto').randomUUID(); this.searchQuery = query;
+      this.searchSession = require('node:crypto').randomUUID(); this.searchQuery = query; this.searchFolder = folder;
       await this.call('StartSearchSession', P.request('StartSearchSession', {
         SearchSessionId: this.searchSession, WarmupOptions: 16777215, SuggestionTypes: 1,
         SearchScope: scope, IdFormat: 'EwsId', ApplicationId: 'Owa',
@@ -307,7 +312,7 @@ class OWAClient {
       SearchRefiners: null, SearchRestrictions: null, IdFormat: 'EwsId', RetrieveRefiners: offset === 0,
       MaxRefinersCountPerRefinerType: 5, ItemTypes: 'MailItems', ResultRowOffset: offset,
       ResultRowCount: 50, MaxResultsCountHint: 250, MaxPreviewLength: 160, PropertySetName: 'Owa16',
-      SortOrder: 'DateTime', IncludeDeleted: false, Scenario: 'MailSearch',
+      SortOrder: 'DateTime', IncludeDeleted: folder === 'deleteditems', Scenario: 'MailSearch',
     }, 'V2016_06_15'));
     if (!Object.hasOwn(json.Body, 'SearchResults')) throw new Error(tr('OWA ExecuteSearch: неподдерживаемый формат результатов'));
     return { items: (json.Body.SearchResults?.Items || []).filter(o => o.ItemId?.Id).map(P.message), more: Boolean(json.Body.SearchResults?.MoreResultsAvailable) };
