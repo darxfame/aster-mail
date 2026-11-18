@@ -24,6 +24,15 @@ app.whenReady().then(async () => {
     await js('document.querySelector("[data-action=demo]").click()');
     await waitFor('state.demo && state.messages.length>0');
     assert.notEqual(await js('getComputedStyle(document.querySelector("[data-action=search-filters]")).display'), 'none');
+    assert.equal(await js('getComputedStyle(document.querySelector("#mail-search-controls")).display'), 'none');
+    const beforeMenu = await js('document.querySelector("#workspace").getBoundingClientRect().top');
+    await js('document.querySelector("#search").focus()');
+    assert.equal(await js('getComputedStyle(document.querySelector("#mail-search-controls")).display'), 'flex');
+    assert.equal(await js('document.querySelector("#workspace").getBoundingClientRect().top'), beforeMenu, 'Search menu overlays content without reserving height');
+    await js('document.querySelector("#mail-search-scope").focus()');
+    assert.equal(await js('getComputedStyle(document.querySelector("#mail-search-controls")).display'), 'flex', 'Scope selection keeps the menu open');
+    await js('document.querySelector("#quick-create").focus()');
+    assert.equal(await js('getComputedStyle(document.querySelector("#mail-search-controls")).display'), 'none');
     await js(`window.fixture=structuredClone(state.messages.find(message=>message.hasAttachments&&!message.meeting));window.originalCount=state.messages.length;void 0`);
     await js(`document.querySelector('[data-action=search-filters]').click()`);
     await waitFor('Boolean(document.querySelector("#mail-search-form"))');
@@ -53,11 +62,40 @@ app.whenReady().then(async () => {
     await js(`document.querySelector('[data-action=search-filters]').click();document.querySelector('#mail-search-form').elements.folder.value='inbox';document.querySelector('#mail-search-form').requestSubmit()`);
     await waitFor('!modalBusy && state.query==="*"');
     assert.equal(await js('state.messages.length'), await js('originalCount'));
-    // Ordinary search exits advanced mode and continues to include related sources.
+    // Enter retains scope and all structured conditions; the visible text has no AQS.
+    assert.equal(await js('document.querySelector("#search").value'), '');
     await js(`document.querySelector('#search').value='Анна';document.querySelector('#search-form').requestSubmit()`);
-    await waitFor('state.query==="Анна" && !state.mailLoading');
-    assert.equal(await js('state.mailSearch'), null);
+    await waitFor('!state.mailLoading');
+    assert.equal(await js('state.mailSearch.criteria.folder'), 'inbox');
+    assert.equal(await js('state.messages.every(message=>message.folder==="inbox")'), true);
+    assert.equal(await js('state.searchObjects'), null);
+    await js(`document.querySelector('#search-form').requestSubmit()`);
+    await waitFor('!state.mailLoading');
+    assert.equal(await js('state.mailSearch.criteria.text'), 'Анна');
+    // Explicit global scope keeps the existing related calendar/contact search.
+    await js(`document.querySelector('#mail-search-scope').value='';document.querySelector('#mail-search-scope').dispatchEvent(new Event('change',{bubbles:true}))`);
+    await waitFor('!state.mailLoading');
+    await js(`document.querySelector('#search').value='Анна';document.querySelector('#search-form').requestSubmit()`);
+    await waitFor('state.mailSearch.criteria.text==="Анна" && !state.mailLoading');
+    assert.equal(await js('state.mailSearch.criteria.folder'), '');
     assert.equal(await js('Boolean(state.searchObjects.calendar && state.searchObjects.contacts)'), true);
+    await js(`document.querySelector('[data-action=search-filters]').click();document.querySelector('#mail-search-form').elements.from.value=fixture.from.email;document.querySelector('#mail-search-form').elements.text.value='';document.querySelector('#mail-search-form').elements.folder.value='inbox';document.querySelector('#mail-search-form').elements.attachments.value='yes';document.querySelector('#mail-search-form').requestSubmit()`);
+    await waitFor('!modalBusy && !state.mailLoading');
+    await js(`document.querySelector('#search-form').requestSubmit()`);
+    await waitFor('!state.mailLoading');
+    assert.equal(await js('state.mailSearch.criteria.from'), await js('fixture.from.email'));
+    assert.equal(await js('state.mailSearch.criteria.attachments'), 'yes');
+    assert.equal(await js('document.querySelector("#search").value'), '');
+    await js(`document.querySelector('[data-remove-search=attachments]').click()`);
+    await waitFor('!state.mailLoading');
+    assert.equal(await js('state.mailSearch.criteria.attachments'), 'any');
+    await js(`document.querySelector('[data-action=folder][data-folder=sentitems]').click()`);
+    await waitFor('!state.mailLoading');
+    assert.equal(await js('document.querySelector("#mail-search-scope").value'), 'sentitems');
+    await js(`document.querySelector('#mail-search-mode').value='from';document.querySelector('#mail-search-mode').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#search').value='Анна';document.querySelector('#search-form').requestSubmit()`);
+    await waitFor('!state.mailLoading');
+    assert.equal(await js('state.mailSearch.criteria.from'), 'Анна');
+    assert.equal(await js('state.mailSearch.criteria.folder'), 'sentitems');
     await js(`(() => {state.demo=false;state.account={sessionId:'fictional',server:'https://mail.example.com',username:'fictional'};state.mailSearch={query:'from:"fictional@example.com"',criteria:{folder:'inbox'}};state.query=state.mailSearch.query;window.searchCalls=[];api=async(operation,data)=>{if(operation!=='search')return {};searchCalls.push(data);return {items:[{...fixture,id:searchCalls.length===1?'first-match':'older-match'}],more:searchCalls.length===1,nextOffset:searchCalls.length===1?120:121}};})()`);
     await js('loadView()');
     assert.equal(await js('state.offset'), 120);
@@ -66,12 +104,14 @@ app.whenReady().then(async () => {
     assert.equal(await js('searchCalls[1].offset'), 120);
     assert.equal(await js('searchCalls.every(call=>call.folder==="inbox" && call.kind==="mail")'), true);
     assert.equal(await js('state.messages[1].id'), 'older-match');
+    await js('document.querySelector("#search").focus()');
+    await fs.writeFile(path.join(output, 'search-menu.png'), (await window.webContents.capturePage()).toPNG());
     // A superseded scoped search cannot repaint a different folder, even if it completes later.
     await js(`(() => {state.demo=false;state.account={sessionId:'fictional',server:'https://mail.example.com',username:'fictional'};state.mailSearch={query:'from:"fictional@example.com"',criteria:{folder:'inbox'}};state.query=state.mailSearch.query;api=async(operation,data)=>operation==='search'?new Promise(resolve=>window.finishSearch=resolve):{items:[],more:false};void loadView();})()`);
     await waitFor('typeof finishSearch==="function"');
     await js(`(() => {state.generation++;state.view='contacts';document.querySelector('#workspace').innerHTML='<p id="new-view">Keep this view</p>';finishSearch({items:[fixture],more:false});})()`);
     await waitFor('Boolean(document.querySelector("#new-view"))');
     assert.equal(await js('document.querySelector("#new-view").textContent'), 'Keep this view');
-    console.log('PASS: mail filter UI, UTC date validation, scoped demo, clearing, ordinary multi-source search, stale results and 100%/200% layout.');
+    console.log('PASS: mail filter UI, UTC date validation, scoped demo, clearing, current-folder defaults, preserved filters/Enter, quick sender search, global search, stale results and 100%/200% layout.');
   } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

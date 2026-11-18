@@ -72,6 +72,9 @@ test('selection is limited to loaded messages, never marks them read, and clears
   assert.match(notes[0], /100 загруженных/);
   context.syncMailSelection(items.slice(0, 2));
   assert.equal(vm.runInContext('mailSelection.size', context), 2);
+  state.mailSearch = { criteria: { folder: 'another-folder' } }; context.syncMailSelection(items);
+  assert.equal(vm.runInContext('mailSelection.size', context), 0, 'Changing search scope clears selection even with the same query');
+  handlers.change({ target: { checked: true, hasAttribute: name => name === 'data-mail-select-all' } });
   state.folder = 'sentitems'; context.syncMailSelection(items);
   assert.equal(vm.runInContext('mailSelection.size', context), 0);
 });

@@ -6,6 +6,7 @@ function composeMessageSnapshot(message) {
 async function detachCompose(mode) {
   if (modalBusy || !window.aster) return;
   const form = $('#compose-form'), generation = state.generation;
+  if (!window.asterRecipients.commit(form)) return;
   modalBusy = true; form.inert = true;
   try {
     const { editor, historyEditor, attachments, sourceMessage, ...data } = composeData;

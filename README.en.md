@@ -69,11 +69,11 @@ not need your Exchange password.
 The MCP settings include dedicated setup and copyable configuration for
 **Claude Code / Desktop, Codex, DeepSeek Harness (dsh), Continue and Kilo Code**.
 [Harness setup examples (Russian)](docs/MCP.md#настройка-популярных-harness).
-Access is disabled by default and must be enabled after each Aster restart.
+Access is disabled by default. Your choice is kept after restarting or updating Aster until you turn MCP off.
 
 | Mail | Meetings |
 | --- | --- |
-| Search by text, sender, recipient, dates and folder; read messages | List, search and read meetings, occurrences and series |
+| Search the current folder with retained filters; switch folders or search the whole mailbox; search by text, sender, recipient and dates; read messages | List, search and read meetings, occurrences and series |
 | Create folders and move up to 100 messages per request | Check availability, including your own, and find common free slots |
 | Create Exchange rules for future incoming messages from an exact sender | Create meetings with invitations and update existing meetings |
 

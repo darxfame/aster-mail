@@ -8,7 +8,15 @@ const profile = require('node:fs').mkdtempSync(path.join(require('node:os').tmpd
 app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 let window;
-const js = code => window.webContents.executeJavaScript(code);
+async function js(code) {
+  let timer;
+  try {
+    return await Promise.race([
+      window.webContents.executeJavaScript(code),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Air UI step timed out: ${code}`)), 8000); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
 async function waitFor(expression) {
   for (let i = 0; i < 150; i++) {
     if (await js(expression)) return;
@@ -66,9 +74,19 @@ app.whenReady().then(async () => {
     for (const selector of ['[data-mail-find]', '[data-mail-move]', '[data-action=archive]', '[data-action=delete]', '[data-action=reply]', '[data-action=reply-all]', '[data-action=forward]', '.mail-select', '.message-quick-actions', '.privacy-note', '.sender-detail']) assert.equal(await js(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), true, selector);
     assert.notEqual(await js("getComputedStyle(document.querySelector('.topbar')).backdropFilter"), 'none');
     assert.equal(await js('Boolean(document.querySelector(".reader-toolbar .privacy-note[title]")) && !document.querySelector(".reader-content .privacy-note")'), true, 'Image policy belongs in a compact labelled toolbar indicator');
-    // All reads below use manually released promises, with no artificial UI delay.
-    await js(`state.demo=false;state.account={server:'https://mail.example.test',username:'fictional@example.test',sessionId:'air-fixture'};window.fixtureReads=[];
+    // Foreground reads below use manually released promises, with no artificial UI delay.
+    await js(`state.demo=false;state.account={server:'https://mail.example.test',username:'fictional@example.test',sessionId:'air-fixture'};window.fixtureReads=[];window.fixtureSummaryReads=[];
       api=async(operation,data={})=>{
+        // The day overview reads in parallel with the foreground list/reader.
+        // Keep its replies out of the manually released foreground queue.
+        if(operation==='messages' && data.folder==='inbox' && data.filter==='unread') {
+          fixtureSummaryReads.push(operation);
+          return {items:structuredClone(fixtureMessages.filter(message=>!message.read)),more:false};
+        }
+        if(operation==='calendar' && state.view==='mail') {
+          fixtureSummaryReads.push(operation);
+          return structuredClone(window.asterDemo.events);
+        }
         if(['messages','message','calendar','contacts','eventDetails'].includes(operation))return new Promise((resolve,reject)=>fixtureReads.push({operation,data,resolve,reject}));
         if(operation==='contentImages')return {images:{},errors:{}};
         if(operation==='personPhoto')return null;
@@ -84,6 +102,8 @@ app.whenReady().then(async () => {
     assert.equal(await js('Boolean(document.querySelector("#reader .loading-reader"))'), true);
     assert.equal(await js(`Math.abs(document.querySelector('#reader .skeleton-reader').getBoundingClientRect().width-document.querySelector('#reader .skeleton-layout').clientWidth)<1`), true, 'Reader skeleton must use the same full width');
     await screenshot('reader-skeleton');
+    assert.deepEqual(await js('fixtureSummaryReads'), ['messages', 'calendar'], 'Background overview reads do not consume foreground replies');
+    assert.deepEqual(await js('fixtureReads.map(read=>read.operation)'), ['message'], 'The pending reply belongs to the opened message');
     await js('fixtureReads.shift().resolve({...fixtureMessages[0],meeting:null});fixtureRead');
     assert.equal(await js('Boolean(document.querySelector("#reader .sender-detail"))'), true);
     // Overlapping message reads must not let the first response replace the second.

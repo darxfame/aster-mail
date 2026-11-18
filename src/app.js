@@ -320,7 +320,8 @@ function renderSidebar() {
   create.innerHTML = `${icon('plus')}<span>${{ mail: tr('Написать'), calendar: tr('Встреча'), contacts: tr('Контакт') }[state.view]}</span>`;
   create.setAttribute('aria-label', { mail: tr('Написать'), calendar: tr('Создать встречу'), contacts: tr('Новый контакт') }[state.view]);
   document.body.classList.toggle('mail-view', isMail);
-  $('#search').placeholder = { mail: tr('Поиск: письма, календарь, контакты'), calendar: tr('Поиск по календарю'), contacts: tr('Поиск людей в Exchange') }[state.view];
+  $('#search').placeholder = { mail: tr('Поиск в выбранной папке'), calendar: tr('Поиск по календарю'), contacts: tr('Поиск людей в Exchange') }[state.view];
+  renderMailSearchControls();
   renderConnection();
   $('#demo-banner').hidden = !state.demo;
   restoreFocus();
@@ -335,7 +336,7 @@ async function loadView(append = false) {
   const generation = ++state.generation;
   if (!ready()) return welcome();
   state.mailLoading = state.view === 'mail' ? generation : 0;
-  const keepMail = state.view === 'mail' && state.mailViewKey === JSON.stringify([state.folder, state.query, state.filter]) && Boolean($('#messages'));
+  const keepMail = state.view === 'mail' && state.mailViewKey === JSON.stringify([state.folder, state.query, state.filter, state.mailSearch?.criteria.folder]) && Boolean($('#messages'));
   if (!append && !keepMail) $('#workspace').innerHTML = window.asterLoading.markup(state.view, { mail: tr('Загружаем почту…'), calendar: tr('Загружаем календарь…'), contacts: tr('Загружаем контакты…') }[state.view], state.view === 'calendar' ? calendarMode() : undefined);
   $('#status').textContent = tr('Обновление…');
   try {
@@ -344,13 +345,16 @@ async function loadView(append = false) {
       const criteria = state.mailSearch?.query === state.query ? state.mailSearch.criteria : null;
       let result;
       if (state.demo) {
-        result = criteria ? { items: structuredClone(window.asterDemo.messages.filter(message => window.asterMailSearch.matches(message, criteria))), more: false } : state.query ? demoMailSearch(state.query) : { items: structuredClone(window.asterDemo.messages.filter(message => message.folder === state.folder)), more: false };
+        if (criteria && state.query) {
+          result = { items: structuredClone(window.asterDemo.messages.filter(message => window.asterMailSearch.matches(message, criteria))), more: false };
+          if (!criteria.folder && criteria.text && !criteria.from && !criteria.to && !criteria.start && !criteria.end && criteria.attachments === 'any') result.related = demoMailSearch(criteria.text).related;
+        } else result = state.query ? demoMailSearch(state.query) : { items: structuredClone(window.asterDemo.messages.filter(message => message.folder === state.folder)), more: false };
       } else result = state.query ? await searchMailbox(state.query, state.filter, offset, criteria) : await api('messages', { folder: state.folder, filter: state.filter, offset });
       if (generation !== state.generation) return;
       if (state.filter !== 'all' && result.related) result.related = result.related.mail?.error ? { mail: result.related.mail } : null;
       state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = Number.isSafeInteger(result.nextOffset) ? result.nextOffset : (append ? state.offset : 0) + result.items.length;
       if (!append) { state.selected = null; state.searchObjects = state.query ? result.related || null : null; }
-      state.mailViewKey = JSON.stringify([state.folder, state.query, state.filter]);
+      state.mailViewKey = JSON.stringify([state.folder, state.query, state.filter, state.mailSearch?.criteria.folder]);
       renderMail();
       if (!state.demo && !state.query && !append) void refreshMailFolders(generation);
     } else if (state.view === 'calendar') {
@@ -382,7 +386,7 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected || state.dayOverviewOpen));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${state.query}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions"><button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions"><button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
   applyMailListWidth();
   renderMessages();
   if (state.selected) renderReader();
@@ -706,7 +710,7 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
   modal(draftMode ? tr('Продолжить черновик') : mode === 'forward' ? tr('Переслать письмо') : mode.startsWith('reply') ? tr('Ответить') : tr('Новое письмо'), state.demo ? tr('Деморежим: письмо не будет отправлено на сервер.') : `${tr("Отправка через корпоративный Exchange по")} ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', tr('Кому · адреса через запятую'), recipients.to)}${field('cc', tr('Копия'), recipients.cc)}${field('bcc', tr('Скрытая копия'), recipients.bcc || '')}${field('subject', tr('Тема'), draftMode ? m.subject : mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}<div class="compose-message-area"><div class="compose-editor-field" id="compose-editor-field"></div>${!draftMode && mode !== 'new' && m ? `<details class="compose-history" open><summary>${tr("Предыдущая переписка ·")} ${esc(m.from.name || m.from.email)}</summary><button type="button" class="secondary" id="edit-history">${tr("Редактировать")}</button><p class="form-note">${tr("При редактировании сохраняются текст и форматирование; изображения из цитаты не переносятся.")}</p><div id="compose-history-body"></div></details>` : ''}</div>${useServer ? tr('<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>') : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="${tr("Прикрепить файлы")}"><span>${tr("Или перетащите файлы в окно письма")}</span></label><div id="picked-files" class="picked-files"></div><p class="form-note">${tr("Вложения до 20 МБ суммарно. Предыдущая переписка будет включена в письмо; пересылка сохраняет исходные вложения.")}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">${tr("Сохранить черновик")}</button><button class="primary" type="submit">${icon('send')}${tr("Отправить")}</button></div></form>`);
   $('#modal').classList.add('compose-dialog');
-  window.asterRecipients.decorate($('#compose-form'));
+
   const expand = document.createElement('button');
   expand.type = 'button'; expand.className = 'secondary'; expand.textContent = tr('Развернуть окно');
   expand.setAttribute('aria-pressed', 'false');
@@ -769,6 +773,7 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
     addComposeFiles([]);
   }
   // File drops inside the script-free preview frame do not bubble to the dialog.
+  window.asterRecipients.decorate($('#compose-form'));
   mountQuickReplies($('#compose-form'), composeData);
   if (options.text) markModalDirty();
   for (const frame of $('#compose-form').querySelectorAll('iframe')) {
@@ -898,7 +903,7 @@ async function settingsModal() {
     <label class="field"><span>${tr('Конфигурация для выбранного агента')}</span><textarea data-mcp-config rows="8" readonly spellcheck="false" aria-label="${tr('Конфигурация для выбранного агента')}"></textarea></label>
     <p class="form-note">${tr('Если node не найден, замените его полным путём к Node.js. Используйте путь к скрипту из конфигурации, не путь к приложению. После подключения попросите агента вызвать get_account и найти письмо от нужного отправителя.')}</p>
     </details>
-    <p class="form-note">${tr('Доступ выключается при завершении Aster. После следующего запуска включите MCP снова; конфигурацию агента менять не нужно.')}</p>
+    <p class="form-note">${tr('Выбранное состояние MCP сохраняется после перезапуска и обновления Aster. Доступ можно выключить здесь или в меню MCP.')}</p>
     <p class="form-note">${tr('Пароль Exchange агенту не передаётся. Отправка писем и операции со встречами выполняются без подтверждения в Aster; разрешение может запросить агент. Другие изменения требуют подтверждения в клиенте.')}</p>
     </section>
     <section id="settings-panel-rules" role="tabpanel" aria-labelledby="settings-tab-rules" tabindex="0" hidden>${mailRulesMarkup()}</section>
@@ -982,6 +987,7 @@ async function submitForm(form, operation) {
 }
 async function sendCompose(save) {
   const form = $('#compose-form'); if (!form) return;
+  if (!window.asterRecipients.commit(form)) return;
   if (!save && !form.reportValidity()) return;
   await submitForm(form, async data => {
     Object.assign(data, composeData.editor.read());
@@ -1076,7 +1082,7 @@ async function handleAction(button) {
     return;
   }
   if (action === 'close') { if (!modalBusy) { if (!confirmDiscardChanges()) return; $('#modal').close(); } return; }
-  if (action === 'view') { state.view = button.dataset.view; state.query = ''; $('#search').value = ''; return loadView(); }
+  if (action === 'view') { state.mailSearch = null; state.view = button.dataset.view; state.query = ''; $('#search').value = ''; return loadView(); }
   if (action === 'connect') return connectModal();
   if (action === 'reset-local-data') {
     if (modalBusy || state.account) return;
@@ -1121,7 +1127,7 @@ async function handleAction(button) {
     try { await api('disconnect'); } finally { applyAccount(null); $('#modal').close(); $('#modal-content').replaceChildren(); await loadView(); }
     return;
   }
-  if (action === 'folder') { state.view = 'mail'; state.folder = button.dataset.folder; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView(); }
+  if (action === 'folder') { state.mailSearch = null; state.view = 'mail'; state.folder = button.dataset.folder; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView(); }
   if (action === 'refresh') { if (window.aster && !state.demo) await api('clearMailCache'); return loadView(); }
   if (action === 'more') return loadView(true);
   if (action === 'filter') { state.filter = button.dataset.filter; return loadView(); }
@@ -1342,15 +1348,24 @@ document.addEventListener('change', event => {
 document.addEventListener('change', event => { if (event.target.name === 'syncSignature') refreshSignatureField().catch(showError); });
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target;
-  if (form.id === 'search-form') { state.mailSearch = null; state.query = $('#search').value.trim(); if (state.view === 'calendar') renderCalendar(); else loadView(); return; }
+  if (form.id === 'search-form') {
+    if (state.view === 'mail') {
+      try {
+        const mode = $('#mail-search-mode').value;
+        applyMailSearch({ ...activeMailSearch(), [mode]: $('#search').value.trim(), folder: $('#mail-search-scope').value }, mode);
+        void loadView();
+      } catch (error) { showError(error); }
+    } else { state.mailSearch = null; state.query = $('#search').value.trim(); if (state.view === 'calendar') renderCalendar(); else loadView(); }
+    return;
+  }
   if (form.id === 'mail-search-form') {
     const account = state.account, generation = state.generation;
     void submitForm(form, async data => {
       const criteria = window.asterMailSearch.normalize(data), query = window.asterMailSearch.query(criteria);
       if (!query) throw new Error(tr('Введите текст или задайте хотя бы одно условие поиска.'));
       if (account !== state.account || generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
-      state.mailSearch = { criteria, query }; state.query = query; state.filter = 'all'; state.view = 'mail';
-      $('#search').value = query; $('#modal').close(); await loadView();
+      applyMailSearch(criteria); state.view = 'mail';
+      $('#search').value = criteria.text; $('#modal').close(); await loadView();
     }); return;
   }
   if (form.id === 'meeting-reminder-form') { submitMeetingReminder(form); return; }

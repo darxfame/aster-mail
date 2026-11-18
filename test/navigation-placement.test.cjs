@@ -10,7 +10,7 @@ test('navigation defaults left despite legacy bottom settings and preserves only
     const node = key => { if (!nodes.has(key)) nodes.set(key, { dataset: {}, setAttribute() {}, append(value) { assert.equal(value, dock); destinations.push('sidebar'); }, prepend(value) { assert.equal(value, dock); destinations.push('bottom'); } }); return nodes.get(key); };
     const c = vm.createContext({ tr: value => value, localPreferences: { getItem: key => preferences[key] }, state: { view: 'mail' },
       $: key => key === '.bottom-dock' ? dock : node(key), preserveListFocus: () => () => {}, renderFolderTree: () => '', miniMonthHTML: () => '',
-      icon: () => '', esc: value => value, initials: () => 'A', renderConnection() {}, sidebarCollapsed: false, compactSidebarExpanded: false,
+      icon: () => '', esc: value => value, initials: () => 'A', renderConnection() {}, renderMailSearchControls() {}, sidebarCollapsed: false, compactSidebarExpanded: false,
       window: { innerWidth: 1440 }, document: { body: { classList: { toggle() {} } }, querySelectorAll: () => [] } });
     vm.runInContext(source.slice(source.indexOf('let navigationPlacement ='), source.indexOf('const calendarMode =')), c);
     vm.runInContext(source.slice(source.indexOf('function renderSidebar('), source.indexOf('function welcome(')), c);

@@ -6,7 +6,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..'), baseline = process.env.ASTER_UI_BASELINE;
 const candidate = process.env.ASTER_UI_CANDIDATE || root;
-if (!baseline) throw new Error('Set ASTER_UI_BASELINE to the previous release checkout');
+if (!baseline) {
+  console.error('Set ASTER_UI_BASELINE to the previous release checkout');
+  app.exit(1);
+}
 const profile = require('node:fs').mkdtempSync(path.join(require('node:os').tmpdir(), 'aster-ui-release-'));
 app.setPath('userData', profile); app.on('window-all-closed', () => {});
 const windows = new Set();

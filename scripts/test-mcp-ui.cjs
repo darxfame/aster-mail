@@ -57,6 +57,8 @@ app.whenReady().then(async () => {
   releaseBoot();
   await js('document.querySelector("[data-action=mcp-toggle]").click()');
   await waitFor(async () => { try { return Boolean(JSON.parse(await fs.readFile(path.join(profile, 'mcp-connection.json'), 'utf8')).port); } catch { return false; } });
+  // The descriptor is published before bridge startup and menu updates finish.
+  await waitFor(() => js("window.aster.invoke('mcpState').then(result => result.ok && result.value.enabled && !result.value.changing)"));
   const menu = Menu.getApplicationMenu().items.find(item => item.label === 'MCP');
   menu.submenu.items[1].click();
   const config = JSON.parse(await clipboard.readText()).mcpServers['aster-mail'];

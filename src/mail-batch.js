@@ -1,7 +1,7 @@
 /* Bulk mail uses the existing OWA operations; selection never means the whole mailbox. */
 let mailSelection = new Set(), mailSelectionScope = '', mailBatchBusy = false;
 function mailSelectionKey() {
-  return JSON.stringify([state.account?.sessionId || (state.demo ? 'demo' : ''), state.view, state.folder, state.query, state.filter]);
+  return JSON.stringify([state.account?.sessionId || (state.demo ? 'demo' : ''), state.view, state.folder, state.query, state.filter, state.mailSearch?.criteria.folder]);
 }
 function syncMailSelection(items) {
   const scope = mailSelectionKey();

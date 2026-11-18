@@ -74,7 +74,7 @@
     "В настройках агента добавьте MCP-сервер с транспортом stdio. Вставьте JSON или перенесите поля command и args в формат вашего harness. Если node не найден, укажите полный путь к нему.": "Add a stdio MCP server in your agent settings. Paste the JSON or convert command and args to your harness configuration format. If node is not found, use its full path.",
     "Подключите Exchange в Aster и перезапустите MCP-подключение в агенте. Попросите его найти письмо от нужного отправителя. Демо-почта через MCP недоступна.": "Connect Exchange in Aster and restart the MCP connection in your agent. Ask it to find mail from a sender. Demo mail is unavailable through MCP.",
     "Конфигурация MCP · JSON": "MCP configuration · JSON",
-    "Доступ выключается при завершении Aster. После следующего запуска включите MCP снова; конфигурацию агента менять не нужно.": "Access turns off when Aster quits. Enable MCP again after the next launch; the agent configuration stays the same.",
+    "Выбранное состояние MCP сохраняется после перезапуска и обновления Aster. Доступ можно выключить здесь или в меню MCP.": "Your MCP setting is kept after restarting or updating Aster. Turn access off here or in the MCP menu.",
     "Пароль Exchange агенту не передаётся. Отправка писем и операции со встречами выполняются без подтверждения в Aster; разрешение может запросить агент. Другие изменения требуют подтверждения в клиенте.": "Your Exchange password is never passed to the agent. Mail sends and calendar operations have no Aster confirmation; the agent may ask for authorization. Other changes require confirmation in the client.",
     "Конфигурация MCP скопирована": "MCP configuration copied",
 
@@ -106,7 +106,8 @@
     "MCP: переместить письма?": "MCP: move messages?",
     "MCP: создать правило?": "MCP: create rule?",
     "Правило применяется к новым входящим письмам.": "The rule applies to future incoming mail.",
-    "Не удалось запустить MCP-сервер": "Could not start the MCP server",
+    "Не удалось изменить состояние MCP": "Could not change the MCP state",
+    "Не удалось прочитать настройку MCP": "Could not read the MCP setting",
     "Сейчас встреч нет": "No meetings in progress",
     "Все": "All",
     "Загружаем почту…": "Loading mail…",
@@ -1477,6 +1478,13 @@
   english["Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка."] = "Scaling enlarges text and interface controls. In a narrow window the message opens separately from the list.";
   english["Справочник"] = "Directory";
   english["Выбрать из справочника:"] = "Choose from directory:";
+  english["Искать по"] = "Search by";
+  english["Текст письма"] = "Message text";
+  english["От кого"] = "From";
+  english["Поиск в выбранной папке"] = "Search in the selected folder";
+  english["Удалить условие"] = "Remove condition";
+  english["Нажмите, чтобы исправить email."] = "Click to edit the email address.";
+  english["Удалить адресата"] = "Remove recipient";
   english["Введите минимум две буквы имени или email для поиска в общем справочнике Exchange."] = "Type at least two letters of a name or email to search the Exchange directory.";
   english["OWA: неподдерживаемый формат справочника"] = "OWA: unsupported directory format";
   english["Справочник вернул записи без SMTP-адресов. Уточните поиск или введите email вручную."] = "The directory returned entries without SMTP addresses. Refine your search or enter an email manually.";

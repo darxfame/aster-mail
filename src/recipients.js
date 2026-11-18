@@ -38,24 +38,27 @@
     input.value = addresses(input.value).filter(value => value.toLowerCase() !== email.toLowerCase()).join(', ');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }
-  recipients.decorateMeeting = (form, people) => {
+  recipients.commit = form => (meetingForms.get(form)?.pending || []).every(commit => commit());
+  recipients.decorateMeeting = (form, people, mail = false) => {
     const context = { people: people.filter(person => person.role !== 'resource'), drag: null }; meetingForms.set(form, context);
-    const columns = document.createElement('div'); columns.className = 'meeting-participant-columns';
-    form.elements.attendees.closest('.field').before(columns);
-    const pendingInputs = [];
-    for (const name of ['attendees', 'optionalAttendees']) {
+    const columns = document.createElement('div'); columns.className = `meeting-participant-columns${mail ? ' compose-participants' : ''}`;
+    form.elements[mail ? 'to' : 'attendees'].closest('.field').before(columns);
+    const options = document.createElement('div'); options.className = 'compose-recipient-options';
+    if (mail) columns.before(options);
+    const pendingInputs = []; context.pending = pendingInputs;
+    for (const name of mail ? ['to', 'cc', 'bcc'] : ['attendees', 'optionalAttendees']) {
       const input = form.elements[name], originalField = input.closest('.field');
       const field = document.createElement('div'); field.className = 'field meeting-participant-field recipient-field';
       originalField.replaceWith(field); columns.append(field);
       const label = document.createElement('label'), count = document.createElement('span'); count.className = 'participant-count'; count.setAttribute('aria-live', 'polite');
-      label.textContent = name === 'attendees' ? tr('Обязательные') : tr('Необязательные'); label.append(count); field.append(label);
+      label.textContent = mail ? { to: tr('Кому'), cc: tr('Копия'), bcc: tr('Скрытая копия') }[name] : name === 'attendees' ? tr('Обязательные') : tr('Необязательные'); label.append(count); field.append(label);
       const cards = document.createElement('div'); cards.className = 'participant-cards'; field.append(cards, input);
       input.classList.add('participant-addresses'); input.setAttribute('aria-label', `${label.textContent} · ${tr('Редактировать email')}`);
       input.addEventListener('focus', () => input.classList.add('is-editing'));
       input.addEventListener('blur', () => input.classList.remove('is-editing'));
       const entry = document.createElement('div'); entry.className = 'participant-entry';
       const addInput = document.createElement('input'); addInput.type = 'text'; addInput.dataset.participantTarget = name;
-      addInput.id = `meeting-add-${name}`; label.htmlFor = addInput.id; addInput.placeholder = tr('Имя или email'); addInput.disabled = input.disabled;
+      addInput.id = `participant-add-${name}`; label.htmlFor = addInput.id; addInput.placeholder = tr('Имя или email'); addInput.disabled = input.disabled;
       addInput.setAttribute('aria-label', `${label.textContent} · ${tr('Добавить участника')}`);
       const addButton = document.createElement('button'); addButton.type = 'button'; addButton.className = 'secondary participant-add'; addButton.textContent = '+';
       addButton.setAttribute('aria-label', tr('Добавить участника')); addButton.disabled = input.disabled;
@@ -99,7 +102,7 @@
           copy.append(title);
           if (person?.name && person.name !== email) { const address = document.createElement('small'); address.textContent = email; copy.append(address); }
           button.append(picture, copy);
-          button.title = tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
+          button.title = mail ? tr('Нажмите, чтобы исправить email.') : tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
           button.disabled = input.disabled; button.draggable = !input.disabled && !otherParticipants(input)?.disabled;
           button.addEventListener('click', event => { event.preventDefault(); input.focus(); input.setSelectionRange(start, end); });
           button.addEventListener('dragstart', event => {
@@ -107,13 +110,27 @@
             event.dataTransfer.setData('text/plain', email);
           });
           button.addEventListener('dragend', () => { context.drag = null; form.querySelectorAll('.participant-drop').forEach(node => node.classList.remove('participant-drop')); });
-          cards.append(button);
+          if (mail) {
+            const row = document.createElement('div'); row.className = 'compose-recipient-card';
+            const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'participant-remove'; remove.textContent = '×';
+            remove.setAttribute('aria-label', `${tr('Удалить адресата')}: ${email}`);
+            remove.addEventListener('click', () => { removeParticipant(input, email); addInput.focus(); });
+            row.append(button, remove); cards.append(row);
+          } else cards.append(button);
         }
         count.textContent = addresses(input.value).length;
         if (!cards.children.length) { const empty = document.createElement('p'); empty.className = 'participant-empty'; empty.textContent = tr('Участники не добавлены'); cards.append(empty); }
         cards.scrollTop = scrollTop;
       }
-      input.addEventListener('input', render); render();
+      let toggle;
+      if (mail && name !== 'to') {
+        toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'secondary'; toggle.textContent = label.firstChild.textContent;
+        toggle.setAttribute('aria-expanded', String(Boolean(input.value.trim()))); toggle.setAttribute('aria-controls', `recipient-field-${name}`);
+        field.id = `recipient-field-${name}`; field.hidden = !input.value.trim();
+        options.append(toggle);
+        toggle.addEventListener('click', () => { if (!field.hidden && (input.value.trim() || addInput.value.trim())) { addInput.focus(); return; } field.hidden = !field.hidden; toggle.setAttribute('aria-expanded', String(!field.hidden)); if (!field.hidden) addInput.focus(); });
+      }
+      input.addEventListener('input', () => { if (toggle && input.value.trim()) { field.hidden = false; toggle.setAttribute('aria-expanded', 'true'); } render(); }); render();
       field.addEventListener('dragover', event => {
         if (!context.drag || context.drag.input === input || input.disabled || context.drag.input.disabled) return;
         event.preventDefault(); event.dataTransfer.dropEffect = 'move'; field.classList.add('participant-drop');
@@ -130,10 +147,14 @@
     }
     form.addEventListener('submit', event => { for (const commit of pendingInputs) if (!commit()) { event.preventDefault(); event.stopPropagation(); break; } });
     const hint = document.createElement('p'); hint.className = 'form-note';
-    hint.textContent = tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
+    hint.textContent = mail ? tr('Нажмите, чтобы исправить email.') : tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
     columns.after(hint);
   };
   recipients.decorate = form => {
+    if (form.id === 'compose-form') {
+      const people = [state.selected?.from, ...(state.selected?.to || []), ...(state.selected?.cc || []), ...(state.selected?.bcc || [])].filter(Boolean);
+      recipients.decorateMeeting(form, people, true); return;
+    }
     for (const name of ['to', 'cc', 'bcc']) {
       const input = form.elements[name]; if (!input) continue;
       setup(input);
@@ -149,7 +170,7 @@
     }
   };
   const inputs = new WeakMap(); let nextId = 0, activeInput = null;
-  const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#event-form input[data-participant-target],#meeting-message-form input[name="to"],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"]') && !input.disabled;
+  const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#event-form input[data-participant-target],#meeting-message-form input[name="to"],#compose-form input[data-participant-target],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"]') && !input.disabled;
   function setup(input) {
     if (inputs.has(input)) return inputs.get(input);
     const box = document.createElement('div'); box.className = 'recipient-suggestions'; box.id = `recipients-${++nextId}`; box.setAttribute('role', 'listbox'); box.setAttribute('aria-label', tr('Подсказки участников')); box.hidden = true;
@@ -180,7 +201,9 @@
       const target = input.form.elements[input.dataset.participantTarget];
       if (target.disabled) return;
       if (!addresses(target.value).some(email => email.toLowerCase() === person.email.toLowerCase())) target.value = [...addresses(target.value), person.email].join(', ');
-      input.value = ''; hide(input); input.focus(); target.dispatchEvent(new Event('input', { bubbles: true })); return;
+      const current = token(input.value, input.selectionStart ?? input.value.length);
+      input.value = input.form.id === 'compose-form' ? addresses(input.value.slice(0, current.start) + input.value.slice(current.end)).join(', ') : '';
+      hide(input); input.focus(); target.dispatchEvent(new Event('input', { bubbles: true })); return;
     }
     const result = replace(input.value, input.selectionStart ?? input.value.length, person.email);
     input.value = result.value; input.setSelectionRange(result.cursor, result.cursor); hide(input); input.focus();

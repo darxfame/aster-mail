@@ -260,3 +260,20 @@ body.windows.compose-window .modal-header button { -webkit-app-region: no-drag; 
 .meeting-participant-field .participant-addresses.is-editing { margin-bottom: 8px; font-size: 12px; padding: 8px; }
 .meeting-participant-field .recipient-suggestions { left: 0; right: 0; top: 100%; }
 @media(max-width:560px) { .meeting-participant-columns { grid-template-columns: minmax(0, 1fr); }.meeting-participant-field .participant-cards { max-height: 184px; } }
+
+/* Mail uses the same participant editor, with full-width address lists. */
+.compose-dialog #compose-form { grid-template-columns: minmax(0, 1fr); }
+.compose-dialog #compose-form > * { grid-column: 1 / -1; min-width: 0; }
+.compose-recipient-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.compose-participants { grid-template-columns: minmax(0, 1fr); }
+.compose-participants .participant-cards { flex-direction: row; flex-wrap: wrap; }
+.compose-recipient-card { display: flex; align-items: center; max-width: 100%; background: var(--surface); border-radius: 10px; }
+.compose-recipient-card .participant-card { width: auto; min-width: 0; }
+.participant-remove { border: 0; background: transparent; padding: 8px; color: var(--muted); flex: none; }
+.topbar .search-box { position: relative; }
+.mail-search-controls { display: none; position: absolute; left: 0; top: calc(100% + 8px); z-index: 40; width: 100%; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: var(--surface); color: var(--text); font-size: 11px; }
+.search-box:focus-within .mail-search-controls:not([hidden]) { display: flex; }
+.mail-search-controls label { max-width: 100%; flex-wrap: wrap; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mail-search-controls select { padding: 5px; max-width: 100%; min-width: 0; font-size: 11px; }
+#mail-search-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+#mail-search-chips button { padding: 4px 8px; overflow-wrap: anywhere; }

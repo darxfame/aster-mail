@@ -143,11 +143,27 @@ function mcpAgentInstructions(format = 'json') {
     tr('Переподключи MCP, проверь tools/list и get_account; если Aster/MCP выключен — попроси включить.'),
   ].join('\n');
 }
+async function loadMcpEnabled() {
+  try { return JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'mcp-preferences.json'), 'utf8')).enabled === true; }
+  catch (error) {
+    if (error.code !== 'ENOENT') await dialog.showMessageBox({ type: 'error', message: tr('Не удалось прочитать настройку MCP'), buttons: [tr('Закрыть')] });
+    return false;
+  }
+}
+async function saveMcpEnabled(enabled) {
+  const file = path.join(app.getPath('userData'), 'mcp-preferences.json'), temporary = `${file}.${crypto.randomUUID()}.tmp`;
+  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  try {
+    await fs.writeFile(temporary, JSON.stringify({ enabled }), { mode: 0o600, flag: 'wx' });
+    await fs.rename(temporary, file);
+  } finally { await fs.rm(temporary, { force: true }); }
+}
 async function setMcpEnabled(enabled) {
   if (mcpChanging) return;
   mcpChanging = true;
   try {
     mcpEnabled = enabled;
+    await saveMcpEnabled(enabled);
     if (!enabled) { await mcpBridge?.close(); mcpBridge = null; return; }
     if (mcpBridge) return;
     mcpBridge = await require('./mcp-bridge.cjs').start({
@@ -182,7 +198,8 @@ async function setMcpEnabled(enabled) {
     });
   } catch {
     mcpEnabled = false;
-    await dialog.showMessageBox(window, { type: 'error', message: tr('Не удалось запустить MCP-сервер'), buttons: [tr('Закрыть')] });
+    await mcpBridge?.close().catch(() => {}); mcpBridge = null;
+    await dialog.showMessageBox(window, { type: 'error', message: tr('Не удалось изменить состояние MCP'), buttons: [tr('Закрыть')] });
   } finally {
     mcpChanging = false;
     const item = Menu.getApplicationMenu()?.getMenuItemById('aster-mcp');
@@ -657,6 +674,7 @@ app.whenReady().then(async () => {
   await updates.initialize();
   localStore = new LocalStore(app.getPath('userData'), localEncryption);
   await fs.rm(settingsFile(), { force: true }); // Remove legacy plaintext notification settings.
+  const restoreMcp = process.argv.includes('--mcp') || await loadMcpEnabled();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: 'Aster Mail', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'quit' }] }] : []),
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
@@ -1010,7 +1028,7 @@ app.whenReady().then(async () => {
     finally { if (composeWrite) composeEntry.busy = false; if (serverWrite) activeServerWrites--; }
   });
   createWindow();
-  if (process.argv.includes('--mcp')) void setMcpEnabled(true);
+  if (restoreMcp) void setMcpEnabled(true);
   ipcMain.handle('aster-widget', async (event, operation, data) => {
     try {
       if (!widgetWindow || event.sender !== widgetWindow.webContents || event.senderFrame !== widgetWindow.webContents.mainFrame) throw new Error('Untrusted widget sender');
