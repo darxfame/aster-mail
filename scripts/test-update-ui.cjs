@@ -38,9 +38,43 @@ app.whenReady().then(async () => {
       const dialog=document.querySelector('#modal'), button=dialog.querySelector('[data-update="installUpdate"]');
       return dialog.open && Boolean(button) && button.textContent.includes('Обновить и перезапустить') && dialog.scrollWidth<=dialog.clientWidth+1;
     })()`), true);
+    assert.equal(await window.webContents.executeJavaScript(`(() => {
+      try {
+        const initial = structuredClone(updateSnapshot);
+        for (const automaticPrompt of [false, true]) {
+          if (automaticPrompt) {
+            document.querySelector('#modal').close();
+            promptedUpdateVersions.clear();
+            enableUpdatePrompts();
+            if (!document.querySelector('#updates-panel').dataset.installFlow) throw new Error('Automatic update prompt did not open');
+          }
+          for (const snapshot of [
+            { status: 'available' }, { status: 'checking' }, { status: 'downloading' },
+            { status: 'paused' }, { status: 'ready' }, { status: 'ready', installing: true },
+            { status: 'ready', staged: true }, { status: 'downloading', retryAt: Date.now() + 1000 },
+            { status: 'available', error: 'Fictional update failure' },
+          ]) {
+            const notes = document.querySelector('.update-notes');
+            notes.open = true;
+            notes.querySelector('summary').focus();
+            receiveUpdate({ ...initial, ...snapshot, progress: 35, received: 350 });
+            if (!document.querySelector('.update-notes').open) throw new Error('Release notes collapsed during ' + JSON.stringify(snapshot));
+            if (document.activeElement !== document.querySelector('.update-notes summary')) throw new Error('Release notes lost keyboard focus');
+            document.querySelector('.update-notes').open = false;
+            receiveUpdate({ ...initial, ...snapshot, progress: 40, received: 400 });
+            if (document.querySelector('.update-notes').open) throw new Error('Manually closed notes reopened');
+          }
+          document.querySelector('.update-notes').open = true;
+          receiveUpdate({ ...initial, available: { ...initial.available, version: '0.0.3' } });
+          if (document.querySelector('.update-notes').open) throw new Error('New release inherited old disclosure state');
+          receiveUpdate(initial);
+        }
+        document.querySelector('.update-notes').open = true;
+      } catch (error) { return error.message; }
+    })()`), undefined);
     await fs.mkdir(path.join(root, 'release'), { recursive: true });
     await fs.writeFile(path.join(root, 'release/update-restart-ui.png'), (await window.webContents.capturePage()).toPNG());
-    console.log('PASS: actual restart-update dialog renders the action without horizontal overflow');
+    console.log('PASS: restart-update dialog, automatic/manual prompts, release-note disclosure and keyboard focus across checks/downloads/pause/retry/install/error, manual collapse and version changes');
   } finally { window.destroy(); }
   app.exit(0);
 }).catch(error => { console.error(error); app.exit(1); });

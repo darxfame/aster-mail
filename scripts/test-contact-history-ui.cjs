@@ -21,6 +21,35 @@ app.whenReady().then(async () => {
     const js = code => window.webContents.executeJavaScript(code);
     await window.loadFile(path.join(root, 'src/index.html')); await waitFor('Boolean(document.querySelector("[data-action=demo]"))');
     await js('document.querySelector("[data-action=demo]").click()'); await waitFor('state.demo && state.messages.length>0');
+    await js(`state.view='contacts';loadView()`);
+    assert.equal(await js('Boolean(document.querySelector("#colleagues-list [data-action=open-colleague]"))'), true, 'Pinned colleagues must be clickable');
+    const output = path.join(root, 'release/contact-history-ui'); await fs.mkdir(output, { recursive: true });
+    for (const width of [1280, 640]) {
+      window.setSize(width, 850); await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(await js('document.querySelector(".colleagues-panel").scrollWidth<=document.querySelector(".colleagues-panel").clientWidth+1'), true);
+      await fs.writeFile(path.join(output, `colleagues-${width}.jpg`), (await window.webContents.capturePage()).toJPEG(85));
+    }
+    window.setSize(1280, 850);
+    await js(`document.querySelector('#colleagues-list [data-action=open-colleague]').click()`);
+    await waitFor('Boolean(currentContactCard()) && document.querySelector(".contact-history").getAttribute("aria-busy")!=="true"');
+    assert.equal(await js('currentContactCard().person.email===colleagues()[0].email'), true);
+    assert.equal(await js('document.querySelector("[data-action=pin-card-contact]").disabled'), true, 'A pinned colleague is already in colleagues');
+    assert.equal(await js('Boolean(document.querySelector(".contact-history-message"))'), true);
+    await js(`document.querySelector('[data-action=refresh-card-contact]').click()`);
+    await waitFor('document.querySelector("[data-contact-field=status]").textContent.includes("Сведения из справочника")');
+    await js(`document.querySelector('[data-history-refresh]').click()`);
+    await waitFor('document.querySelector(".contact-history").getAttribute("aria-busy")!=="true"');
+    assert.equal(await js('Boolean(document.querySelector(".contact-history-message"))'), true);
+    await js(`document.querySelector('[data-action=write-card-contact]').click()`);
+    await waitFor('Boolean(document.querySelector("#compose-form"))');
+    assert.equal(await js('document.querySelector("#compose-form").elements.to.value'), await js('colleagues()[0].email'));
+    await js(`setModalDirty(false);document.querySelector('#modal').close();document.querySelector('#colleagues-list [data-action=plan-colleague]').click()`);
+    assert.equal(await js('document.querySelector("#event-form").elements.attendees.value'), await js('colleagues()[0].email'));
+    await js(`document.querySelector('#modal').close();window.colleagueCount=colleagues().length;window.otherColleague=colleagues()[1].email;document.querySelectorAll('#colleagues-list [data-action=remove-colleague]')[1].click()`);
+    await waitFor('colleagues().length===colleagueCount-1');
+    assert.equal(await js('Boolean(currentContactCard())'), false, 'Removing a colleague does not open their card');
+    assert.equal(await js('colleagues().some(person=>person.email===otherColleague)'), false);
+    await js(`state.view='mail';loadView()`);
     await js(`window.fixtureId=state.messages[0].id;openMessage(fixtureId)`);
     await js(`window.originalReader=document.querySelector('#reader');for(let i=0;i<54;i++)window.asterDemo.messages.push({id:'history-'+i,subject:'History '+i,folder:'inbox',date:new Date(Date.now()-i*60000).toISOString(),from:{name:'Anna',email:'anna@example.com'},to:[],cc:[],read:false,text:'Fictional mail',attachments:[]});window.asterDemo.messages.push({id:'wrong-address',subject:'anna@example.com',folder:'inbox',date:new Date().toISOString(),from:{name:'Anna',email:'anna@example.com.other'},to:[],cc:[],bcc:[{email:'anna@example.com'}],read:false});document.querySelector('[data-action=open-mail-person][data-group=from]').click()`);
     await waitFor('Boolean(document.querySelector(".contact-history-message")) && document.querySelector(".contact-history").getAttribute("aria-busy")!=="true"');
@@ -29,7 +58,7 @@ app.whenReady().then(async () => {
     assert.equal(await js('originalReader===document.querySelector("#reader")'), true);
     assert.equal(await js('Boolean(document.querySelector("[data-history-more]").hidden)'), false);
     await js(`document.querySelector('[data-history-more]').click()`); await waitFor('document.querySelectorAll(".contact-history-message").length>50');
-    const output = path.join(root, 'release/contact-history-ui'); await fs.mkdir(output, { recursive: true });
+
     for (const [width, scale] of [[1280, 1], [1280, 2], [640, 1]]) {
       window.setSize(width, 850); window.webContents.setZoomFactor(scale); await new Promise(resolve => setTimeout(resolve, 100));
       assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'), true);
@@ -62,6 +91,6 @@ app.whenReady().then(async () => {
     await js(`document.querySelector('#modal').close();state.demo=true;state.account=null;applyLanguage('en');document.body.classList.add('dark');openContactCard({name:'Anna',email:'anna@example.com'})`);
     await waitFor('Boolean(document.querySelector(".contact-history-message"))');
     assert.match(await js('document.querySelector(".contact-history").textContent'), /Correspondence history/);
-    console.log('PASS: exact contact history, paging, original/unread preservation, missing SMTP, stale cards, failed pages, safe text, independent directory/history, RU/EN and 100%/200%/narrow layouts.');
+    console.log('PASS: clickable pinned colleagues, details/history refresh, compose and separate plan/remove actions, exact contact history, paging, original/unread preservation, missing SMTP, stale cards, failed pages, safe text, independent directory/history, RU/EN and 100%/200%/narrow layouts.');
   } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

@@ -604,7 +604,7 @@ function renderColleagues() {
   if (colleagueScope !== colleaguesKey()) { colleagueData = []; colleagueUpdated = null; colleagueError = ''; }
   const rows = list.map(c => { const p = colleagueData.find(p => p.email.toLowerCase() === c.email.toLowerCase()); return { ...c, status: availabilityLabel(p) }; });
   $('#colleagues-count').textContent = `${rows.filter(c => c.status.kind === 'free').length} ${tr("из")} ${list.length} ${tr("свободны")}`;
-  $('#colleagues-list').innerHTML = rows.map(c => `<div class="colleague-row">${avatar(c.name, 0, c.email)}<div class="colleague-name"><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></div><span class="availability ${c.status.kind}" title="${esc(c.status.text)}"><i></i>${esc(c.status.text)}</span><button class="icon-button" data-action="plan-colleague" data-email="${esc(c.email)}" aria-label="${tr("Запланировать встречу:")} ${esc(c.name)}" title="${tr("Запланировать встречу")}">${icon('calendar')}</button><button class="icon-button" data-action="remove-colleague" data-email="${esc(c.email)}" aria-label="${tr("Убрать:")} ${esc(c.name)}" title="${tr("Убрать из коллег")}">${icon('close')}</button></div>`).join('') || tr('<p class="form-note">Добавьте людей из общего каталога Exchange кнопкой «+».</p>');
+  $('#colleagues-list').innerHTML = rows.map(c => `<div class="colleague-row"><button type="button" class="colleague-open" data-action="open-colleague" data-email="${esc(c.email)}">${avatar(c.name, 0, c.email)}<span class="colleague-name"><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></span></button><span class="availability ${c.status.kind}" title="${esc(c.status.text)}"><i></i>${esc(c.status.text)}</span><button class="icon-button" data-action="plan-colleague" data-email="${esc(c.email)}" aria-label="${tr("Запланировать встречу:")} ${esc(c.name)}" title="${tr("Запланировать встречу")}">${icon('calendar')}</button><button class="icon-button" data-action="remove-colleague" data-email="${esc(c.email)}" aria-label="${tr("Убрать:")} ${esc(c.name)}" title="${tr("Убрать из коллег")}">${icon('close')}</button></div>`).join('') || tr('<p class="form-note">Добавьте людей из общего каталога Exchange кнопкой «+».</p>');
   $('#colleagues-updated').textContent = colleagueError ? `${tr("Не удалось обновить:")} ${colleagueError}` : `${state.demo ? tr('Вымышленные статусы · ') : ''}${colleagueUpdated ? `${tr("Обновлено")} ${time(colleagueUpdated)} ${tr("· проверка раз в минуту")}` : list.length ? tr('Проверяем занятость…') : tr('Избранные коллеги хранятся на этом компьютере.')}`;
 }
 async function refreshColleagues() {
@@ -1167,6 +1167,11 @@ async function handleAction(button) {
   if (action === 'remove-colleague') { await saveColleagues(colleagues().filter(c => c.email !== button.dataset.email)); renderColleagues(); return; }
   if (action === 'refresh-colleagues') return refreshColleagues();
   if (action === 'toggle-colleagues') { const list = $('#colleagues-list'); list.hidden = !list.hidden; button.setAttribute('aria-expanded', String(!list.hidden)); button.setAttribute('aria-label', list.hidden ? tr('Развернуть список коллег') : tr('Свернуть список коллег')); return; }
+  if (action === 'open-colleague') {
+    const person = colleagues().find(person => person.email.toLowerCase() === button.dataset.email?.toLowerCase());
+    if (person) return openContactCard(person);
+    return;
+  }
   if (action === 'plan-colleague') { eventModal(); $('#event-form').elements.attendees.value = button.dataset.email; return; }
   if (action === 'planner-check') return runPlanner(button);
   if (action === 'planner-slot') {
