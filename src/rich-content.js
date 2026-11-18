@@ -27,16 +27,19 @@
   const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
   function sanitize(html, { dark = false, images = false, preserveBackgrounds = false } = {}) {
     const safe = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['div','p','br','span','b','strong','i','em','u','s','strike','sub','sup','font','a','blockquote','pre','code','ul','ol','li','h1','h2','h3','h4','hr','table','thead','tbody','tfoot','tr','td','th', ...(images ? ['img'] : [])],
+      WHOLE_DOCUMENT: preserveBackgrounds,
+      ALLOWED_TAGS: ['div','p','br','span','b','strong','i','em','u','s','strike','sub','sup','font','a','blockquote','pre','code','ul','ol','li','h1','h2','h3','h4','hr','table','thead','tbody','tfoot','tr','td','th', ...(images ? ['img'] : []), ...(preserveBackgrounds ? ['html', 'head', 'body'] : [])],
       ALLOWED_ATTR: ['style','href','title','alt','src','width','height','colspan','rowspan','color','bgcolor','face','size','align'],
       ADD_DATA_URI_TAGS: ['img'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
     });
     const doc = new DOMParser().parseFromString(safe, 'text/html');
     let originalColor = '';
     if (preserveBackgrounds) {
-      const original = new DOMParser().parseFromString(html, 'text/html');
-      originalColor = original.body.style.color || original.body.getAttribute('color') || '';
-      const background = original.body.style.backgroundColor || original.body.getAttribute('bgcolor') || original.documentElement.style.backgroundColor || original.documentElement.getAttribute('bgcolor') || '';
+      originalColor = doc.body.style.color || doc.body.getAttribute('color') || '';
+      const background = doc.body.style.backgroundColor || doc.body.getAttribute('bgcolor') || doc.documentElement.style.backgroundColor || doc.documentElement.getAttribute('bgcolor') || '';
+      for (const node of [doc.documentElement, doc.body]) {
+        for (const attr of ['style', 'color', 'bgcolor']) node.removeAttribute(attr);
+      }
       if (styleAllowed('background-color', background)) doc.body.style.backgroundColor = background;
     }
     const canvas = dark || preserveBackgrounds ? document.createElement('canvas') : null;

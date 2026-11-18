@@ -1,7 +1,7 @@
 const i18n = require('../src/i18n.js');
 const tr = i18n.text;
 const errorMessage = require('../src/errors.js').message;
-const { app, autoUpdater, BrowserWindow, ipcMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor, clipboard } = require('electron');
+const { app, autoUpdater, BrowserWindow, ipcMain, MessageChannelMain, net, session, safeStorage, shell, dialog, Menu, Notification, Tray, nativeImage, screen, powerMonitor, clipboard } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
@@ -29,10 +29,44 @@ function mcpHost() {
   const allowed = new Set(['notificationSettings', 'updateState', 'saveNotifications', 'setInterfaceScale', 'togglePresentation', 'testNotification', 'dismissMailAlert', 'clearMailCache', 'checkUpdates', 'downloadUpdate', 'pauseUpdateDownload', 'cancelUpdateDownload', 'cancelUpdateInstall', 'openUpdateInstaller', 'saveUpdatePreferences', 'openLink', 'disconnect', 'resetLocalData', 'joinEvent', 'contactHistory', 'autoReplies', 'saveAutoReplies', 'quickReplies', 'saveQuickReplies', 'mailReminders', 'mailReminderSubjects', 'setMailReminder', 'removeMailReminder', 'waitingReplies', 'refreshWaitingReplies', 'waitForReply', 'removeWaitingReply', 'saveMeetingReminders', 'moduleCatalog', 'moduleConfigure', 'moduleRemove', 'moduleInvoke']);
   const retiring = new Set(['disconnect', 'resetLocalData', 'openUpdateInstaller']);
   const ui = async (method, input, guard) => {
-    guard(); if (method !== 'layout') reveal();
+    guard();
+    if (!['layout', 'sanitize'].includes(method)) reveal();
     const sender = window.webContents;
-    const result = await sender.executeJavaScript(`window.asterMcpUI(${JSON.stringify({ method, input, sessionId: client?.syncId || null })})`);
-    guard(); if (result?.error) throw new Error(result.error); return result;
+    const request = { method, input, sessionId: client?.syncId || null };
+    const { port1, port2 } = new MessageChannelMain();
+    let timer, post, closed, loadFailed, transferred = false;
+    try {
+      const reply = await new Promise((resolve, reject) => {
+        closed = () => reject(new Error('MCP renderer request closed'));
+        sender.once('destroyed', closed);
+        port1.once('message', event => resolve(event.data));
+        port1.once('close', closed);
+        port1.start();
+        timer = setTimeout(() => reject(new Error('MCP renderer request timed out')), 110000);
+        post = () => {
+          try {
+            guard();
+            sender.postMessage('aster-mcp-renderer-request', request, [port2]);
+            transferred = true;
+          } catch (error) { reject(error); }
+        };
+        if (sender.isLoadingMainFrame()) {
+          loadFailed = (_event, _code, _description, _url, isMainFrame) => { if (isMainFrame) closed(); };
+          sender.on('did-fail-load', loadFailed);
+          sender.once('did-finish-load', post);
+        } else post();
+      });
+      guard();
+      if (!reply?.ok) throw new Error(reply?.error || 'Invalid MCP renderer reply');
+      return reply.value;
+    } finally {
+      clearTimeout(timer);
+      if (closed) sender.removeListener('destroyed', closed);
+      if (loadFailed) sender.removeListener('did-fail-load', loadFailed);
+      if (post) sender.removeListener('did-finish-load', post);
+      port1.close();
+      if (!transferred) port2.close();
+    }
   };
   const invoke = async (operation, data, guard) => {
     if (!allowed.has(operation)) throw new Error('MCP client operation denied');
@@ -49,11 +83,7 @@ function mcpHost() {
       return () => { if (!mcpEnabled || quitting || resettingLocalData || epoch !== accountEpoch) throw new Error('MCP session ended'); };
     },
     invoke,
-    sanitize: async (html, guard) => {
-      guard();
-      const result = await window.webContents.executeJavaScript(`(() => { const doc=window.asterRichContent.sanitize(${JSON.stringify(html)},{images:true}); for(const image of doc.querySelectorAll('img')) if(!/^cid:[a-z0-9@._+%=-]{1,500}$/i.test(image.getAttribute('src')||''))image.remove(); return doc.body.innerHTML; })()`);
-      guard(); return result;
-    },
+    sanitize: (html, guard) => ui('sanitize', { html }, guard),
     local: (name, input, guard) => ui('local', { name, ...input }, guard),
     signature: (kind, guard) => ui('signature', { kind }, guard),
     panel: (panel, guard) => ui('panel', { panel }, guard),

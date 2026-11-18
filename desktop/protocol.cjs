@@ -97,6 +97,7 @@ function message(o) {
     meeting: !meetingNotice && (o.AssociatedCalendarItemId?.Id || /^IPM\.Schedule\.Meeting\./.test(o.ItemClass || '')) ? { id: o.AssociatedCalendarItemId?.Id || '', changeKey: o.AssociatedCalendarItemId?.ChangeKey || '', start: T.exchange(o.Start), end: T.exchange(o.End), location: typeof o.Location === 'string' ? o.Location : o.Location?.DisplayName, cancelled: o.IsCancelled === true || o.ItemClass === 'IPM.Schedule.Meeting.Canceled' } : null,
   };
 }
+const decodeHTMLAttribute = value => value.replace(/&(?:amp|quot|#39);/g, entity => ({ '&amp;': '&', '&quot;': '"', '&#39;': "'" })[entity]);
 const escapeXML = value => String(value ?? '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
 function soap(body) {
   return `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/><t:TimeZoneContext><t:TimeZoneDefinition Id="UTC"/></t:TimeZoneContext></soap:Header><soap:Body>${body}</soap:Body></soap:Envelope>`;
@@ -151,4 +152,4 @@ function eventSOAP(data) {
 }
 const normalizeServer = require('../src/server.js').normalize;
 
-module.exports = { contact, typed, folder, synchronizationFolders, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };
+module.exports = { contact, typed, folder, synchronizationFolders, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, decodeHTMLAttribute, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };

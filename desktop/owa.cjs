@@ -4,7 +4,7 @@ const calendarEvents = require('./calendar-events.cjs');
 const availability = require('./availability.cjs');
 
 function attributes(tag) {
-  return Object.fromEntries([...tag.matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map(m => [m[1].toLowerCase(), (m[2] ?? m[3] ?? m[4]).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")]));
+  return Object.fromEntries([...tag.matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map(m => [m[1].toLowerCase(), P.decodeHTMLAttribute(m[2] ?? m[3] ?? m[4])]));
 }
 function checkConnectionStatus(status) {
   if ([408, 425, 429, 500, 502, 503, 504].includes(status)) throw Object.assign(new Error(tr('Соединение с OWA временно недоступно. Повторная проверка выполняется автоматически.')), { connectionError: true, status });

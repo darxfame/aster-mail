@@ -2,6 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const I = require('../desktop/content-images.cjs');
 const image = { ContentType: 'image/png', Content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=' };
+test('image attributes decode HTML entities once, matching the reader', () => {
+  assert.deepEqual(I.sources('<img src="https://images.example.test/picture?first=a&amp;second=b&amp;quot;c">'), [
+    'https://images.example.test/picture?first=a&second=b&quot;c',
+  ]);
+});
 test('encoded CID references resolve locally and missing CIDs never become remote requests', async () => {
   const current = { html: '<img src="cid:logo%40example.com"><img src="cid:missing">', attachments: [{ id: 'local', contentId: '<logo@example.com>', size: 8 }] };
   const result = await I.load(current, async id => { assert.equal(id, 'local'); return image; }, () => assert.fail('CID must not reach the network'), 'https://mail.example.com');

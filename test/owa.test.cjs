@@ -16,8 +16,9 @@ test('only HTTPS OWA server origins are accepted', () => {
   for (const url of ['http://mail.example.com', 'https://user:pass@mail.example.com', 'https://mail.example.com/other', 'https://mail.example.com/?secret=1']) assert.throws(() => P.normalizeServer(url));
 });
 test('form parsing respects reordered attributes and escapes hidden values', () => {
-  const { url, fields } = loginForm('<form action="/owa/auth.owa"><input value="a&amp;b" name="csrf" type="hidden"></form>', 'https://mail.example.com');
+  const { url, fields } = loginForm('<form action="/owa/auth.owa"><input value="a&amp;b" name="csrf" type="hidden"><input value="a&amp;quot;b&#39;c" name="fixture" type="hidden"></form>', 'https://mail.example.com');
   assert.equal(url, 'https://mail.example.com/owa/auth.owa'); assert.equal(fields.get('csrf'), 'a&b');
+  assert.equal(fields.get('fixture'), "a&quot;b'c");
 });
 test('credentials cannot be posted to a different origin or an HTTP form', () => {
   for (const action of ['https://attacker.example/login', '//attacker.example/login', 'http://mail.example.com/owa/auth.owa', 'https://mail.example.com:8443/login']) assert.throws(() => loginForm(`<form action="${action}">`, 'https://mail.example.com'));

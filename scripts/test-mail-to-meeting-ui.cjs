@@ -30,7 +30,7 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("#event-form").elements.title.value'), 'Обсуждение проекта');
     assert.equal(await js('document.querySelector("#event-form").elements.attendees.value'), 'anna@example.com, team@example.com');
     const body = await js('document.querySelector("#event-form").elements.body.value');
-    assert.match(body, /Обсудим проект/); assert.match(body, /https:\/\/mail.example.com\/owa\/\?ItemID=/);
+    assert.match(body, /Обсудим проект/); assert.match(body, /https:\/\/mail\.example\.com\/owa\/\?ItemID=/);
     assert.doesNotMatch(body, /secret@example.com|mailInjection|<script|<img|tracker.png/);
     assert.equal(await js('typeof window.mailInjection'), 'undefined'); assert.equal(await js('state.selected.html'), await js('originalSource'));
     assert.equal(await js('meetingCalls.filter(call=>call.operation==="createEvent").length'), 0);

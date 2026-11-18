@@ -13,6 +13,11 @@ window.asterMcpUI = async request => {
   const guard = () => { if ((state.account?.sessionId || null) !== request.sessionId || state.account !== account) throw new Error(tr('Сессия аккаунта завершена')); };
   guard();
   const { method, input } = request;
+  if (method === 'sanitize') {
+    const doc = window.asterRichContent.sanitize(input.html, { images: true });
+    for (const image of doc.querySelectorAll('img')) if (!/^cid:[a-z0-9@._+%=-]{1,500}$/i.test(image.getAttribute('src') || '')) image.remove();
+    return doc.body.innerHTML;
+  }
   if (method === 'layout') return { navigationPlacement, calendarView: calendarPreference, sidebarHidden: sidebarCollapsed, mailListWidth: preferredMailListWidth };
   if (method === 'signature') {
     if (!syncSignature) return state.signature ? { text: state.signature } : null;
@@ -78,6 +83,7 @@ window.asterMcpUI = async request => {
   else throw new Error('Unknown MCP panel');
   guard(); return { opened: input.panel };
 };
+window.aster?.onMcpRendererRequest?.(window.asterMcpUI);
 const localPreferences = {
   getItem: key => localValues[key] ?? null,
   setItem(key, value) {
@@ -386,7 +392,7 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected || state.dayOverviewOpen));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions"><button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions"><button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" aria-pressed="${state.filter === id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
   applyMailListWidth();
   renderMessages();
   if (state.selected) renderReader();
@@ -442,22 +448,33 @@ async function markMessageRead(message, folderKey) {
 function readerNotice(content) {
   return `<div class="reader-toolbar reader-notice-toolbar"><button class="secondary back-to-list" data-action="back-to-list">${icon('reply')}${tr('К письмам')}</button></div>${content}`;
 }
+function setReaderMarkup(markup, focusBack = false) {
+  const reader = $('#reader');
+  const restoreBack = reader.contains(document.activeElement) && document.activeElement.matches('.back-to-list');
+  reader.innerHTML = markup;
+  if (restoreBack || focusBack && !$('.mail-list').getClientRects().length) {
+    reader.querySelector('.back-to-list')?.focus({ preventScroll: true });
+  }
+}
 function returnToMailList() {
   closeMailAttachmentPreview();
   const id = state.selected?.id;
   ++messageOpenSequence; state.selected = null; state.recoverMessage = null; state.dayOverviewOpen = false;
   clearError(); renderMail();
   $('#status').textContent = tr('Письма');
-  [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === id)?.focus({ preventScroll: true });
+  if (id) {
+    const opener = [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === id);
+    (opener || $('.list-filters [aria-pressed="true"]'))?.focus();
+  }
 }
-async function openMessage(id, generation = state.generation, { markRead = true } = {}) {
+async function openMessage(id, generation = state.generation, { markRead = true, focusBack = false } = {}) {
   const summary = state.messages.find(m => m.id === id);
   if (!summary) return;
   state.dayOverviewOpen = false;
   closeMailAttachmentPreview();
   const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
   state.selected = summary; document.body.classList.add('reader-open'); renderMessages();
-  $('#reader').innerHTML = readerNotice(window.asterLoading.markup('reader', tr('Открываем письмо…')));
+  setReaderMarkup(readerNotice(window.asterLoading.markup('reader', tr('Открываем письмо…'))), focusBack);
   try {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
@@ -487,8 +504,8 @@ async function openMessage(id, generation = state.generation, { markRead = true 
   } catch (error) {
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     showError(error);
-    if (error.connectionError) { state.recoverMessage = { id, generation }; $('#reader').innerHTML = readerNotice(`<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`); return; }
-    $('#reader').innerHTML = readerNotice(`<div class="empty-state"><h2>${tr("Не удалось открыть письмо")}</h2><p>${esc(errorText(error))}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">${tr("Повторить загрузку")}</button></div>`);
+    if (error.connectionError) { state.recoverMessage = { id, generation }; setReaderMarkup(readerNotice(`<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`)); return; }
+    setReaderMarkup(readerNotice(`<div class="empty-state"><h2>${tr("Не удалось открыть письмо")}</h2><p>${esc(errorText(error))}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">${tr("Повторить загрузку")}</button></div>`));
   }
 }
 function isDraftMessage(message) {
@@ -523,7 +540,7 @@ function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
   closeMailAttachmentPreview();
-  $('#reader').innerHTML = `<div class="reader-toolbar"><span class="privacy-note" role="img" aria-label="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}" title="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}">${icon('shield')}</span><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><button class="icon-button back-to-list" data-action="back-to-list" title="${tr("К письмам")}" aria-label="${tr("К письмам")}">${icon('reply')}</button><details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button>${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="return-later" title="${tr("Пометить непрочитанным и закрыть письмо")}" aria-label="${tr("Пометить непрочитанным и закрыть письмо")}">${icon('mail')}</button><button type="button" class="icon-button" data-action="mail-to-meeting" title="${tr("Создать встречу из письма")}" aria-label="${tr("Создать встречу из письма")}">${icon('calendar')}</button>` : ''}${isSentMessage(m) ? `<button type="button" class="icon-button" data-action="wait-for-reply" title="${tr('Жду ответа')}" aria-label="${tr('Жду ответа')}${state.waitingRepliesCount ? ` · ${state.waitingRepliesCount}` : ''}">${icon('clock')}</button>` : ''}${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="mail-reminder" title="${tr('Напомнить позже')}" aria-label="${tr('Напомнить позже')}">${icon('bell')}</button>` : ''}</div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? `<button class="icon-button" data-action="edit-draft" title="${tr("Продолжить черновик")}" aria-label="${tr("Продолжить черновик")}">${icon('file')}</button>` : `<button class="icon-button" data-action="reply" title="${tr("Ответить")}" aria-label="${tr("Ответить")}">${icon('reply')}</button><button class="icon-button" data-action="reply-all" title="${tr("Ответить всем")}" aria-label="${tr("Ответить всем")}">${icon('reply-all')}</button><button class="icon-button" data-action="forward" title="${tr("Переслать")}" aria-label="${tr("Переслать")}">${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${Number.isFinite(Date.parse(m.meeting.start)) && Number.isFinite(Date.parse(m.meeting.end)) ? `${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}` : tr('Время встречи недоступно')}</p>${meetingConflictMarkup(m.meeting.id ? m.meeting.conflicts : { kind: 'unknown', complete: false })}${m.meeting.invitationUpdated ? `<p class="form-note">${tr("Приглашение обновлено. Показано актуальное время.")}</p>` : ''}${m.meeting.id ? rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError) : ''}</div>` : ''}${mailAttachments(m)}<div id="message-body"></div></div></div>`;
+  setReaderMarkup(`<div class="reader-toolbar"><span class="privacy-note" role="img" aria-label="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}" title="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}">${icon('shield')}</span><button class="icon-button back-to-list" data-action="back-to-list" title="${tr("К письмам")}" aria-label="${tr("К письмам")}">${icon('reply')}</button><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button>${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="return-later" title="${tr("Пометить непрочитанным и закрыть письмо")}" aria-label="${tr("Пометить непрочитанным и закрыть письмо")}">${icon('mail')}</button><button type="button" class="icon-button" data-action="mail-to-meeting" title="${tr("Создать встречу из письма")}" aria-label="${tr("Создать встречу из письма")}">${icon('calendar')}</button>` : ''}${isSentMessage(m) ? `<button type="button" class="icon-button" data-action="wait-for-reply" title="${tr('Жду ответа')}" aria-label="${tr('Жду ответа')}${state.waitingRepliesCount ? ` · ${state.waitingRepliesCount}` : ''}">${icon('clock')}</button>` : ''}${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="mail-reminder" title="${tr('Напомнить позже')}" aria-label="${tr('Напомнить позже')}">${icon('bell')}</button>` : ''}</div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? `<button class="icon-button" data-action="edit-draft" title="${tr("Продолжить черновик")}" aria-label="${tr("Продолжить черновик")}">${icon('file')}</button>` : `<button class="icon-button" data-action="reply" title="${tr("Ответить")}" aria-label="${tr("Ответить")}">${icon('reply')}</button><button class="icon-button" data-action="reply-all" title="${tr("Ответить всем")}" aria-label="${tr("Ответить всем")}">${icon('reply-all')}</button><button class="icon-button" data-action="forward" title="${tr("Переслать")}" aria-label="${tr("Переслать")}">${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${Number.isFinite(Date.parse(m.meeting.start)) && Number.isFinite(Date.parse(m.meeting.end)) ? `${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}` : tr('Время встречи недоступно')}</p>${meetingConflictMarkup(m.meeting.id ? m.meeting.conflicts : { kind: 'unknown', complete: false })}${m.meeting.invitationUpdated ? `<p class="form-note">${tr("Приглашение обновлено. Показано актуальное время.")}</p>` : ''}${m.meeting.id ? rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError) : ''}</div>` : ''}${mailAttachments(m)}<div id="message-body"></div></div></div>`);
   applyReaderDensity();
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
@@ -773,7 +790,8 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
     addComposeFiles([]);
   }
   // File drops inside the script-free preview frame do not bubble to the dialog.
-  window.asterRecipients.decorate($('#compose-form'));
+  window.asterRecipients.decorate($('#compose-form'), [...(snapshot?.recipientPeople || []), contact, m?.from, ...(m?.to || []), ...(m?.cc || []), ...(m?.bcc || [])]);
+  if (mode === 'new' && !snapshot && !recipients.to) $('#participant-add-to')?.focus({ preventScroll: true });
   mountQuickReplies($('#compose-form'), composeData);
   if (options.text) markModalDirty();
   for (const frame of $('#compose-form').querySelectorAll('iframe')) {
@@ -1090,7 +1108,7 @@ async function handleAction(button) {
       if (await api('resetLocalData')) { loginHint = null; connectModal(); toast(tr('Локальные настройки сброшены. Подключитесь заново.')); }
     });
   }
-  if (action === 'retry-message') return openMessage(button.dataset.id);
+  if (action === 'retry-message') return openMessage(button.dataset.id, state.generation, { focusBack: true });
   if (action === 'edit-draft') return compose('draft');
   if (action === 'demo') {
     if (state.account) throw new Error(tr('Сначала выйдите из аккаунта в настройках, чтобы открыть демо.'));
@@ -1130,10 +1148,19 @@ async function handleAction(button) {
   if (action === 'folder') { state.mailSearch = null; state.view = 'mail'; state.folder = button.dataset.folder; state.query = ''; state.filter = 'all'; $('#search').value = ''; return loadView(); }
   if (action === 'refresh') { if (window.aster && !state.demo) await api('clearMailCache'); return loadView(); }
   if (action === 'more') return loadView(true);
-  if (action === 'filter') { state.filter = button.dataset.filter; return loadView(); }
+  if (action === 'filter') {
+    const focused = document.activeElement === button;
+    state.filter = button.dataset.filter;
+    const pending = loadView(), generation = state.generation;
+    await pending;
+    if (focused && generation === state.generation && document.activeElement === document.body) {
+      $('.list-filters [aria-pressed="true"]')?.focus({ preventScroll: true });
+    }
+    return;
+  }
   if (action === 'mail-star' || action === 'mail-important') { button.disabled = true; try { await toggleMailProperty(button.dataset.id, action === 'mail-star' ? 'Flag' : 'Importance'); } finally { button.disabled = false; } return; }
   if (action === 'important') return toggleMailProperty(state.selected.id, 'Importance');
-  if (action === 'message') return openMessage(button.dataset.id);
+  if (action === 'message') return openMessage(button.dataset.id, state.generation, { focusBack: true });
   if (action === 'day-overview') { ++messageOpenSequence; state.selected = null; state.dayOverviewOpen = true; renderMail(); return; }
   if (action === 'day-message') return openDayMessage(button.dataset.id);
   if (action === 'day-event') { const event = daySummary?.calendar?.events.find(item => item.id === button.dataset.id); if (event) return openMeeting(event); return; }

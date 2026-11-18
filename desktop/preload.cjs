@@ -21,6 +21,15 @@ contextBridge.exposeInMainWorld('aster', {
   onMcpAccountRetired: callback => ipcRenderer.on('aster-mcp-account-retired', (_event, data) => callback(data)),
   onMcpHelp: callback => ipcRenderer.on('aster-mcp-help', () => callback()),
   onMcpState: callback => ipcRenderer.on('aster-mcp-state', () => callback()),
+  onMcpRendererRequest: callback => {
+    ipcRenderer.on('aster-mcp-renderer-request', async (event, request) => {
+      const [port] = event.ports;
+      if (!port) return;
+      try { port.postMessage({ ok: true, value: await callback(request) }); }
+      catch (error) { port.postMessage({ ok: false, error: error.message }); }
+      finally { port.close(); }
+    });
+  },
   onConnection: callback => ipcRenderer.on('aster-connection', (_event, data) => callback(data)),
   onMailAlerts: callback => ipcRenderer.on('aster-mail-alerts', (_event, data) => callback(data)),
   onPrivacy: callback => ipcRenderer.on('aster-privacy', (_event, data) => callback(data)),

@@ -36,7 +36,7 @@ test('encrypted login hints survive restart without a password and clear on logo
   const restarted = new LocalStore(directory, provider);
   assert.deepEqual(await restarted.loadLoginHint(), { server: 'https://mail.example.com', username: 'alice' });
   const bytes = await fs.readFile(path.join(directory, 'login-hint.enc'));
-  assert.doesNotMatch(bytes.toString(), /alice|mail.example.com|never-save/);
+  assert.doesNotMatch(bytes.toString(), /alice|mail\.example\.com|never-save/);
   assert.deepEqual(JSON.parse(provider.decryptString(bytes)), { server: 'https://mail.example.com', username: 'alice' });
   if (process.platform !== 'win32') assert.equal((await fs.stat(path.join(directory, 'login-hint.enc'))).mode & 0o777, 0o600);
   assert.equal(await restarted.loadCredentials(), null);

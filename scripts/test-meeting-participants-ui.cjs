@@ -1,6 +1,7 @@
 // Exercise participant editing in Chromium with fictional demo data only.
 const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
+const javascriptLiteral = require('./javascript-literal.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const protocol = require('../desktop/protocol.cjs');
@@ -17,7 +18,7 @@ app.whenReady().then(async () => {
     for (const type of ['Resp.Pos', 'Resp.Neg', 'Resp.Tent', 'Notification.Forward']) {
       const mail = protocol.message({ ItemId: { Id: `fictional-${type}` }, ItemClass: `IPM.Schedule.Meeting.${type}`, Subject: 'Fictional meeting response',
         AssociatedCalendarItemId: { Id: 'fictional-calendar', ChangeKey: 'fresh' }, Start: '2026-11-17T12:00:00Z', End: '2026-11-17T13:00:00Z', Body: { BodyType: 'Text', Value: 'Fictional participant response.' } });
-      await js(`state.messages.push(${JSON.stringify(mail)});openMessage(${JSON.stringify(mail.id)})`);
+      await js(`state.messages.push(${javascriptLiteral(mail)});openMessage(${javascriptLiteral(mail.id)})`);
       assert.equal(await js('document.querySelectorAll("#reader .meeting-banner,#reader .eyebrow").length'), 0);
       assert.equal(await js('document.querySelector("#reader .plain-body").textContent'), 'Fictional participant response.');
     }
@@ -33,36 +34,36 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector(".participant-card small").textContent.includes("@")'), true, 'Names retain a visible email below them');
     assert.equal(await js('document.querySelector(".meeting-participant-columns").children[0].getBoundingClientRect().top===document.querySelector(".meeting-participant-columns").children[1].getBoundingClientRect().top'), true);
     const addParticipant = async (role, value, key = 'Enter') => {
-      await js(`(()=>{const input=document.querySelector('[data-participant-target=${role}]');input.focus();input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true}));})()`);
+      await js(`(()=>{const input=document.querySelector('[data-participant-target=' + ${javascriptLiteral(role)} + ']');input.focus();input.value=${javascriptLiteral(value)};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:${javascriptLiteral(key)},bubbles:true,cancelable:true}));})()`);
     };
     await addParticipant('attendees', 'manual@example.test');
     assert.equal(await js('document.querySelector("#event-form").elements.attendees.value.includes("manual@example.test")'), true, 'Manual Enter commits to the canonical field');
     await addParticipant('optionalAttendees', 'manual@example.test');
     assert.equal(await js('document.querySelector("#event-form").elements.attendees.value.includes("manual@example.test")'), false, 'Manual entry moves an existing participant between roles');
     assert.equal(await js('document.querySelector("#event-form").elements.optionalAttendees.value.includes("manual@example.test")'), true);
-    await js(`(()=>{const form=document.querySelector('#event-form');form.elements.attendees.value=${JSON.stringify(original.attendees)};form.elements.optionalAttendees.value=${JSON.stringify(original.optionalAttendees)};for(const name of ['attendees','optionalAttendees'])form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await js(`(()=>{const form=document.querySelector('#event-form');form.elements.attendees.value=${javascriptLiteral(original.attendees)};form.elements.optionalAttendees.value=${javascriptLiteral(original.optionalAttendees)};for(const name of ['attendees','optionalAttendees'])form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));})()`);
     const optional = original.optionalAttendees.split(', ')[0];
-    await js(`(()=>{const input=document.querySelector('[data-participant-target=attendees]');input.focus();input.value=${JSON.stringify(optional.slice(0,4))};input.dispatchEvent(new Event('input',{bubbles:true}));for(const key of ['ArrowDown','Enter'])input.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));})()`);
-    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${JSON.stringify(optional)})`), true, 'Directory choice in the new entry moves an optional participant');
-    assert.equal(await js(`document.querySelector('#event-form').elements.optionalAttendees.value.includes(${JSON.stringify(optional)})`), false);
-    await js(`(()=>{const form=document.querySelector('#event-form');for(const name of ['attendees','optionalAttendees']){form.elements[name].value=${JSON.stringify(original)}[name];form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+    await js(`(()=>{const input=document.querySelector('[data-participant-target=attendees]');input.focus();input.value=${javascriptLiteral(optional.slice(0,4))};input.dispatchEvent(new Event('input',{bubbles:true}));for(const key of ['ArrowDown','Enter'])input.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));})()`);
+    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${javascriptLiteral(optional)})`), true, 'Directory choice in the new entry moves an optional participant');
+    assert.equal(await js(`document.querySelector('#event-form').elements.optionalAttendees.value.includes(${javascriptLiteral(optional)})`), false);
+    await js(`(()=>{const form=document.querySelector('#event-form');for(const name of ['attendees','optionalAttendees']){form.elements[name].value=${javascriptLiteral(original)}[name];form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));}})()`);
     assert.equal(await js('document.querySelector("#event-form").elements.sendUpdates.options[1].disabled'), true);
     const choose = async (field, email) => {
-      await js(`(() => { const input=document.querySelector('#event-form').elements[${JSON.stringify(field)}]; input.value+=', '+${JSON.stringify(email.slice(0, 4))}; input.focus(); input.setSelectionRange(input.value.length,input.value.length); input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
-      await js(`(() => {const input=document.querySelector('#event-form').elements[${JSON.stringify(field)}]; input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`);
+      await js(`(() => { const input=document.querySelector('#event-form').elements[${javascriptLiteral(field)}]; input.value+=', '+${javascriptLiteral(email.slice(0, 4))}; input.focus(); input.setSelectionRange(input.value.length,input.value.length); input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+      await js(`(() => {const input=document.querySelector('#event-form').elements[${javascriptLiteral(field)}]; input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`);
     };
     await choose('attendees', optional);
     assert.equal(await js('document.querySelector("#event-form").elements.sendUpdates.options[1].disabled'), false);
     await js(`(() => {const form=document.querySelector('#event-form');form.elements.sendUpdates.value='changed';form.elements.title.value+=' changed';form.elements.title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     assert.equal(await js('document.querySelector("#event-form").elements.sendUpdates.value'), 'all');
     assert.equal(await js('document.querySelector("#event-form").elements.sendUpdates.options[1].disabled'), true);
-    await js(`(() => {const form=document.querySelector('#event-form');form.elements.title.value=${JSON.stringify(original.title)};form.elements.title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    assert.equal(await js(`document.querySelector('#event-form').elements.optionalAttendees.value.includes(${JSON.stringify(optional)})`), false);
-    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${JSON.stringify(optional)})`), true);
+    await js(`(() => {const form=document.querySelector('#event-form');form.elements.title.value=${javascriptLiteral(original.title)};form.elements.title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    assert.equal(await js(`document.querySelector('#event-form').elements.optionalAttendees.value.includes(${javascriptLiteral(optional)})`), false);
+    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${javascriptLiteral(optional)})`), true);
     // Real DOM/DataTransfer events test both drop directions, cancellation and locked fields.
     const drag = (source, target, email, cancel = false) => js(`(() => {
-      const form=document.querySelector('#event-form'), from=form.elements[${JSON.stringify(source)}], to=form.elements[${JSON.stringify(target)}];
-      const card=[...from.closest('.field').querySelectorAll('.participant-card')].find(card=>card.dataset.email===${JSON.stringify(email)});
+      const form=document.querySelector('#event-form'), from=form.elements[${javascriptLiteral(source)}], to=form.elements[${javascriptLiteral(target)}];
+      const card=[...from.closest('.field').querySelectorAll('.participant-card')].find(card=>card.dataset.email===${javascriptLiteral(email)});
       const dataTransfer=new DataTransfer();
       card.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer}));
       if (${cancel}) { card.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer})); return; }
@@ -71,10 +72,10 @@ app.whenReady().then(async () => {
       card.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer}));
     })()`);
     await drag('attendees', 'optionalAttendees', optional, true);
-    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${JSON.stringify(optional)})`), true);
+    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${javascriptLiteral(optional)})`), true);
     await js('document.querySelector("#event-form").elements.optionalAttendees.disabled=true');
     await drag('attendees', 'optionalAttendees', optional);
-    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${JSON.stringify(optional)})`), true);
+    assert.equal(await js(`document.querySelector('#event-form').elements.attendees.value.includes(${javascriptLiteral(optional)})`), true);
     await js('document.querySelector("#event-form").elements.optionalAttendees.disabled=false');
     await drag('attendees', 'optionalAttendees', optional);
     assert.equal(await js('document.querySelector("#event-form").elements.optionalAttendees.value'), optional);
@@ -109,7 +110,7 @@ app.whenReady().then(async () => {
         await fs.writeFile(path.join(output,`many-${theme}-${width}.png`),(await window.webContents.capturePage()).toPNG());
       }
     }
-    await js(`(()=>{const form=document.querySelector('#event-form');for(const name of ['attendees','optionalAttendees']){form.elements[name].value=${JSON.stringify(editedValues)}[name];form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+    await js(`(()=>{const form=document.querySelector('#event-form');for(const name of ['attendees','optionalAttendees']){form.elements[name].value=${javascriptLiteral(editedValues)}[name];form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));}})()`);
     await js(`window.meetingSave=saveMeetingChanges;saveMeetingChanges=async(edit,changes,sendUpdates)=>{window.sentMeetingUpdate={changes,sendUpdates};};document.querySelector('[data-participant-target=attendees]').value='unfinished name';document.querySelector('#event-form').requestSubmit()`);
     assert.equal(await js('Boolean(window.sentMeetingUpdate)'), false, 'Uncommitted name blocks save until an email is chosen');
     await js(`(()=>{const input=document.querySelector('[data-participant-target=attendees]');input.value='pending-save@example.test';input.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#event-form').elements.sendUpdates.value='changed';document.querySelector('#event-form').requestSubmit();})()`);

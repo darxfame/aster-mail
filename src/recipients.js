@@ -33,18 +33,23 @@
   root.asterRecipients = recipients;
   const meetingForms = new WeakMap();
   const addresses = value => value.split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
+  const validEmail = email => /^[^\s<>,;@]+@[^\s<>,;@]+\.[^\s<>,;@]+$/.test(email);
   const otherParticipants = input => input.form?.id === 'event-form' ? input.form.elements[{ attendees: 'optionalAttendees', optionalAttendees: 'attendees' }[input.dataset?.participantTarget || input.name]] : null;
   function removeParticipant(input, email) {
     input.value = addresses(input.value).filter(value => value.toLowerCase() !== email.toLowerCase()).join(', ');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }
   recipients.commit = form => (meetingForms.get(form)?.pending || []).every(commit => commit());
+  recipients.composePeople = form => {
+    const selected = new Set(['to', 'cc', 'bcc'].flatMap(name => addresses(form.elements[name].value).map(email => email.toLowerCase())));
+    return (meetingForms.get(form)?.people || []).filter(person => person.name && selected.has(person.email?.toLowerCase()))
+      .map(({ name, email }) => ({ name, email }));
+  };
   recipients.decorateMeeting = (form, people, mail = false) => {
     const context = { people: people.filter(person => person.role !== 'resource'), drag: null }; meetingForms.set(form, context);
     const columns = document.createElement('div'); columns.className = `meeting-participant-columns${mail ? ' compose-participants' : ''}`;
     form.elements[mail ? 'to' : 'attendees'].closest('.field').before(columns);
     const options = document.createElement('div'); options.className = 'compose-recipient-options';
-    if (mail) columns.before(options);
     const pendingInputs = []; context.pending = pendingInputs;
     for (const name of mail ? ['to', 'cc', 'bcc'] : ['attendees', 'optionalAttendees']) {
       const input = form.elements[name], originalField = input.closest('.field');
@@ -54,6 +59,7 @@
       label.textContent = mail ? { to: tr('Кому'), cc: tr('Копия'), bcc: tr('Скрытая копия') }[name] : name === 'attendees' ? tr('Обязательные') : tr('Необязательные'); label.append(count); field.append(label);
       const cards = document.createElement('div'); cards.className = 'participant-cards'; field.append(cards, input);
       input.classList.add('participant-addresses'); input.setAttribute('aria-label', `${label.textContent} · ${tr('Редактировать email')}`);
+      if (mail) input.hidden = true;
       input.addEventListener('focus', () => input.classList.add('is-editing'));
       input.addEventListener('blur', () => input.classList.remove('is-editing'));
       const entry = document.createElement('div'); entry.className = 'participant-entry';
@@ -63,11 +69,61 @@
       const addButton = document.createElement('button'); addButton.type = 'button'; addButton.className = 'secondary participant-add'; addButton.textContent = '+';
       addButton.setAttribute('aria-label', tr('Добавить участника')); addButton.disabled = input.disabled;
       entry.append(addInput, addButton); field.append(entry);
+      let editRow, editInput, editedAddress, editFocusAddress, toggle;
+      if (mail) {
+        const line = document.createElement('div'); line.className = 'compose-recipient-line';
+        cards.replaceWith(line); line.append(cards, entry);
+        if (name === 'to') columns.append(options);
+        editRow = document.createElement('div'); editRow.className = 'compose-recipient-editor'; editRow.hidden = true;
+        editInput = document.createElement('input');
+        editInput.type = 'text'; editInput.className = 'compose-recipient-edit';
+        editInput.inputMode = 'email'; editInput.autocomplete = 'off'; editInput.spellcheck = false;
+        editInput.setAttribute('aria-label', `${label.firstChild.textContent} · ${tr('Редактировать email')}`);
+        const apply = document.createElement('button'); apply.type = 'button'; apply.className = 'secondary'; apply.textContent = tr('Готово');
+        apply.addEventListener('click', () => { if (commitEdit()) focusEdited(); });
+        const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'secondary'; cancel.textContent = '×';
+        cancel.setAttribute('aria-label', tr('Отмена'));
+        cancel.addEventListener('click', () => { closeEdit(); focusEdited(); });
+        editInput.addEventListener('input', () => editInput.setCustomValidity(''));
+        editInput.addEventListener('keydown', event => {
+          if (!['Enter', 'Escape'].includes(event.key)) return;
+          event.preventDefault(); event.stopPropagation();
+          if (event.key === 'Escape') closeEdit();
+          else if (!commitEdit()) return;
+          focusEdited();
+        });
+        editRow.append(editInput, apply, cancel); field.append(editRow);
+        pendingInputs.push(commitEdit);
+      }
+      function closeEdit() {
+        editedAddress = undefined;
+        editRow.hidden = true; editInput.setCustomValidity('');
+      }
+      function focusEdited() {
+        const button = [...cards.querySelectorAll('.participant-card')].find(card => card.dataset.email === editFocusAddress);
+        (button || addInput).focus({ preventScroll: true });
+      }
+      function commitEdit() {
+        if (!editedAddress || input.disabled) return true;
+        const values = addresses(input.value), replacement = editInput.value.trim();
+        if (!validEmail(replacement) || values.some(email => email !== editedAddress && email.toLowerCase() === replacement.toLowerCase())) {
+          editInput.setCustomValidity(tr('Введите полный email, которого ещё нет в этой строке.')); editInput.reportValidity();
+          return false;
+        }
+        const original = editedAddress;
+        closeEdit(); editFocusAddress = replacement;
+        if (replacement !== original && values.includes(original)) {
+          input.value = values.map(email => email === original ? replacement : email).join(', ');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return true;
+      }
       function commitPending() {
         const values = addresses(addInput.value);
         if (!values.length || input.disabled) return true;
         const other = otherParticipants(input);
-        if (values.some(email => !/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email)) || other?.disabled && values.some(email => addresses(other.value).some(value => value.toLowerCase() === email.toLowerCase()))) {
+        if (values.some(email => !validEmail(email)) || other?.disabled && values.some(email => addresses(other.value).some(value => value.toLowerCase() === email.toLowerCase()))) {
+          if (toggle) showField(true);
           addInput.setCustomValidity(tr('Выберите участника из подсказки или введите полный email.')); addInput.reportValidity();
           return false;
         }
@@ -86,7 +142,7 @@
       addButton.addEventListener('click', () => { if (commitPending()) addInput.focus(); });
       pendingInputs.push(commitPending);
       function render() {
-        const scrollTop = cards.scrollTop;
+        const scrollPosition = cards.scrollTop;
         cards.replaceChildren();
         let offset = 0;
         for (const part of input.value.split(/[,;\n]/)) {
@@ -101,59 +157,99 @@
           const title = document.createElement('strong'); title.textContent = person?.name || email;
           copy.append(title);
           if (person?.name && person.name !== email) { const address = document.createElement('small'); address.textContent = email; copy.append(address); }
-          button.append(picture, copy);
-          button.title = mail ? tr('Нажмите, чтобы исправить email.') : tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
+          if (!mail) button.append(picture);
+          button.append(copy);
+          button.title = mail ? `${email}\n${tr('Нажмите, чтобы исправить email.')}` : tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
           button.disabled = input.disabled; button.draggable = !input.disabled && !otherParticipants(input)?.disabled;
-          button.addEventListener('click', event => { event.preventDefault(); input.focus(); input.setSelectionRange(start, end); });
+          button.addEventListener('click', event => {
+            event.preventDefault();
+            if (!mail) { input.focus(); input.setSelectionRange(start, end); return; }
+            if (editedAddress !== email && !commitEdit()) return;
+            if (!editedAddress) {
+              editedAddress = editFocusAddress = email;
+              editInput.value = email; editRow.hidden = false;
+            }
+            editInput.focus(); editInput.select();
+          });
           button.addEventListener('dragstart', event => {
+            if (editedAddress) { event.preventDefault(); return; }
             context.drag = { input, email, value: input.value }; event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData('text/plain', email);
           });
           button.addEventListener('dragend', () => { context.drag = null; form.querySelectorAll('.participant-drop').forEach(node => node.classList.remove('participant-drop')); });
           if (mail) {
+            button.setAttribute('aria-label', person?.name && person.name !== email ? `${person.name} · ${email}` : email);
             const row = document.createElement('div'); row.className = 'compose-recipient-card';
             const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'participant-remove'; remove.textContent = '×';
             remove.setAttribute('aria-label', `${tr('Удалить адресата')}: ${email}`);
-            remove.addEventListener('click', () => { removeParticipant(input, email); addInput.focus(); });
+            remove.addEventListener('click', () => { if (editedAddress === email) closeEdit(); removeParticipant(input, email); addInput.focus(); });
             row.append(button, remove); cards.append(row);
           } else cards.append(button);
         }
-        count.textContent = addresses(input.value).length;
-        if (!cards.children.length) { const empty = document.createElement('p'); empty.className = 'participant-empty'; empty.textContent = tr('Участники не добавлены'); cards.append(empty); }
-        cards.scrollTop = scrollTop;
+        const addressCount = addresses(input.value).length;
+        count.textContent = mail && !addressCount ? '' : addressCount;
+        if (!mail && !cards.children.length) { const empty = document.createElement('p'); empty.className = 'participant-empty'; empty.textContent = tr('Участники не добавлены'); cards.append(empty); }
+        cards.scrollTop = scrollPosition;
+        if (toggle) updateDisclosure(addressCount);
       }
-      let toggle;
+      function updateDisclosure(size = addresses(input.value).length) {
+        const text = name === 'cc' ? tr(field.hidden ? 'Показать копию' : 'Скрыть копию')
+          : tr(field.hidden ? 'Показать скрытую копию' : 'Скрыть скрытую копию');
+        toggle.textContent = size ? `${text} · ${size}` : text;
+        toggle.setAttribute('aria-expanded', String(!field.hidden));
+      }
+      function showField(visible) {
+        field.hidden = !visible;
+        updateDisclosure();
+      }
       if (mail && name !== 'to') {
-        toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'secondary'; toggle.textContent = label.firstChild.textContent;
-        toggle.setAttribute('aria-expanded', String(Boolean(input.value.trim()))); toggle.setAttribute('aria-controls', `recipient-field-${name}`);
-        field.id = `recipient-field-${name}`; field.hidden = !input.value.trim();
+        toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'secondary';
+        field.id = `recipient-field-${name}`; toggle.setAttribute('aria-controls', field.id);
+        showField(false);
         options.append(toggle);
-        toggle.addEventListener('click', () => { if (!field.hidden && (input.value.trim() || addInput.value.trim())) { addInput.focus(); return; } field.hidden = !field.hidden; toggle.setAttribute('aria-expanded', String(!field.hidden)); if (!field.hidden) addInput.focus(); });
+        toggle.addEventListener('click', () => {
+          if (!field.hidden && (!commitEdit() || !commitPending())) return;
+          showField(field.hidden);
+          if (!field.hidden) addInput.focus();
+        });
       }
-      input.addEventListener('input', () => { if (toggle && input.value.trim()) { field.hidden = false; toggle.setAttribute('aria-expanded', 'true'); } render(); }); render();
-      field.addEventListener('dragover', event => {
-        if (!context.drag || context.drag.input === input || input.disabled || context.drag.input.disabled) return;
-        event.preventDefault(); event.dataTransfer.dropEffect = 'move'; field.classList.add('participant-drop');
-      });
-      field.addEventListener('dragleave', event => { if (!field.contains(event.relatedTarget)) field.classList.remove('participant-drop'); });
-      field.addEventListener('drop', event => {
-        const drag = context.drag; context.drag = null; field.classList.remove('participant-drop');
-        if (!drag || drag.input === input || input.disabled || drag.input.disabled || drag.input.value !== drag.value) return;
-        event.preventDefault();
-        if (!addresses(input.value).some(value => value.toLowerCase() === drag.email.toLowerCase())) input.value = [...addresses(input.value), drag.email].join(', ');
-        removeParticipant(drag.input, drag.email);
-        input.dispatchEvent(new Event('input', { bubbles: true })); addInput.focus();
-      });
+      input.addEventListener('input', () => { if (editedAddress && !addresses(input.value).includes(editedAddress)) closeEdit(); render(); }); render();
+      for (const target of toggle ? [field, toggle] : [field]) {
+        const beforeAddress = event => mail ? event.target.closest('.compose-recipient-card')?.querySelector('.participant-card')?.dataset.email : null;
+        const accepts = (drag, before) => drag && !input.disabled && !drag.input.disabled && drag.input.value === drag.value && (drag.input !== input || before && before !== drag.email);
+        target.addEventListener('dragover', event => {
+          if (!accepts(context.drag, beforeAddress(event))) return;
+          event.preventDefault(); event.dataTransfer.dropEffect = 'move'; target.classList.add('participant-drop');
+        });
+        target.addEventListener('dragleave', event => { if (!target.contains(event.relatedTarget)) target.classList.remove('participant-drop'); });
+        target.addEventListener('drop', event => {
+          const drag = context.drag, before = beforeAddress(event);
+          context.drag = null; target.classList.remove('participant-drop');
+          if (!accepts(drag, before)) return;
+          event.preventDefault();
+          const values = addresses(input.value).filter(value => drag.input !== input || value !== drag.email);
+          if (!values.some(value => value.toLowerCase() === drag.email.toLowerCase())) {
+            values.splice(before ? values.indexOf(before) : values.length, 0, drag.email);
+            input.value = values.join(', ');
+          }
+          if (drag.input !== input) removeParticipant(drag.input, drag.email);
+          if (toggle) showField(true);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          if (mail) { editFocusAddress = drag.email; focusEdited(); }
+          else addInput.focus();
+        });
+      }
     }
     form.addEventListener('submit', event => { for (const commit of pendingInputs) if (!commit()) { event.preventDefault(); event.stopPropagation(); break; } });
-    const hint = document.createElement('p'); hint.className = 'form-note';
-    hint.textContent = mail ? tr('Нажмите, чтобы исправить email.') : tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
-    columns.after(hint);
+    if (!mail) {
+      const hint = document.createElement('p'); hint.className = 'form-note';
+      hint.textContent = tr('Нажмите, чтобы исправить email. Перетащите, чтобы изменить роль участника.');
+      columns.after(hint);
+    }
   };
-  recipients.decorate = form => {
+  recipients.decorate = (form, composePeople = []) => {
     if (form.id === 'compose-form') {
-      const people = [state.selected?.from, ...(state.selected?.to || []), ...(state.selected?.cc || []), ...(state.selected?.bcc || [])].filter(Boolean);
-      recipients.decorateMeeting(form, people, true); return;
+      recipients.decorateMeeting(form, composePeople.filter(Boolean), true); return;
     }
     for (const name of ['to', 'cc', 'bcc']) {
       const input = form.elements[name]; if (!input) continue;

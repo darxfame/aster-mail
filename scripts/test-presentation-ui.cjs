@@ -33,18 +33,32 @@ app.whenReady().then(async () => {
     assert.deepEqual(await js('savedPreferences.privacyApps'), ['zoom']);
     await window.setSize(380, 560);
     await window.loadFile(path.join(root, 'src/widget.html'));
-    await js(`snapshot.calendarEvents[0].preview='Fictional meeting description';expandedAlerts=true;snapshot.mailAlerts=[{id:'mail',subject:'Fictional subject',text:'Fictional mail description'}];render(snapshot)`);
-    assert.match(await js('document.querySelector("#meetings").textContent'), /Fictional meeting description/);
-    assert.match(await js('document.querySelector("#meetings").textContent'), /Fictional subject/);
+    await js(`(() => {
+      const now = Date.now();
+      const meeting = {
+        id: 'fixture-meeting', title: 'Fictional team meeting', response: 'Accept', joinUrl: true,
+        start: new Date(now - 5 * 60000).toISOString(), end: new Date(now + 25 * 60000).toISOString(),
+        organizer: { name: 'Fictional organizer' },
+      };
+      render({ connected: true, language: 'en', theme: 'light', calendarEvents: [meeting], lastPoll: new Date(now).toISOString() });
+    })()`);
+    assert.equal(await js('document.querySelector(".featured-title").textContent'), 'Fictional team meeting');
+    assert.match(await js('document.querySelector(".day-grid").textContent'), /Fictional organizer/);
+    assert.equal(await js('Boolean(document.querySelector(".featured .join")?.getClientRects().length)'), true);
+    const meetingTime = await js('document.querySelector(".featured .time").textContent');
+    assert.match(meetingTime, /\d\d:\d\d/);
     assert.equal(await js('Boolean(document.querySelector("#privacy-toggle, .privacy-controls"))'), false);
     await js('render({...snapshot,presentationMode:true,privacyActive:true,presentationUntil:Date.now()+15*60000})');
-    assert.doesNotMatch(await js('document.querySelector("#meetings").textContent'), /Fictional|Командная встреча/);
-    assert.equal(await js('Boolean(document.querySelector(".day-grid"))'), true);
-    assert.match(await js('document.querySelector(".featured .time").textContent'), /\d\d:\d\d/);
+    assert.doesNotMatch(await js('document.querySelector("#meetings").textContent'), /Fictional/);
+    assert.equal(await js('Boolean(document.querySelector(".day-grid .grid-event-main:disabled"))'), true);
+    assert.equal(await js('Boolean(document.querySelector(".featured .join"))'), false);
+    assert.equal(await js('document.querySelector(".featured .time").textContent'), meetingTime);
     const output = path.join(root, 'release/presentation-ui'); await fs.mkdir(output, { recursive: true });
     await fs.writeFile(path.join(output, 'private.png'), (await window.webContents.capturePage()).toPNG());
     await js('render({...snapshot,presentationMode:false,privacyActive:false,presentationUntil:0})');
-    assert.match(await js('document.querySelector("#meetings").textContent'), /Fictional meeting description/);
+    assert.equal(await js('document.querySelector(".featured-title").textContent'), 'Fictional team meeting');
+    assert.match(await js('document.querySelector(".day-grid").textContent'), /Fictional organizer/);
+    assert.equal(await js('Boolean(document.querySelector(".featured .join")?.getClientRects().length)'), true);
     await fs.writeFile(path.join(output, 'normal.png'), (await window.webContents.capturePage()).toPNG());
     const scan = await require('../desktop/sharing-privacy.cjs').scan(['zoom']);
     assert.notEqual(scan, null, 'Actual native process enumeration must succeed');

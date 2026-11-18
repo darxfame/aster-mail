@@ -1,6 +1,7 @@
 // Calendar actions use fictional demo events and injected IPC only; never real invitations.
 const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
+const javascriptLiteral = require('./javascript-literal.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
@@ -31,7 +32,7 @@ app.whenReady().then(async () => {
     await js(`window.navigationTest={onNavigate:callback=>window.navigateFromWidget=callback};${navigation.replace('window.aster.onNavigate', 'window.navigationTest.onNavigate')};void 0`);
     await js(`window.navigationEvent={...structuredClone(fixtureEvent),id:'fixture-navigation',isOrganizer:false,response:'Unknown',recurring:false,seriesId:undefined};window.asterDemo.events.push(navigationEvent)`);
     for (const preference of ['week', 'quarter', 'day', 'auto']) {
-      await js(`calendarPreference=${JSON.stringify(preference)};localPreferences.setItem('aster-calendar-view',calendarPreference);state.view='mail';state.week=new Date('2020-01-01');navigateFromWidget({view:'calendar',date:navigationEvent.start,eventId:navigationEvent.id})`);
+      await js(`calendarPreference=${javascriptLiteral(preference)};localPreferences.setItem('aster-calendar-view',calendarPreference);state.view='mail';state.week=new Date('2020-01-01');navigateFromWidget({view:'calendar',date:navigationEvent.start,eventId:navigationEvent.id})`);
       assert.equal(await js('calendarPreference'), preference, 'Opening a meeting preserves the current calendar view');
       assert.equal(await js('document.querySelector("#calendar-mode").value'), preference);
       assert.equal(await js("localPreferences.getItem('aster-calendar-view')"), preference);

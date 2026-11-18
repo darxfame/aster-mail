@@ -45,6 +45,13 @@ app.whenReady().then(async () => {
     await js(`window.pendingPreview=handleMeetingAction(document.querySelector('[data-action=meeting-preview-attachment][data-id=agenda]'));void 0`);
     await js(`modal('Other view','','');finishPreview({kind:'text',text:'late navigation'});pendingPreview`);
     assert.equal(await js(`Boolean(document.querySelector('#attachment-preview'))`), false);
+    await js(`openMeeting(fixtureMeeting)`);
+    await js(`window.pendingPreview=handleMeetingAction(document.querySelector('[data-action=meeting-preview-attachment][data-id=picture]'));void 0`);
+    await js(`finishPreview({kind:'image',dataURL:'data:text/plain,not-an-image'});pendingPreview`);
+    assert.equal(await js(`document.querySelector('#attachment-preview img') === null`), true);
+    await js(`closeAttachmentPreview();window.pendingPreview=handleMeetingAction(document.querySelector('[data-action=meeting-preview-attachment][data-id=picture]'));void 0`);
+    await js(`finishPreview({kind:'image',dataURL:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII='});pendingPreview`);
+    assert.equal(await js(`document.querySelector('#attachment-preview img').alt`), 'picture.png');
     // Existing composer preview remains available.
     await js(`window.aster=null;state.demo=true;state.account=null;api=originalApi;compose('new')`);
     await js(`previewComposeAttachment(new File(['composer text'],'draft.txt',{type:'text/plain'}),null)`);

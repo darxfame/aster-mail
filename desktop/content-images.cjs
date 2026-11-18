@@ -1,6 +1,7 @@
 const tr = require('../src/i18n.js').text;
 const { inspect, maxDecodedBytes } = require('./raster-images.cjs');
 const { BlockList, isIP } = require('node:net');
+const { decodeHTMLAttribute } = require('./protocol.cjs');
 const { isTrackingImage } = require('../src/rich-content.js');
 const localAddresses = new BlockList();
 for (const [address, prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.168.0.0',16],['198.18.0.0',15],['224.0.0.0',4],['240.0.0.0',4]]) localAddresses.addSubnet(address, prefix, 'ipv4');
@@ -15,7 +16,7 @@ function sourceURL(value, origin) {
   return url.href;
 }
 function sources(html) {
-  return [...new Set([...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(m => (m[1] ?? m[2] ?? m[3]).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")))].filter(src => !isTrackingImage(src)).slice(0, 12);
+  return [...new Set([...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(m => decodeHTMLAttribute(m[1] ?? m[2] ?? m[3])))].filter(src => !isTrackingImage(src)).slice(0, 12);
 }
 function cid(value) {
   let result = String(value || '').replace(/^cid:/i, '');

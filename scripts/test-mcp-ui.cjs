@@ -1,6 +1,7 @@
 // Real Electron host and independent Node stdio harness; fictional UI data only.
-const { app, BrowserWindow, Menu, clipboard, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, ipcMain, MessageChannelMain } = require('electron');
 const assert = require('node:assert/strict');
+const javascriptLiteral = require('./javascript-literal.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -69,11 +70,11 @@ app.whenReady().then(async () => {
   await js('document.querySelector("[data-action=mcp-copy]").click()');
   await waitFor(async () => (await clipboard.readText()) !== 'fictional-before-copy');
   const copied = await clipboard.readText();
-  await waitFor(() => js('document.querySelector("[data-mcp-config]").value === ' + JSON.stringify(copied)));
+  await waitFor(() => js('document.querySelector("[data-mcp-config]").value === ' + javascriptLiteral(copied)));
   for (const language of ['en', 'ru']) {
-    await js(`applyLanguage(${JSON.stringify(language)});api('setLanguage',{language:${JSON.stringify(language)}})`);
+    await js(`applyLanguage(${javascriptLiteral(language)});api('setLanguage',{language:${javascriptLiteral(language)}})`);
     for (const format of ['claude', 'claude-desktop', 'codex', 'dsh', 'continue', 'kilo', 'json']) {
-      await js(`(() => {const select=document.querySelector('[data-mcp-harness]');select.value=${JSON.stringify(format)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await js(`(() => {const select=document.querySelector('[data-mcp-harness]');select.value=${javascriptLiteral(format)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
       await waitFor(() => js('Boolean(document.querySelector("[data-mcp-config]").value)'));
       const text = await js('document.querySelector("[data-mcp-config]").value');
       assert.match(text, /mcp-stdio.cjs/);
@@ -126,12 +127,18 @@ app.whenReady().then(async () => {
   await waitFor(() => js('Boolean(document.querySelector(".message-open"))'));
   const source = await fs.readFile(path.join(__dirname, '../desktop/main.cjs'), 'utf8');
   const hostSource = source.slice(source.indexOf('function mcpHost()'), source.indexOf('async function setMcpEnabled'));
-  const host = vm.runInNewContext(`${hostSource}\nmcpHost()`, { window });
+  const rendererHost = window => vm.runInNewContext(`${hostSource}\nmcpHost()`, { window, MessageChannelMain, client: null, setTimeout, clearTimeout });
+  const host = rendererHost(window);
   const sanitized = await host.sanitize('<script>window.mcpUnsafe=true</script><b style="color:red;position:fixed" onclick="evil()">Hello</b><img src="cid:fictional@aster.local"><img src="https://image.invalid/tracker"><a href="javascript:evil()">link</a>', () => {});
   assert.match(sanitized, /color: red/); assert.match(sanitized, /cid:fictional@aster.local/);
   assert.doesNotMatch(sanitized, /script|onclick|position|image.invalid|javascript:/i);
   assert.equal(await js('Boolean(window.mcpUnsafe)'), false);
   await assert.rejects(host.invoke('restore', {}, () => {}), /denied/);
+  const closing = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  await closing.loadURL('about:blank');
+  const interrupted = assert.rejects(rendererHost(closing).sanitize('<b>Fictional draft</b>', () => {}), /renderer request closed/);
+  closing.destroy();
+  await interrupted;
   await js(`showMailContextMenu(document.querySelector('.message-row'),100,100);document.querySelector('[data-mail-context=rule]').click();void 0`);
   assert.equal(await js('document.querySelector("#mail-rule-form").elements.markRead.checked'), true);
   assert.equal(await js('document.querySelector("#mail-rule-form").elements.move.checked'), false);

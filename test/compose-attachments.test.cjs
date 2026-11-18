@@ -14,7 +14,7 @@ test('local image preview checks actual raster bytes, MIME and decoded size', ()
 });
 test('text stays plain and bounded; PDF and Office are opened explicitly outside the renderer', () => {
   const result = preview({ name: 'notes.txt', type: 'text/plain', bytes: Buffer.from('<script>never execute</script>') });
-  assert.equal(result.kind, 'text'); assert.match(result.text, /<script>/);
+  assert.equal(result.kind, 'text'); assert.match(result.text, /<script(?:\s|>)/i);
   assert.equal(preview({ name: 'large.log', bytes: Buffer.alloc(150000, 65) }).text.length, 100000);
   assert.equal(preview({ name: 'large.log', bytes: Buffer.alloc(150000, 65) }).truncated, true);
   assert.deepEqual(preview({ name: 'file.pdf', bytes: Buffer.from('fictional') }), { kind: 'pdf' });

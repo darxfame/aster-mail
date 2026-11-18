@@ -20,7 +20,7 @@ async function detachCompose(mode) {
     if (generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
     await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true }, snapshot: {
       mode, fields: Object.fromEntries(new FormData(form)), data, files, body: editor.read(), history: historyEditor?.read(),
-      selected: composeMessageSnapshot(sourceMessage || state.selected), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
+      selected: composeMessageSnapshot(sourceMessage || state.selected), recipientPeople: window.asterRecipients.composePeople(form), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
     } });
     setModalDirty(false); $('#modal').close();
   } catch (error) { form.querySelector('[role="alert"]').textContent = errorText(error); }
@@ -88,7 +88,7 @@ async function previewComposeAttachment(file, source, opener) {
   try {
     let result;
     if (meeting && state.demo) {
-      result = file.type?.startsWith('image/') ? { kind: 'image', dataURL: file.previewUrl || '../assets/icon.png' }
+      result = file.type?.startsWith('image/') ? { kind: 'image' }
         : /\.(txt|log|md|csv|json)$/i.test(file.name) ? { kind: 'text', text: file.previewText || tr('Это демонстрационное вложение Aster Mail. Реальные файлы загружаются из Exchange.') } : { kind: 'external' };
     } else if (!window.aster) {
       if (!source && /\.(txt|log|md|csv|json)$/i.test(file.name)) result = { kind: 'text', text: await file.slice(0, 100000).text(), truncated: file.size > 100000 };
@@ -101,7 +101,14 @@ async function previewComposeAttachment(file, source, opener) {
     if (!current()) return;
     body.replaceChildren();
     if (result.kind === 'image') {
-      const image = document.createElement('img'); image.alt = file.name; image.src = result.dataURL; body.append(image);
+      const image = document.createElement('img'); image.alt = file.name;
+      if (meeting && state.demo) image.src = '../assets/icon.png';
+      else {
+        const raster = /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(result.dataURL);
+        if (!raster) throw new Error(tr('Повреждённый или неподдерживаемый файл изображения'));
+        image.src = `data:image/${raster[1]};base64,${raster[2]}`;
+      }
+      body.append(image);
     } else if (result.kind === 'text') {
       const pre = document.createElement('pre'); pre.textContent = result.text; body.append(pre);
       if (result.truncated) { const note = document.createElement('p'); note.textContent = tr('Показаны первые 100 КБ файла.'); body.append(note); }

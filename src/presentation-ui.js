@@ -14,8 +14,10 @@ let presentationSnapshot = { presentationMode: false, privacyActive: false, pres
 function receivePresentation(snapshot) {
   presentationSnapshot = { ...presentationSnapshot, ...snapshot };
   for (const button of document.querySelectorAll('[data-presentation-toggle]')) {
-    button.textContent = window.asterPresentation.label(presentationSnapshot);
+    const label = button.querySelector('.presentation-label') || button;
+    label.textContent = window.asterPresentation.label(presentationSnapshot);
     button.setAttribute('aria-checked', String(Boolean(presentationSnapshot.presentationMode)));
+    button.toggleAttribute('data-privacy-active', Boolean(presentationSnapshot.privacyActive));
     button.title = window.asterPresentation.description(presentationSnapshot);
   }
   const status = document.querySelector('#presentation-status');

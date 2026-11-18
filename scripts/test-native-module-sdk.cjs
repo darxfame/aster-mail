@@ -2,6 +2,7 @@
 const electron = require('electron');
 const { app } = electron;
 const assert = require('node:assert/strict');
+const javascriptLiteral = require('./javascript-literal.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
@@ -33,11 +34,11 @@ app.whenReady().then(async () => {
     }
     return session;
   } }, BrowserWindow: class extends electron.BrowserWindow {
-    constructor(options) { super({ ...options, show: false }); if (options.title?.includes(origin)) authWindow = this; }
+    constructor(options) { super({ ...options, show: false }); if (options.title?.split(' · ').at(-1) === origin) authWindow = this; }
   } };
   host = new ModuleHost({ electron: adaptedElectron, directory: path.join(profile, 'modules'), scope: () => ({ sessionId: currentSession, signal: controller.signal, records }), save: async value => { records = value; }, sdk: async () => { throw new Error('No host data in fixture'); } });
   const manifest = { apiVersion: 1, id: 'example.auth-fixture', name: 'Fictional login fixture', version: '1.0.0', type: 'integration', main: 'main.js', files: ['main.js'], permissions: ['auth.session', 'network'], networkOrigins: [origin], authentication: { type: 'browser-token', origins: [origin], identityOrigins: [], capture: { storage: 'localStorage', key: 'fictional-login', tokenPath: ['credential', 'access'], expiresAtPath: ['credential', 'until'] }, authorization: { scheme: 'Bearer' } }, commands: [{ id: 'login', title: 'Fictional login', slot: 'internal' }, { id: 'status', title: 'Status', slot: 'internal' }, { id: 'logout', title: 'Logout', slot: 'internal' }, { id: 'http-status', title: 'HTTP status', slot: 'internal' }] };
-  const source = `export async function activate(api) { return { commands: { login: () => api.call('auth.signIn',{origin:${JSON.stringify(origin)}}), status: () => api.call('auth.status'), logout: () => api.call('auth.signOut'), 'http-status': async () => { try { await api.call('network.request',{url:${JSON.stringify(origin)}+'/room'}); } catch (error) { return {code:error.code,status:error.status}; } } } }; }`;
+  const source = `export async function activate(api) { return { commands: { login: () => api.call('auth.signIn',{origin:${javascriptLiteral(origin)}}), status: () => api.call('auth.status'), logout: () => api.call('auth.signOut'), 'http-status': async () => { try { await api.call('network.request',{url:${javascriptLiteral(origin)}+'/room'}); } catch (error) { return {code:error.code,status:error.status}; } } } }; }`;
   const bundle = M.fromFiles(new Map([['module.json', Buffer.from(JSON.stringify(manifest))], ['main.js', Buffer.from(source)]]));
   await host.install(bundle, true);
   await host.invoke(manifest.id, 'login');

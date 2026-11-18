@@ -69,6 +69,39 @@ app.whenReady().then(async () => {
     window.setSize(1280,850);window.webContents.setZoomFactor(1);
     await new Promise(resolve => setTimeout(resolve, 100));
     await fs.writeFile(path.join(output,'reader.png'),(await window.webContents.capturePage()).toPNG());
+    window.setContentSize(760, 540);
+    window.webContents.setZoomFactor(2);
+    await waitFor('innerWidth === 380 && innerHeight === 270 && document.body.classList.contains("mail-compact")');
+    await js("document.body.classList.add('desktop', 'mac'); returnToMailList()");
+    for (const [language, theme] of [['en', 'light'], ['ru', 'dark']]) {
+      await js(`applyLanguage('${language}'); state.theme='${theme}'; document.body.classList.toggle('dark', state.theme==='dark'); renderSidebar(); renderMail()`);
+      const layout = await js(`(() => {
+        const bounds = selector => document.querySelector(selector).getBoundingClientRect();
+        const settings = bounds('.dock-settings'), list = bounds('#messages'), first = bounds('.message-row');
+        return { search: bounds('#search').width, settings: settings.bottom, first: first.bottom, list: list.bottom };
+      })()`);
+      assert.ok(layout.search >= 80 && layout.settings <= 270 && layout.first <= layout.list + 1,
+        `At 760×540 and 200%, search, settings and one full mail row fit (${language}): ${JSON.stringify(layout)}`);
+      const filterState = () => js(`[...document.querySelectorAll('.list-filters button')].map(button => button.getAttribute('aria-pressed'))`);
+      assert.deepEqual(await filterState(), ['true', 'false', 'false']);
+      await js(`(() => { const filter = document.querySelector('[data-filter="unread"]'); filter.focus(); filter.click(); })()`);
+      await waitFor('document.activeElement.dataset.filter === "unread"');
+      assert.deepEqual(await filterState(), ['false', 'true', 'false']);
+      await js(`document.querySelector('[data-filter="all"]').click()`);
+      await waitFor('document.querySelector(\'[data-filter="all"]\').getAttribute("aria-pressed") === "true"');
+      await js(`(() => { const opener = document.querySelector('.message-open'); window.fixtureOpenedId = opener.dataset.id; opener.focus(); opener.click(); })()`);
+      await waitFor('Boolean(document.querySelector("#reader h2")) && document.activeElement.dataset.action === "back-to-list"');
+      await js('renderReader()');
+      assert.equal(await js('document.activeElement.dataset.action'), 'back-to-list', 'Reader refresh preserves the back button focus');
+      window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+      window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+      await waitFor('document.activeElement.hasAttribute("data-mail-find")');
+      await js('document.querySelector(".back-to-list").focus()');
+      await js('document.activeElement.click()');
+      assert.equal(await js('document.activeElement.dataset.id === fixtureOpenedId'), true, 'Returning to the list restores focus to the opened message');
+      await fs.writeFile(path.join(output, `mail-760x540-200-${language}.png`), (await window.webContents.capturePage()).toPNG());
+    }
+    console.log('PASS: search and settings fit, a complete mail row is visible, filters expose their pressed state and reader focus returns at 760×540/200% in light EN and dark RU.');
     console.log('PASS: long mail, compact recipients, image/text previews, return with preserved scroll/frame, stale preview cancellation and 100%/200%/narrow layouts.');
   } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

@@ -1,6 +1,7 @@
 // Exercise the widget and local working-hour settings in actual Chromium with fictional data.
 const { app, BrowserWindow, ipcMain } = require('electron');
 const assert = require('node:assert/strict');
+const javascriptLiteral = require('./javascript-literal.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
@@ -70,7 +71,7 @@ app.whenReady().then(async () => {
     for(const theme of ['light','dark']) for(const scale of [1,2]) {
       window.setContentSize(380*scale,560*scale);window.webContents.setZoomFactor(scale);
       await new Promise(resolve=>setTimeout(resolve,200));
-      await js(`render({...snapshot,theme:${JSON.stringify(theme)}})`);
+      await js(`render({...snapshot,theme:${javascriptLiteral(theme)}})`);
       await new Promise(resolve=>setTimeout(resolve,100));
       assert.equal(await js('Math.abs(innerWidth-380)<=1'),true,'Widget must retain its CSS width at each zoom factor');
       assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true);
@@ -118,7 +119,7 @@ app.whenReady().then(async () => {
       const state = {calendarEvents:nativeEvents.slice(0,count)};
       context.resizeWidget(state);
       assert.equal(window.getBounds().height,Math.min(560+(count-1)*150,area.height-16));
-      await js(`Date.now=()=>${nativeNow};selectedDay=null;render({...snapshot,privacyActive:false,calendarEvents:${JSON.stringify(state.calendarEvents)},dismissedMeetings:[],mailAlerts:[]})`);
+      await js(`Date.now=()=>${nativeNow};selectedDay=null;render({...snapshot,privacyActive:false,calendarEvents:${javascriptLiteral(state.calendarEvents)},dismissedMeetings:[],mailAlerts:[]})`);
       await new Promise(resolve=>setTimeout(resolve,100));
       assert.equal(await js('document.documentElement.scrollWidth<=innerWidth'),true);
       assert.equal(await js('document.querySelector(".day-grid").getBoundingClientRect().height>=150'),true);

@@ -17,7 +17,7 @@ test('GitHub download pins every declared file to one immutable commit and match
   const calls = [];
   const loaded = await G.load({ url: 'https://github.com/example/module', ref: 'main', directory: 'dist/module' }, async (url, limit) => {
     calls.push(url);
-    if (url.includes('api.github.com')) return Buffer.from(JSON.stringify({ sha: commit }));
+    if (new URL(url).hostname === 'api.github.com') return Buffer.from(JSON.stringify({ sha: commit }));
     assert.ok(url.startsWith(`https://raw.githubusercontent.com/example/module/${commit}/dist/module/`));
     const name = url.split('/dist/module/')[1]; assert.ok(bundle.files.has(name)); assert.ok(bundle.files.get(name).length <= limit);
     return bundle.files.get(name);

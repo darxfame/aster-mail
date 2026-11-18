@@ -77,6 +77,7 @@ body.dark {
   box-shadow: var(--air-shadow);
 }
 .topbar .search-box { border-radius: 20px; background: var(--surface2); }
+.topbar .presentation-toggle svg { display: none; }
 .topbar .primary, .topbar .secondary { border-radius: 12px; }
 .topbar .primary { background: var(--surface); color: var(--text); box-shadow: 0 2px 8px #29203f06; }
 .icon-button { border-radius: 10px; }
@@ -234,6 +235,35 @@ body.windows {
   --window-controls-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px / var(--interface-scale, 1)))));
 }
 body.windows .topbar { margin-right: calc(10px + var(--window-controls-right)); }
+@media (max-width: 500px) {
+  .topbar .presentation-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  .topbar .presentation-toggle svg { display: block; }
+  .topbar .presentation-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .topbar .presentation-toggle[data-privacy-active] { color: var(--accent); background: var(--accent-bg); }
+  /* At high zoom the native buttons sit above the toolbar's controls. */
+  body.windows .topbar { margin-right: 6px; }
+  body.windows .topbar, body.windows.desktop.sidebar-collapsed .topbar {
+    padding-top: max(4px, calc(env(titlebar-area-height, calc(40px / var(--interface-scale, 1))) - 4px));
+  }
+}
+@media (max-width: 400px) {
+  .topbar, .desktop.sidebar-collapsed .topbar { gap: 4px; }
+  .topbar .search-box { padding-inline: 4px; }
+}
+@media (max-height: 320px) {
+  .topbar, .desktop.sidebar-collapsed .topbar { min-height: 44px; height: auto; padding-block: 4px; margin-block: 4px; }
+  .workspace { margin-bottom: 4px; }
+  .demo-banner { margin-bottom: 4px; padding-block: 4px; }
+  .navigation-sidebar .statusbar { height: 18px; min-height: 18px; }
+  .mail-list .list-heading { padding-block: 4px 0; }
+  .mail-list .list-filters button { padding-block: 4px; }
+  .mail-list .mail-selection-bar { padding-block: 2px; }
+  .mail-list .day-label { padding-block: 3px; }
+  .mail-list .message-open { padding-block: 4px; }
+  .sidebar-collapsed .sidebar .wordmark { padding-bottom: 6px; }
+  .sidebar-collapsed .sidebar .sidebar-compose { margin-bottom: 6px; }
+  .navigation-sidebar.sidebar-collapsed .bottom-dock .view-switcher { gap: 2px; }
+}
 body.windows.compose-window .modal-header {
   padding-right: calc(20px + var(--window-controls-right));
   min-height: max(60px, env(titlebar-area-height, 40px));
@@ -261,15 +291,52 @@ body.windows.compose-window .modal-header button { -webkit-app-region: no-drag; 
 .meeting-participant-field .recipient-suggestions { left: 0; right: 0; top: 100%; }
 @media(max-width:560px) { .meeting-participant-columns { grid-template-columns: minmax(0, 1fr); }.meeting-participant-field .participant-cards { max-height: 184px; } }
 
-/* Mail uses the same participant editor, with full-width address lists. */
+/* Mail recipients follow the address lines above the message editor. */
 .compose-dialog #compose-form { grid-template-columns: minmax(0, 1fr); }
 .compose-dialog #compose-form > * { grid-column: 1 / -1; min-width: 0; }
-.compose-recipient-options { display: flex; flex-wrap: wrap; gap: 8px; }
-.compose-participants { grid-template-columns: minmax(0, 1fr); }
-.compose-participants .participant-cards { flex-direction: row; flex-wrap: wrap; }
-.compose-recipient-card { display: flex; align-items: center; max-width: 100%; background: var(--surface); border-radius: 10px; }
-.compose-recipient-card .participant-card { width: auto; min-width: 0; }
-.participant-remove { border: 0; background: transparent; padding: 8px; color: var(--muted); flex: none; }
+.compose-participants { grid-template-columns: minmax(0, 1fr); gap: 0; margin: 2px 0 6px; }
+.compose-participants .meeting-participant-field {
+  display: grid; grid-template-columns: minmax(62px, 80px) minmax(0, 1fr); align-items: baseline; gap: 4px 8px;
+  padding: 5px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none;
+}
+.compose-participants .meeting-participant-field[hidden] { display: none; }
+.compose-participants .meeting-participant-field > label { justify-content: flex-start; margin: 0; color: var(--muted); }
+.compose-recipient-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(138px, 28%); gap: 6px; min-width: 0; align-items: start; }
+.compose-recipient-line:has(.participant-cards:empty) { grid-template-columns: minmax(0, 1fr); }
+.compose-participants .participant-cards {
+  flex-direction: row; flex-wrap: wrap; align-content: start; min-width: 0; min-height: 0; max-height: 58px;
+  padding: 0 2px 2px 0; margin: 0; gap: 3px 7px; overflow: hidden auto; scrollbar-width: thin; scrollbar-gutter: auto;
+}
+.compose-participants .participant-cards:empty { display: none; }
+.compose-recipient-card {
+  display: inline-flex; flex: 0 1 auto; align-items: center; max-width: 100%; min-width: 0;
+  border-radius: 7px; background: var(--surface2);
+}
+.compose-recipient-card .participant-card {
+  flex: 1 1 auto; width: auto; min-width: 0; padding: 4px 5px 4px 7px; border: 0;
+  border-radius: 7px; background: transparent;
+}
+.compose-recipient-card .participant-card:hover { background: var(--accent-bg); }
+.compose-recipient-card .participant-copy strong { overflow-wrap: anywhere; font-size: 13px; line-height: 1.4; }
+.compose-recipient-card .participant-copy small { display: none; }
+.compose-recipient-card button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.participant-remove { flex: none; padding: 3px 6px; border-radius: 6px; color: var(--muted); }
+.participant-remove:hover { color: var(--accent); background: var(--accent-bg); }
+.compose-participants .participant-entry { min-width: 0; gap: 4px; align-self: start; }
+.compose-participants .participant-entry input,
+.compose-participants .compose-recipient-edit { min-height: 30px; padding: 4px 6px; background: var(--surface); }
+.compose-participants .participant-entry .participant-add { width: 28px; min-height: 28px; padding: 2px; }
+.compose-recipient-options { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 5px; padding: 3px 0; }
+.compose-recipient-options .secondary { padding: 3px 6px; font-size: 12px; min-height: 26px; color: var(--accent); background: transparent; border-color: transparent; }
+.compose-recipient-options .secondary:hover, .compose-recipient-options [aria-expanded="true"] { background: var(--accent-bg); }
+.compose-recipient-editor { grid-column: 2 / -1; display: flex; align-items: center; gap: 5px; min-width: 0; }
+.compose-recipient-editor[hidden] { display: none; }
+.compose-recipient-editor input { flex: 1; min-width: 0; }
+.compose-recipient-editor .secondary { padding: 4px 6px; font-size: 12px; }
+@media (max-width: 480px) {
+  .compose-recipient-line { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .compose-participants .meeting-participant-field { grid-template-columns: 64px minmax(0, 1fr); }
+}
 .topbar .search-box { position: relative; }
 .mail-search-controls { display: none; position: absolute; left: 0; top: calc(100% + 8px); z-index: 40; width: 100%; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: var(--surface); color: var(--text); font-size: 11px; }
 .search-box:focus-within .mail-search-controls:not([hidden]) { display: flex; }
