@@ -127,17 +127,26 @@ app.whenReady().then(async () => {
     await js('localPreferences.setItem("aster-mail-grouping","messages");renderMessages()');
     assert.equal(await js('document.querySelector("[data-action=mail-thread]")'), null);
 
+    window.setSize(760, 570);
     await js(`(async () => {
       await compose();
       const input = document.querySelector('[data-participant-target=to]');
       input.value = 'fictional@example.test';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       window.sentBefore = window.asterDemo.messages.filter(message => message.folder === 'sentitems').length;
-      window.composePending = sendCompose(false);
+      const send = document.querySelector('#compose-form [type=submit]');
+      send.scrollIntoView({ block: 'nearest' });
+      send.focus({ preventScroll: true });
+      send.click();
     })()`);
     await waitFor('Boolean(document.querySelector(".compose-send-delay button"))');
     assert.equal(await js('window.asterDemo.messages.filter(message => message.folder === "sentitems").length === sentBefore'), true);
-    await js('document.querySelector(".compose-send-delay button").click();composePending');
+    assert.equal(await js(`(() => {
+      const undo = document.querySelector('.compose-send-delay button'), bounds = undo.getBoundingClientRect();
+      return document.activeElement === undo && document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2) === undo;
+    })()`), true, 'Undo remains visible and clickable after sending from a scrolled dialog');
+    await js('document.querySelector(".compose-send-delay button").click()');
+    await waitFor('!modalBusy');
     assert.equal(await js('!modalBusy && document.querySelector("#modal").open && document.querySelector("#compose-form").elements.to.value === "fictional@example.test"'), true);
     assert.equal(await js('window.asterDemo.messages.filter(message => message.folder === "sentitems").length === sentBefore'), true);
     await js('sendCompose(false)');

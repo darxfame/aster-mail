@@ -3,7 +3,7 @@ function undoSendSeconds() {
   return [5, 10, 20, 30].includes(seconds) ? seconds : 0;
 }
 
-async function waitForComposeSend() {
+async function waitForComposeSend(form) {
   const seconds = undoSendSeconds();
   if (!seconds) return true;
   const notice = document.createElement('div');
@@ -19,8 +19,8 @@ async function waitForComposeSend() {
   updateCountdown();
   undo.type = 'button'; undo.className = 'secondary'; undo.textContent = tr('Отменить отправку');
   notice.append(status, countdown, undo);
-  $('#modal .modal-header').after(notice);
-  undo.focus({ preventScroll: true });
+  form.after(notice);
+  undo.focus();
   const tick = setInterval(updateCountdown, 250);
   let timer;
   try {

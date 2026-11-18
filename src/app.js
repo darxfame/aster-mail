@@ -1061,7 +1061,7 @@ async function sendCompose(save) {
     if (files.reduce((n, f) => n + f.size, 0) + (draft?.attachments || []).reduce((n, file) => n + file.size, 0) > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
     const attachments = inline.concat(await Promise.all(files.map(async file => ({ name: file.name, type: file.type || 'application/octet-stream', content: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }) }))));
     if (!current()) return;
-    if (!save && !await waitForComposeSend()) return;
+    if (!save && !await waitForComposeSend(form)) return;
     if (!current()) return;
     if (state.demo) {
       const addresses = value => (value || '').split(/[,;\n]/).map(email => email.trim()).filter(Boolean).map(email => ({ name: '', email }));
