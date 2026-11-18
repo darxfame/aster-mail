@@ -104,6 +104,45 @@ app.whenReady().then(async () => {
     assert.equal(await js('daySummary.mail===undefined'), true, 'Navigation discards delayed reads');
     await js('resetDaySummary();api=savedApi;state.account=null;state.demo=true;void 0');
     assert.equal(await js('daySummary===null'), true);
+    await js(`settingsModal(); void 0`);
+    await waitFor('Boolean(document.querySelector("#settings-form"))');
+    await js(`(() => {
+      const form = document.querySelector('#settings-form');
+      for (const field of form.querySelectorAll('[name^=day-]')) field.checked = false;
+      form.elements.dayNote.value = '<priority>';
+      form.elements.mailGrouping.value = 'threads';
+      form.elements.undoSendSeconds.value = '5';
+      form.requestSubmit();
+    })()`);
+    await waitFor('!modalBusy && !document.querySelector("#modal").open');
+    assert.equal(await js('document.querySelectorAll(".day-stats,.day-columns,.day-rhythm,.day-footer").length'), 0);
+    assert.equal(await js('document.querySelector(".day-personal-note").textContent'), '<priority>');
+    assert.equal(await js('daySummary===null && undoSendSeconds()===5 && mailThreadsEnabled()'), true);
+    await js(`state.messages.slice(0, 2).forEach(message => { message.conversationId = 'fictional-thread'; }); renderMessages()`);
+    assert.equal(await js('document.querySelector("[data-action=mail-thread]").getAttribute("aria-expanded")'), 'false');
+    await js('document.querySelector("[data-action=mail-thread]").click()');
+    assert.equal(await js('document.querySelectorAll(".mail-thread-member").length'), 1);
+    await js('document.querySelector(".mail-thread-member .message-open").click()');
+    await waitFor('Boolean(state.selected && document.querySelector("#message-body"))');
+    await js('localPreferences.setItem("aster-mail-grouping","messages");renderMessages()');
+    assert.equal(await js('document.querySelector("[data-action=mail-thread]")'), null);
+
+    await js(`(async () => {
+      await compose();
+      const input = document.querySelector('[data-participant-target=to]');
+      input.value = 'fictional@example.test';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      window.sentBefore = window.asterDemo.messages.filter(message => message.folder === 'sentitems').length;
+      window.composePending = sendCompose(false);
+    })()`);
+    await waitFor('Boolean(document.querySelector(".compose-send-delay button"))');
+    assert.equal(await js('window.asterDemo.messages.filter(message => message.folder === "sentitems").length === sentBefore'), true);
+    await js('document.querySelector(".compose-send-delay button").click();composePending');
+    assert.equal(await js('!modalBusy && document.querySelector("#modal").open && document.querySelector("#compose-form").elements.to.value === "fictional@example.test"'), true);
+    assert.equal(await js('window.asterDemo.messages.filter(message => message.folder === "sentitems").length === sentBefore'), true);
+    await js('sendCompose(false)');
+    assert.equal(await js('!document.querySelector("#modal").open && window.asterDemo.messages.filter(message => message.folder === "sentitems").length === sentBefore + 1'), true);
+
     console.log('PASS: overview counts, overlap scale, read-only previews, message opening, reader/composer preservation, light/dark, narrow/200%, translations and stale-read rejection.');
   } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

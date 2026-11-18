@@ -92,6 +92,18 @@ app.whenReady().then(async () => {
     assert.equal(await js("getComputedStyle(document.querySelector('.modal-header button')).webkitAppRegion"), 'no-drag');
     assert.equal(await js("(()=>{const h=document.querySelector('.modal-header'),r=h.getBoundingClientRect();return [...h.children].every(el=>el.getBoundingClientRect().right<=r.right-parseFloat(getComputedStyle(h).paddingRight)+1);})()"), true, 'Detached composer actions clear the native buttons');
     await fs.writeFile(path.join(output, 'windows-compose.png'), (await window.webContents.capturePage()).toPNG());
+    const close = await js(`(() => {
+      const button = document.querySelector('.modal-header [data-action=close]');
+      const bounds = button.getBoundingClientRect();
+      const x = Math.round(bounds.right - 3), y = Math.round(bounds.top + 4);
+      return { x, y, usable: document.elementFromPoint(x, y) === button };
+    })()`);
+    assert.equal(close.usable, true, 'The perimeter of the close button remains clickable');
+    window.webContents.sendInputEvent({ type: 'mouseMove', x: close.x, y: close.y });
+    await waitFor('document.querySelector(".modal-header [data-action=close]").matches(":hover")');
+    for (const type of ['mouseDown', 'mouseUp']) window.webContents.sendInputEvent({ type, button: 'left', x: close.x, y: close.y, clickCount: 1 });
+    await waitFor('!document.querySelector("#modal").open');
+
     console.log(`PASS: Windows Air light/dark, safe control area, zoom, compact sidebar and detached editor; ${process.platform === 'win32' ? 'native overlay/menu/maximize/minimize verified' : 'native Windows checks require Windows'}.`);
   } finally {
     window?.destroy();

@@ -9,10 +9,10 @@ function autoRepliesMarkup() {
     <div class="form-row" id="auto-replies-period">${field('oofStart', tr('Начало'), '', 'datetime-local')}${field('oofEnd', tr('Окончание'), '', 'datetime-local')}</div>
     <p class="form-note">${tr('Для отправки по расписанию выберите «В указанный период».')}</p>
     <p class="form-note">${tr('Часовой пояс:')} ${esc(T.zone(timeZone))}</p>
-    ${textField('oofInternal', tr('Ответ сотрудникам организации'))}
+    ${textField('oofInternal', tr('Ответ сотрудникам организации'), '', 'oof-message')}
     <label class="field"><span>${tr('Ответы внешним отправителям')}</span><select name="oofAudience"><option value="None">${tr('Не отправлять')}</option><option value="Known">${tr('Только моим контактам')}</option><option value="All">${tr('Всем внешним отправителям')}</option></select></label>
-    ${textField('oofExternal', tr('Ответ внешним отправителям'))}
-    <p class="form-note">${tr('Неизменённое форматирование OWA сохраняется. Изменённый текст отправляется без оформления.')}</p>
+    ${textField('oofExternal', tr('Ответ внешним отправителям'), '', 'oof-message')}
+    <p class="form-note">${tr('При редактировании сохраняются пробелы и переносы строк. Исходное оформление сохраняется, пока текст ответа не изменён.')}</p>
     </fieldset><p id="auto-replies-error" class="form-error" role="alert"></p>`;
 }
 function autoReplyText(value) {
@@ -60,10 +60,11 @@ function setupAutoReplies(panel) {
   const current = () => panel.isConnected && state.account === account && state.demo === demo;
   const update = () => {
     const scheduled = form.elements.oofState.value === 'Scheduled';
-    for (const name of ['oofStart', 'oofEnd']) { form.elements[name].disabled = !scheduled; form.elements[name].required = scheduled; }
+    for (const name of ['oofStart', 'oofEnd']) form.elements[name].disabled = !scheduled;
     form.elements.oofExternal.disabled = form.elements.oofAudience.value === 'None';
   };
-  panel.addEventListener('input', () => { panel.dataset.dirty = 'true'; setModalDirty(true); });
+  const dirty = value => { panel.dataset.dirty = String(value); setModalDirty(value || form.querySelector('#settings-panel-rules')?.dataset.dirty === 'true'); };
+  panel.addEventListener('input', () => dirty(true));
   panel.addEventListener('change', update);
   reload.addEventListener('click', async () => {
     if (!current() || modalBusy || panel.dataset.dirty === 'true' && !confirm(tr('Загрузить автоответы заново и отменить несохранённые изменения?'))) return;
@@ -79,7 +80,7 @@ function setupAutoReplies(panel) {
       for (const [key, name] of [['start', 'oofStart'], ['end', 'oofEnd']]) form.elements[name].value = value[key] ? T.wall(value[key], zone).slice(0, 16) : '';
       form.elements.oofInternal.maxLength = 32000; form.elements.oofExternal.maxLength = 32000;
       for (const option of form.elements.oofAudience.options) option.disabled = ['None', 'Known', 'All'].indexOf(option.value) > ['None', 'Known', 'All'].indexOf(value.allowExternal);
-      fields.disabled = false; save.disabled = false; panel.dataset.dirty = 'false'; setModalDirty(false); update();
+      fields.disabled = false; save.disabled = false; dirty(false); update();
       status.textContent = demo ? tr('Демо: вымышленные настройки, Exchange не изменяется.') : tr('Текущие настройки загружены из Exchange.');
     } catch (error) { if (current()) { status.textContent = ''; errorBox.textContent = errorText(error); } }
     finally { if (current() && request === sequence) reload.disabled = false; }
@@ -102,10 +103,10 @@ function setupAutoReplies(panel) {
       try {
         if (demo) {
           demoAutoReplies = { ...snapshot, ...input };
-          for (const key of ['internal', 'external']) if (Object.hasOwn(input, key)) demoAutoReplies[key] = esc(input[key]).replace(/\n/g, '<br>');
+          for (const key of ['internal', 'external']) if (Object.hasOwn(input, key)) demoAutoReplies[key] = `<div style="white-space:pre-wrap">${esc(input[key]).replace(/\r\n?|\n/g, '<br>')}</div>`;
         } else await api('saveAutoReplies', input);
         if (!current()) return;
-        panel.dataset.dirty = 'false'; setModalDirty(false);
+        dirty(false);
         status.textContent = demo ? tr('Демо: вымышленные настройки, Exchange не изменяется.') : tr('Автоответы сохранены в Exchange.');
       } catch (error) {
         if (current()) { status.textContent = tr('Перед следующим сохранением загрузите настройки из Exchange заново.'); errorBox.textContent = errorText(error); }

@@ -1,3 +1,33 @@
+let expandedMailThreads = new Set(), mailThreadScope = '';
+function mailThreadsEnabled() { return localPreferences.getItem('aster-mail-grouping') === 'threads'; }
+function mailThreadRows(items) {
+  const scope = mailSelectionKey();
+  if (scope !== mailThreadScope) { mailThreadScope = scope; expandedMailThreads.clear(); }
+  const groups = new Map(), membership = new Map();
+  if (mailThreadsEnabled()) {
+    for (const message of items) {
+      if (!message.conversationId || isDraftMessage(message)) continue;
+      if (!groups.has(message.conversationId)) groups.set(message.conversationId, []);
+      const group = groups.get(message.conversationId);
+      group.push(message); membership.set(message.id, group);
+    }
+  }
+  return items.flatMap(message => {
+    const group = membership.get(message.id);
+    if (!group || group.length < 2) return [{ message }];
+    if (group[0] !== message) return [];
+    const expanded = expandedMailThreads.has(message.conversationId);
+    return [{ message, group, expanded }, ...(expanded ? group.slice(1).map(message => ({ message, member: true })) : [])];
+  });
+}
+function toggleMailThread(id) {
+  const button = [...document.querySelectorAll('[data-action="mail-thread"]')].find(button => button.dataset.id === id);
+  if (!button) return;
+  if (button.getAttribute('aria-expanded') === 'true') expandedMailThreads.delete(id);
+  else expandedMailThreads.add(id);
+  renderMessages();
+}
+
 function mailAttachments(message) {
   if (!message.attachments?.length) return '';
   const card = file => {
@@ -118,16 +148,20 @@ function navigateMailMessage(event) {
   if (target.isContentEditable || target.closest('input,textarea,select,[role="slider"],[role="separator"]')) return;
   const frame = target.ownerDocument?.defaultView?.frameElement;
   if (!target.closest('#messages,#reader') && !(target === document.body && state.selected) && !(frame?.isConnected && frame.matches('#reader .email-frame'))) return;
-  const visible = new Set(filteredMessages().map(message => message.id));
-  // Retain the current position when marking read removes it from the unread filter.
-  const items = state.messages.filter(message => visible.has(message.id) || message.id === state.selected?.id);
-  const current = items.findIndex(message => message.id === state.selected?.id);
-  const index = current < 0 ? event.key === 'ArrowDown' ? 0 : items.length - 1 : current + (event.key === 'ArrowDown' ? 1 : -1);
+  const buttons = [...document.querySelectorAll('#messages .message-open')];
+  const grouped = mailThreadsEnabled();
+  const selected = state.selected?.id, direction = event.key === 'ArrowDown' ? 1 : -1;
+  const threadOrder = grouped && (!selected || buttons.some(button => button.dataset.id === selected));
+  // Keep the selected message's original position when it leaves the unread filter.
+  const order = threadOrder ? buttons.map(button => button.dataset.id) : state.messages.map(message => message.id);
+  const candidates = new Set(grouped ? buttons.map(button => button.dataset.id) : filteredMessages().map(message => message.id));
+  const current = order.indexOf(selected);
+  const remaining = direction > 0 ? order.slice(current + 1) : order.slice(0, current < 0 ? order.length : current).reverse();
+  const next = remaining.find(id => candidates.has(id));
   event.preventDefault();
-  const next = items[index];
-  if (!next || !visible.has(next.id)) return;
-  void openMessage(next.id);
-  const button = [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === next.id);
+  if (!next) return;
+  void openMessage(next);
+  const button = [...document.querySelectorAll('#messages .message-open')].find(button => button.dataset.id === next);
   const reader = $('#reader');
   reader.tabIndex = -1;
   reader.focus({ preventScroll: true });

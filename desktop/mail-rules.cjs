@@ -1,21 +1,27 @@
 const tr = require('../src/i18n.js').text;
 const P = require('./protocol.cjs');
 const { createHash } = require('node:crypto');
-function createSOAP(data, priority) {
+function createSOAP(data, priority, id = '') {
   const name = String(data.name || '').trim(), subject = String(data.subject || '').trim();
   const addresses = P.emails(data.sender || '');
   if (!name || name.length > 100 || addresses.length !== 1 || subject.length > 200 || /[\x00-\x1f]/.test(name + subject) || data.markRead !== undefined && typeof data.markRead !== 'boolean' || data.folder !== undefined && (typeof data.folder !== 'string' || !data.folder || data.folder.length > 16000 || /[\x00-\x1f]/.test(data.folder)) || !data.folder && data.markRead !== true || !Number.isSafeInteger(priority) || priority < 0) throw new Error(tr('Укажите имя правила, отправителя и действие: перенос или отметку прочитанным'));
   const folder = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive'].includes(data.folder) ? `<t:DistinguishedFolderId Id="${data.folder}"/>` : `<t:FolderId Id="${P.escapeXML(data.folder)}"/>`;
-  return P.soap(`<m:UpdateInboxRules><m:RemoveOutlookRuleBlob>false</m:RemoveOutlookRuleBlob><m:Operations><t:CreateRuleOperation><t:Rule><t:DisplayName>${P.escapeXML(name)}</t:DisplayName><t:Priority>${priority}</t:Priority><t:IsEnabled>true</t:IsEnabled><t:Conditions>${subject ? `<t:ContainsSubjectStrings><t:String>${P.escapeXML(subject)}</t:String></t:ContainsSubjectStrings>` : ''}<t:FromAddresses><t:Address><t:EmailAddress>${P.escapeXML(addresses[0])}</t:EmailAddress></t:Address></t:FromAddresses></t:Conditions><t:Actions>${data.markRead ? '<t:MarkAsRead>true</t:MarkAsRead>' : ''}${data.folder ? `<t:MoveToFolder>${folder}</t:MoveToFolder>` : ''}</t:Actions></t:Rule></t:CreateRuleOperation></m:Operations></m:UpdateInboxRules>`);
+  const operation = id ? 'SetRuleOperation' : 'CreateRuleOperation';
+  return updateSOAP(`<t:${operation}><t:Rule>${id ? `<t:RuleId>${P.escapeXML(id)}</t:RuleId>` : ''}<t:DisplayName>${P.escapeXML(name)}</t:DisplayName><t:Priority>${priority}</t:Priority><t:IsEnabled>${data.enabled !== false}</t:IsEnabled><t:Conditions>${subject ? `<t:ContainsSubjectStrings><t:String>${P.escapeXML(subject)}</t:String></t:ContainsSubjectStrings>` : ''}<t:FromAddresses><t:Address><t:EmailAddress>${P.escapeXML(addresses[0])}</t:EmailAddress></t:Address></t:FromAddresses></t:Conditions><t:Actions>${data.markRead ? '<t:MarkAsRead>true</t:MarkAsRead>' : ''}${data.folder ? `<t:MoveToFolder>${folder}</t:MoveToFolder>` : ''}</t:Actions></t:Rule></t:${operation}>`);
 }
-async function create(client, data) {
-  createSOAP(data, 0); // Validate before any request.
+function updateSOAP(operation) {
+  return P.soap(`<m:UpdateInboxRules><m:RemoveOutlookRuleBlob>false</m:RemoveOutlookRuleBlob><m:Operations>${operation}</m:Operations></m:UpdateInboxRules>`);
+}
+async function createRule(client, data) {
+  const { name, sender, subject, folder, markRead } = data;
+  const input = { name, sender, subject, folder, markRead };
+  createSOAP(input, 0); // Validate before any request.
   const configuration = await client.ews('GetInboxRules', P.soap('<m:GetInboxRules/>'));
   if (P.walk(configuration, o => String(o.OutlookRuleBlobExists).toLowerCase() === 'true').length) throw new Error(tr('Exchange хранит совместимые правила Outlook. Чтобы не удалить их, создайте новое правило в OWA.'));
   const rules = P.walk(configuration, o => o.RuleId !== undefined && o.Priority !== undefined);
   const priorities = rules.map(rule => Number(rule.Priority));
   if (priorities.some(p => !Number.isSafeInteger(p) || p < 0)) throw new Error(tr('Exchange вернул некорректные приоритеты правил'));
-  await client.ews('UpdateInboxRules', createSOAP(data, Math.max(-1, ...priorities) + 1));
+  await client.ews('UpdateInboxRules', createSOAP(input, Math.max(-1, ...priorities) + 1));
   return true;
 }
 const array = value => value == null ? [] : Array.isArray(value) ? value : [value];
@@ -23,6 +29,19 @@ const bool = value => value === true || value === 'true';
 const only = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key));
 const empty = value => value == null || value === '' || only(value, []);
 const revision = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+function describe(value) {
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).filter(([key]) => !key.startsWith('@_')).map(([key, field]) => {
+    const values = [];
+    const collect = item => {
+      if (item && typeof item === 'object') {
+        for (const [name, child] of Object.entries(item)) if (!name.startsWith('@_') || name === '@_Id') collect(child);
+      } else if (item != null && item !== '') values.push(String(item));
+    };
+    collect(field);
+    return { key, values };
+  });
+}
 function normalize(rule, blocked) {
   const conditions = rule.Conditions, actions = rule.Actions;
   const addresses = array(conditions?.FromAddresses?.Address);
@@ -39,7 +58,7 @@ function normalize(rule, blocked) {
     && (!move || only(move, ['FolderId', 'DistinguishedFolderId']) && Object.keys(move).length === 1 && only(folder, ['@_Id', '@_ChangeKey']));
   editable = editable && typeof data.name === 'string' && data.name === data.name.trim() && typeof data.subject === 'string' && data.subject === data.subject.trim() && typeof data.sender === 'string' && /^[^\s<>@,;]+@[^\s<>@,;]+$/.test(data.sender);
   try { createSOAP({ ...data, folder: data.folder || undefined }, Number(rule.Priority)); } catch { editable = false; }
-  return { id: String(rule.RuleId), revision: revision(rule), priority: Number(rule.Priority), enabled: bool(rule.IsEnabled), ...data, editable: Boolean(editable) };
+  return { id: String(rule.RuleId), revision: revision(rule), priority: Number(rule.Priority), enabled: bool(rule.IsEnabled), ...data, editable: Boolean(editable), ...(!editable ? { details: { conditions: describe(conditions), exceptions: describe(rule.Exceptions), actions: describe(actions) } } : {}) };
 }
 async function list(client) {
   const configuration = await client.ews('GetInboxRules', P.soap('<m:GetInboxRules/>'));
@@ -71,12 +90,18 @@ async function prepareChange(client, data) {
   }
   return updated;
 }
-async function change(client, data) {
+async function changeRule(client, data) {
   const rule = await prepareChange(client, data);
-  let xml;
-  if (data.action === 'delete') xml = P.soap(`<m:UpdateInboxRules><m:RemoveOutlookRuleBlob>false</m:RemoveOutlookRuleBlob><m:Operations><t:DeleteRuleOperation><t:RuleId>${P.escapeXML(rule.id)}</t:RuleId></t:DeleteRuleOperation></m:Operations></m:UpdateInboxRules>`);
-  else xml = createSOAP({ ...rule, folder: rule.folder || undefined }, rule.priority).replace('<t:CreateRuleOperation>', '<t:SetRuleOperation>').replace('</t:CreateRuleOperation>', '</t:SetRuleOperation>').replace('<t:Rule>', `<t:Rule><t:RuleId>${P.escapeXML(rule.id)}</t:RuleId>`).replace('<t:IsEnabled>true</t:IsEnabled>', `<t:IsEnabled>${rule.enabled}</t:IsEnabled>`);
+  const xml = data.action === 'delete'
+    ? updateSOAP(`<t:DeleteRuleOperation><t:RuleId>${P.escapeXML(rule.id)}</t:RuleId></t:DeleteRuleOperation>`)
+    : createSOAP({ ...rule, folder: rule.folder || undefined }, rule.priority, rule.id);
   await client.ews('UpdateInboxRules', xml);
   return true;
 }
-module.exports = { createSOAP, create, list, change, prepareChange, validateChange };
+async function write(client, operation, data) {
+  if (client.mailRulesWriting) throw new Error(tr('Изменение правил уже выполняется.'));
+  client.mailRulesWriting = true;
+  try { return await operation(client, data); }
+  finally { client.mailRulesWriting = false; }
+}
+module.exports = { createSOAP, create: (client, data) => write(client, createRule, data), list, change: (client, data) => write(client, changeRule, data), prepareChange, validateChange };

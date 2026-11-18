@@ -43,7 +43,7 @@ function updatedSettings(before, input) {
   for (const key of ['internal', 'external']) {
     if (!Object.hasOwn(input, key)) continue;
     if (typeof input[key] !== 'string' || input[key].length > 32000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input[key])) throw new Error(tr('Текст автоответа должен содержать не более 32000 символов.'));
-    next[key] = `<html><body>${P.escapeXML(input[key]).replace(/\r\n?|\n/g, '<br>')}</body></html>`;
+    next[key] = `<html><body><div style="white-space:pre-wrap">${P.escapeXML(input[key]).replace(/\r\n?|\n/g, '<br>')}</div></body></html>`;
   }
   return next;
 }

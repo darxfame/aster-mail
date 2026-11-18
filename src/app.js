@@ -86,8 +86,9 @@ window.asterMcpUI = async request => {
 window.aster?.onMcpRendererRequest?.(window.asterMcpUI);
 const localPreferences = {
   getItem: key => localValues[key] ?? null,
-  setItem(key, value) {
-    localValues[key] = String(value);
+  setItem(key, value) { localPreferences.setItems({ [key]: value }); },
+  setItems(values) {
+    for (const [key, value] of Object.entries(values)) localValues[key] = String(value);
     if (!state.account || state.demo) return;
     localSave = api('saveLocalData', { values: { ...localValues } });
     localSave.catch(showError);
@@ -289,7 +290,7 @@ function modal(title, description, body) {
   delete $('#modal').dataset.meetingCard;
   $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog', 'compose-dialog', 'compose-expanded', 'settings-dialog');
   $('#modal').style.width = ''; $('#modal').style.height = '';
-  $('#modal-content').innerHTML = `<div class="modal-header"><div><h2>${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
+  $('#modal-content').innerHTML = `<div class="modal-header"><div><h2>${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button type="button" class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
   if (!$('#modal').open) $('#modal').showModal();
 }
 function field(name, label, value = '', type = 'text', required = false) {
@@ -409,10 +410,13 @@ function renderMessages() {
     if (state.searchObjects[element.dataset.searchKind]) state.searchObjects[element.dataset.searchKind].expanded = element.open;
   });
   const related = renderSearchObjects();
-  $('#messages').innerHTML = related + (state.query ? tr('<h3 class="search-mail-heading">Письма</h3>') : '') + (items.map((m, i) => {
+  $('#messages').innerHTML = related + (state.query ? tr('<h3 class="search-mail-heading">Письма</h3>') : '') + (mailThreadRows(items).map(({ message: m, group, expanded, member }, i) => {
     const key = dayKey(m.date), label = key === dayKey(new Date()) ? tr('Сегодня') : dateFormat(m.date, { day: 'numeric', month: 'long' });
-    const heading = key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : ''; previousDay = key;
-    return `${heading}<div class="message-row ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
+    const heading = !member && key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : '';
+    if (!member) previousDay = key;
+    const thread = group ? `<button type="button" class="mail-thread-toggle" data-action="mail-thread" data-id="${esc(m.conversationId)}" aria-expanded="${expanded}">${icon('chevron')}${tr('Беседа')} · ${group.length}${group.some(item => !item.read) ? ' <i class="live-dot"></i>' : ''}</button>` : '';
+
+    return `${heading}${thread}<div class="message-row ${member ? 'mail-thread-member' : ''} ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
   }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? tr('Непрочитанных писем нет') : state.filter === 'flagged' ? tr('Избранных писем нет') : state.query ? tr('Совпадений нет') : tr('Здесь пока нет писем')}</p></div>`);
   restoreFocus();
   renderMailBatchToolbar();
@@ -473,7 +477,12 @@ async function openMessage(id, generation = state.generation, { markRead = true,
   state.dayOverviewOpen = false;
   closeMailAttachmentPreview();
   const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
-  state.selected = summary; document.body.classList.add('reader-open'); renderMessages();
+  state.selected = summary;
+  if (summary.conversationId && mailThreadsEnabled()) {
+    const first = filteredMessages().find(message => message.conversationId === summary.conversationId);
+    if (first && first !== summary) expandedMailThreads.add(summary.conversationId);
+  }
+  document.body.classList.add('reader-open'); renderMessages();
   setReaderMarkup(readerNotice(window.asterLoading.markup('reader', tr('Открываем письмо…'))), focusBack);
   try {
     const detail = state.demo ? structuredClone(summary) : await api('message', ref(summary));
@@ -885,6 +894,13 @@ async function settingsModal() {
     <label class="field"><span>${tr("Оформление")}</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>${tr("Светлое")}</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${tr("Тёмное")}</option></select></label>
     <label class="field"><span>${tr('Масштаб интерфейса и текста')}</span><select name="interfaceScale">${[0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2].map(scale => `<option value="${scale}" ${interfaceScale === scale ? 'selected' : ''}>${Math.round(scale * 100)}%</option>`).join('')}</select></label>
     <p class="form-note">${tr('Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка.')}</p>
+    <h3 class="settings-heading">${tr('Письма')}</h3>
+    <label class="field"><span>${tr('Отображение писем')}</span><select name="mailGrouping"><option value="messages">${tr('Отдельные письма')}</option><option value="threads" ${mailThreadsEnabled() ? 'selected' : ''}>${tr('Беседы')}</option></select></label>
+    <label class="field"><span>${tr('Отмена отправки')}</span><select name="undoSendSeconds">${[0, 5, 10, 20, 30].map(seconds => `<option value="${seconds}" ${undoSendSeconds() === seconds ? 'selected' : ''}>${seconds ? `${seconds} ${tr('сек.')}` : tr('Выключена')}</option>`).join('')}</select></label>
+    <p class="form-note">${tr('В течение выбранного времени письмо остаётся в редакторе и его отправку можно отменить.')}</p>
+    <h3 class="settings-heading">${tr('Ваш день')}</h3>
+    <div class="day-settings-options">${daySummarySections.map(([key, label]) => checkbox(`day-${key}`, tr(label), showDaySection(key))).join('')}</div>
+    ${textField('dayNote', tr('Заметка на экране «Ваш день»'), daySummaryNote())}
     <h3 class="settings-heading">${tr("Дата и время")}</h3>
     <label class="field"><span>${tr("Часовой пояс")}</span><select name="timeZone"><option value="system" ${timeZone === 'system' ? 'selected' : ''}>${tr("Как на компьютере ·")} ${esc(T.zone())}</option>${zones.map(zone => `<option value="${esc(zone)}" ${timeZone === zone ? 'selected' : ''}>${esc(zone.replaceAll('_', ' '))}</option>`).join('')}</select></label>
     <p class="form-note">${tr("Пояс применяется к календарю, письмам, виджету и времени создания встреч. Отсчёт до встречи не зависит от пояса отображения. «Как на компьютере» следует системным настройкам.")}</p>
@@ -971,6 +987,7 @@ async function settingsModal() {
     <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
   receivePresentation(p);
+  $('#settings-form').elements.dayNote.maxLength = 1000;
   setupAutoReplies($('#settings-panel-auto-replies'));
   setupMailRules($('#settings-panel-rules'));
   void refreshModuleList().catch(showError);
@@ -1004,7 +1021,9 @@ async function submitForm(form, operation) {
   }
 }
 async function sendCompose(save) {
-  const form = $('#compose-form'); if (!form) return;
+  const form = $('#compose-form'); if (!form || modalBusy) return;
+  const account = state.account, demo = state.demo, composition = composeData;
+  const current = () => state.account === account && state.demo === demo && composeData === composition && form.isConnected && $('#modal').open;
   if (!window.asterRecipients.commit(form)) return;
   if (!save && !form.reportValidity()) return;
   await submitForm(form, async data => {
@@ -1041,6 +1060,9 @@ async function sendCompose(save) {
     const files = composeData.attachments;
     if (files.reduce((n, f) => n + f.size, 0) + (draft?.attachments || []).reduce((n, file) => n + file.size, 0) > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
     const attachments = inline.concat(await Promise.all(files.map(async file => ({ name: file.name, type: file.type || 'application/octet-stream', content: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }) }))));
+    if (!current()) return;
+    if (!save && !await waitForComposeSend()) return;
+    if (!current()) return;
     if (state.demo) {
       const addresses = value => (value || '').split(/[,;\n]/).map(email => email.trim()).filter(Boolean).map(email => ({ name: '', email }));
       if (draft) window.asterDemo.messages = window.asterDemo.messages.filter(message => message.id !== draft.id);
@@ -1073,6 +1095,7 @@ async function handleAction(button) {
   const { action } = button.dataset;
   if (action.startsWith('mini-') || action === 'folder-branch') return handleSidebarAction(button);
   if (action.startsWith('meeting-')) return handleMeetingAction(button);
+  if (action === 'mail-thread') return toggleMailThread(button.dataset.id);
   if (action === 'back-to-list') return returnToMailList();
   if (action === 'return-later') return returnToMessageLater(button);
   if (action === 'mail-to-meeting') return meetingFromMail(button);
@@ -1418,12 +1441,25 @@ document.addEventListener('submit', event => {
       next.workSchedule = window.asterWorkSchedule.normalize({ days: [...form.querySelectorAll('[name="workDay"]:checked')].map(input => Number(input.value)), start: data.workStart, end: data.workEnd }, true);
       T.zone(next.timeZone);
       const nextPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
-      const repaint = state.view === 'calendar' && JSON.stringify(next.workSchedule) !== JSON.stringify(window.asterWorkSchedule.normalize(notificationPreferences.workSchedule)) || next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
+      const workChanged = JSON.stringify(next.workSchedule) !== JSON.stringify(window.asterWorkSchedule.normalize(notificationPreferences.workSchedule));
+      const grouping = data.mailGrouping === 'threads' ? 'threads' : 'messages';
+      const groupingChanged = mailThreadsEnabled() !== (grouping === 'threads');
+      const sections = daySummarySections.filter(([key]) => data[`day-${key}`]).map(([key]) => key);
+      const note = String(data.dayNote || '').slice(0, 1000);
+      const dayChanged = workChanged || note !== daySummaryNote() || daySummarySections.some(([key]) => showDaySection(key) !== sections.includes(key));
+      const repaint = state.view === 'calendar' && workChanged || next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
       clearError();
       applyLanguage(next.language);
       navigationPlacement = nextPlacement;
-      localPreferences.setItem('aster-navigation-placement-v2', navigationPlacement);
+      localPreferences.setItems({
+        'aster-navigation-placement-v2': navigationPlacement,
+        'aster-mail-grouping': grouping,
+        'aster-undo-send-seconds': [5, 10, 20, 30].includes(Number(data.undoSendSeconds)) ? data.undoSendSeconds : 0,
+        'aster-day-sections': sections.join(','),
+        'aster-day-note': note,
+      });
+      if (dayChanged || next.timeZone !== timeZone) invalidateDaySummary();
       await applyInterfaceScale(data.interfaceScale);
       timeZone = next.timeZone; localPreferences.setItem('aster-time-zone', timeZone);
       miniMonthCursor = null;
@@ -1439,6 +1475,9 @@ document.addEventListener('submit', event => {
         if (state.view === 'mail') renderMail();
         else if (state.view === 'calendar') renderCalendar();
         else renderContacts();
+      } else if (state.view === 'mail') {
+        if (groupingChanged) renderMessages();
+        if (dayChanged) { renderDaySummary(); void refreshDaySummary(); }
       }
     }); return;
   }
@@ -1474,7 +1513,7 @@ function applyAccount(value) {
   localValues = value?.localData || {}; localSave = Promise.resolve();
   const { localData, notifications, ...identity } = value || {};
   state.account = value ? identity : null; state.demo = false; demoWaitingReplies = []; demoMailReminders = []; state.waitingRepliesCount = 0;
-  mailSelection.clear(); mailSelectionScope = '';
+  mailSelection.clear(); mailSelectionScope = ''; expandedMailThreads.clear(); mailThreadScope = '';
   state.messages = []; state.selected = null; state.contacts = []; state.events = []; state.folders = [];
   state.folder = 'inbox'; state.view = 'mail'; state.filter = 'all'; state.offset = 0; state.more = false;
   state.signature = localPreferences.getItem('aster-signature') || '';

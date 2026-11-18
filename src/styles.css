@@ -81,6 +81,7 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .settings-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);flex-shrink:0;overflow-x:auto}
 #auto-replies-fields{border:0;padding:0;margin:0;min-width:0}
 #auto-replies-fields:disabled{opacity:.6}
+#auto-replies-fields .oof-message{min-height:128px;line-height:1.55;white-space:pre-wrap;tab-size:4}
 .quick-replies{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px}
 .quick-replies summary{cursor:pointer;color:var(--accent);font-size:12px}
 .quick-replies fieldset{border:0;padding:0;margin:0;min-width:0}
@@ -197,8 +198,17 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .day-footer { display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6; }
 @container(max-width:520px) { .day-columns{grid-template-columns:1fr;gap:24px}.day-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.day-stats>div{display:grid}.day-stats strong{font-size:18px}.day-stats span{display:block;font-size:11px}.day-stats small{font-size:10px}.day-mail-meta{flex-wrap:wrap;gap:4px} }
 
-[data-rules-editor]{border:0;padding:12px 0 0;margin:0;min-width:0}
-[data-rules-editor]:disabled{opacity:.6}
-[data-rules-list]{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-[data-rules-list] p{margin:0}
-[data-rules-list] button{white-space:normal;overflow-wrap:anywhere;text-align:left}
+[data-rules-editor]{border:0;border-top:1px solid var(--line);padding:8px 0 0;margin:18px 0 0;min-width:0}
+[data-rules-editor] legend{padding-inline-end:8px;font-weight:600;overflow-wrap:anywhere}
+[data-rules-list]{display:grid;gap:6px;margin-top:12px}
+[data-rules-list] button{justify-content:space-between;flex-wrap:wrap;white-space:normal;overflow-wrap:anywhere;text-align:left}
+[data-rules-list] button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+[data-rules-list] button>span{color:var(--muted)}
+.rules-actions{display:flex;flex-wrap:wrap;gap:8px}
+.rule-details{font-size:12px;overflow-wrap:anywhere}
+.rule-details dd{color:var(--muted);margin:3px 0 10px}
+
+.day-columns[data-single="true"] { grid-template-columns: minmax(0, 1fr); }
+.day-personal-note { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); margin: 0 0 14px; line-height: 1.55; }
+.day-settings-options { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.day-settings-options .checkbox { margin: 6px 0; }

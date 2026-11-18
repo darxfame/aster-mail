@@ -27,6 +27,24 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("#recipient-field-cc").hidden && document.querySelector("#recipient-field-bcc").hidden'), true);
     assert.equal(await js('document.querySelector("[data-participant-target=to]").getClientRects().length > 0'), true);
     assert.equal(await js('document.activeElement.dataset.participantTarget'), 'to');
+    assert.equal(await js('document.querySelector(".highlight-palette").matches(":popover-open")'), false);
+    await js(`(() => {
+      const editor = document.querySelector('#compose-body'), range = document.createRange();
+      editor.textContent = ''; const bold = document.createElement('b'); bold.textContent = 'alpha beta'; editor.append(bold);
+      range.setStart(bold.firstChild, 0); range.setEnd(bold.firstChild, 5);
+      editor.focus(); getSelection().removeAllRanges(); getSelection().addRange(range);
+      editor.dispatchEvent(new MouseEvent('mouseup'));
+      document.querySelector('[popovertarget=compose-body-highlights]').click();
+    })()`);
+    assert.equal(await js('document.querySelectorAll("#compose-body-highlights:popover-open .highlight-swatches button").length'), 5);
+    assert.equal(await js('Boolean(document.querySelector("#compose-body-highlights:popover-open input[type=color]"))'), true);
+    await js(`document.querySelector('.highlight-swatches button').click()`);
+    assert.match(await js('composeData.editor.read().bodyHtml'), /background-color:/);
+    await js(`document.querySelector('[popovertarget=compose-body-highlights]').click();document.querySelector('[data-value=transparent]').click()`);
+    assert.equal(await js('document.querySelector("#compose-body-highlights").matches(":popover-open")'), false);
+    assert.match(await js('composeData.editor.read().bodyHtml'), /<b>alpha beta<\/b>/);
+    assert.doesNotMatch(await js('composeData.editor.read().bodyHtml'), /background-color:/);
+
     const entry = (name, value) => js(`(()=>{const input=document.querySelector('[data-participant-target=' + ${javascriptLiteral(name)} + ']');input.focus();input.value=${javascriptLiteral(value)};input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await entry('to', 'first@example.test; second@example.test');
     await js(`document.querySelector('[data-participant-target=to]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))`);

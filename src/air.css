@@ -142,6 +142,9 @@ body.dark {
 .demo-banner { margin: 0 10px 8px; border-radius: 10px; }
 dialog#modal { border-radius: 18px; }
 dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
+.modal-header, .meeting-card-header { gap: 10px; }
+dialog button[data-action="close"].icon-button { flex: 0 0 40px; width: 40px; height: 40px; -webkit-app-region: no-drag; }
+dialog button[data-action="close"].icon-button svg { pointer-events: none; }
 .modal-header { background: var(--surface2); border-radius: 18px 18px 0 0; }
 .compose-window dialog#modal { border-radius: 0; }
 .compose-window .modal-header { border-radius: 0; }
@@ -219,12 +222,18 @@ dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
 }
 /* Native controls float on the window background without a frame or extra row. */
 body.mac .sidebar, body.windows .sidebar { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
-body.mac .sidebar .wordmark, body.windows .sidebar .wordmark { -webkit-app-region: drag; }
+body.windows .sidebar .wordmark { -webkit-app-region: drag; }
+body.mac .sidebar .wordmark { -webkit-app-region: no-drag; }
+body.mac { --mac-controls-width: calc(22px + 76px / var(--interface-scale, 1)); }
+body.mac.desktop.sidebar-collapsed .topbar { margin-left: var(--mac-controls-width); padding-left: 10px; }
+@media (max-width: 900px) {
+  body.mac .topbar { margin-left: var(--mac-controls-width); padding-left: 10px; }
+}
 body.mac:not(.compose-window) .sidebar::before {
   content: "";
   position: absolute;
   top: 0;
-  left: 0;
+  left: var(--mac-controls-width);
   right: 0;
   height: 26px;
   -webkit-app-region: drag;
@@ -349,3 +358,10 @@ body.windows.compose-window .modal-header button { -webkit-app-region: no-drag; 
 .colleague-open > .avatar { flex: none; }
 .colleague-open:hover strong { color: var(--accent); }
 .colleague-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+
+.mail-thread-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 14px; text-align: left; color: var(--accent); font-size: 11px; }
+.mail-thread-toggle:hover, .mail-thread-toggle:focus-visible { background: var(--accent-bg); }
+.mail-thread-toggle svg { width: 13px; height: 13px; }
+.mail-thread-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.mail-thread-member { border-inline-start: 3px solid var(--line); }
+.mail-thread-member .message-copy { padding-inline-start: 8px; }

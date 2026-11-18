@@ -24,7 +24,11 @@ test('rules parse real SOAP shape, retain IDs, expose flags and refuse lossy rou
     const r = rule(); mutate(r); f.stored = r;
     assert.equal((await R.list(f.client)).items[0].editable, false);
   }
-  f.stored = rule(); f.blob = 'true'; assert.equal((await R.list(f.client)).items[0].editable, false);
+  f.stored = rule(); f.blob = 'true';
+  const protectedRule = (await R.list(f.client)).items[0];
+  assert.equal(protectedRule.editable, false);
+  assert.deepEqual(protectedRule.details.conditions.map(detail => detail.key), ['FromAddresses', 'ContainsSubjectStrings']);
+  assert.deepEqual(protectedRule.details.actions.at(-1), { key: 'MoveToFolder', values: ['target'] });
 });
 test('one rule is updated or deleted, blob preserved, stale and unsupported writes blocked', async () => {
   const f = fixture(), before = (await f.client.mailRules()).items[0];

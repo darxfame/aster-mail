@@ -74,6 +74,13 @@ test('unread folder requests filter on server before paging, including older unr
   assert.equal(P.findItems('inbox', 0, 'flagged').Body.ViewFilter, 'Flagged');
   assert.throws(() => P.findItems('inbox', 0, 'invalid'));
 });
+test('mail requests and normalizes the server conversation ID without guessing by subject', () => {
+  assert.deepEqual(P.findItems('inbox').Body.ItemShape.AdditionalProperties, [P.property('ConversationId')]);
+  assert.equal(P.findItems('contacts').Body.ItemShape.AdditionalProperties, undefined);
+  const item = { ItemId: { Id: 'message' }, Subject: 'Same subject' };
+  assert.equal(P.message({ ...item, ConversationId: { Id: 'exchange-thread' } }).conversationId, 'exchange-thread');
+  assert.equal(P.message(item).conversationId, undefined);
+});
 test('signature numeric CR and LF entities become line breaks without decoding HTML markup in plain text', () => {
   const entry = (key, value) => `<DictionaryEntry><DictionaryKey><Value>${key}</Value></DictionaryKey><DictionaryValue><Value>${P.escapeXML(value)}</Value></DictionaryValue></DictionaryEntry>`;
   const raw = `&#xD;\nС уважением,&#xD;\nАнна.&#13;\n&#xD;\nПочта: example@example.com&#xA;Моб.: +7`;

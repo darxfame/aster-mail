@@ -113,3 +113,8 @@ npm run preview
 
 [MIT](LICENSE). Sounds: [CC0](assets/sounds/LICENSE.md).
 Adapted-code attribution: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Under **Settings → General**, you can switch to conversations, set an undo-send
+delay, and choose which sections appear on Your Day. Conversation view groups
+loaded messages in the current list using the Exchange conversation ID. During the
+send delay, you can return the message to editing.

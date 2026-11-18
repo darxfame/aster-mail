@@ -21,7 +21,7 @@ const paging = offset => typed('IndexedPageView', { BasePoint: 'Beginning', Offs
 function findItems(id, offset = 0, filter = 'all') {
   if (!['all', 'unread', 'flagged'].includes(filter)) throw new Error('Invalid mail filter');
   return request('FindItem', {
-    ItemShape: typed('ItemResponseShape', { BaseShape: 'IdOnly' }),
+    ItemShape: typed('ItemResponseShape', { BaseShape: 'IdOnly', ...(id === 'contacts' ? {} : { AdditionalProperties: [property('ConversationId')] }) }),
     ParentFolderIds: [folder(id)], Traversal: 'Shallow', Paging: paging(offset),
     ViewFilter: { all: 'All', unread: 'Unread', flagged: 'Flagged' }[filter], IsWarmUpSearch: false, FocusedViewFilter: -1, Grouping: null,
     ShapeName: id === 'contacts' ? 'Contact' : 'MailListItem',
@@ -88,7 +88,7 @@ function message(o) {
   // Responses and forward notices are informational mail, even when linked to a calendar item.
   const meetingNotice = o.ItemClass === 'IPM.Schedule.Meeting.Notification.Forward' || /^IPM\.Schedule\.Meeting\.Resp(?:\.|$)/.test(o.ItemClass || '');
   return {
-    id: o.ItemId.Id, parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || tr('(Без темы)'),
+    id: o.ItemId.Id, ...(typeof o.ConversationId?.Id === 'string' && o.ConversationId.Id ? { conversationId: o.ConversationId.Id } : {}), parentId: o.ParentFolderId?.Id || '', changeKey: o.ItemId.ChangeKey, subject: o.Subject || tr('(Без темы)'),
     from: address(o.From || o.Sender), to: (o.ToRecipients || []).map(address), cc: (o.CcRecipients || []).map(address), bcc: (o.BccRecipients || []).map(address), isDraft: o.IsDraft === true,
     date: T.exchange(o.DateTimeReceived || o.DateTimeSent), preview: mailPreview(body.Value || o.Preview, Boolean(body.Value && body.BodyType !== 'Text')), read: Boolean(o.IsRead),
     importance: o.Importance || 'Normal', flagged: o.Flag?.FlagStatus === 'Flagged', hasAttachments: Boolean(o.HasAttachments),

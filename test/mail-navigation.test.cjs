@@ -10,7 +10,7 @@ function fixture() {
   const buttons = state.messages.map(m => ({ dataset: { id: m.id }, focus: () => focused.push(m.id), scrollIntoView: () => scrolled.push(m.id) }));
   const reader = { focus: () => focused.push(state.selected.id) };
   const context = vm.createContext({ $: () => reader, state, mailBatchBusy: false, document: { body, querySelector: () => null, querySelectorAll: () => buttons },
-    filteredMessages: () => state.messages.filter(m => state.filter !== 'unread' || !m.read),
+    mailThreadsEnabled: () => false, filteredMessages: () => state.messages.filter(m => state.filter !== 'unread' || !m.read),
     openMessage: id => { opened.push(id); state.selected = state.messages.find(m => m.id === id); },
   });
   vm.runInContext(source.slice(source.indexOf('function navigateMailMessage('), source.indexOf("document.addEventListener('keydown', navigateMailMessage)")), context);

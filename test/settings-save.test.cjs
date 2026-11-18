@@ -4,17 +4,21 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
 function settings({ changed = {}, apiError, sync = true } = {}) {
-  const calls = [], writes = [], form = { id: 'settings-form', querySelector: () => ({ hidden: true, dataset: {} }), querySelectorAll: () => [] };
+  const calls = [], writes = [], form = { id: 'settings-form', querySelector: () => ({ hidden: true, dataset: {} }), querySelectorAll: selector => selector.includes('workDay') ? [1, 2, 3, 4, 5].map(value => ({ value })) : [] };
   const data = { workStart: '09:00', workEnd: '18:00', notifyMail: 'on', notifyMeetings: 'on', notifySounds: 'on', autoPrivacy: 'on', interfaceScale: '1', minutes: '15', timeZone: 'system', theme: 'light', language: 'ru', navigationPlacement: 'sidebar', syncSignature: sync ? 'on' : undefined, signature: 'Edited local signature', debugErrors: 'on', ...changed };
   let pending;
   const context = vm.createContext({ form, tr: value => value, state: { view: 'mail', account: { sessionId: 'fictional' }, theme: 'light', signature: 'Original signature' },
     window: { asterWorkSchedule: require('../src/work-schedule.js'), aster: {}, asterI18n: { language: 'ru' } }, notificationPreferences: {}, timeZone: 'system', navigationPlacement: 'sidebar', syncSignature: sync,
     T: { zone() {} }, submitForm(_form, operation) { pending = operation(data); }, api: async (operation, value) => { calls.push(operation); if (apiError) throw apiError; return value; },
-    localPreferences: { setItem: (key, value) => writes.push([key, value]) }, localSave: Promise.resolve(), clearError() {}, showError(error) { throw error; }, applyLanguage() {}, applyInterfaceScale: async () => {},
+    localPreferences: { setItems: values => writes.push(...Object.entries(values)), setItem: (key, value) => writes.push([key, value]), getItem: () => null },
+    mailThreadsEnabled: () => false, invalidateDaySummary() {}, renderDaySummary() {}, refreshDaySummary: async () => {},  localSave: Promise.resolve(), clearError() {}, showError(error) { throw error; }, applyLanguage() {}, applyInterfaceScale: async () => {},
     renderSidebar() {}, renderMail() { calls.push('renderMail'); }, renderCalendar() { calls.push('renderCalendar'); }, renderContacts() { calls.push('renderContacts'); },
     getServerSignature: async () => { calls.push('signature'); throw new Error('OWA unavailable'); }, loadView: async () => { calls.push('loadView'); throw new Error('OWA unavailable'); },
     ready: () => true, welcome() {}, document: { body: { classList: { toggle() {} } } }, $: () => ({ close() { calls.push('close'); } }), toast() {}, miniMonthCursor: null,
   });
+  const dayUI = fs.readFileSync(require.resolve('../src/day-summary-ui.js'), 'utf8');
+  vm.runInContext(dayUI.slice(0, dayUI.indexOf('// Mail/calendar')), context);
+  for (const key of ['stats', 'mail', 'calendar', 'rhythm']) data[`day-${key}`] = 'on';
   vm.runInContext(source.slice(source.indexOf('function applyTheme()'), source.indexOf('let connectionState')), context);
   const begin = source.indexOf("  if (form.id === 'settings-form') {"), end = source.indexOf("  if (form.id === 'connect-form')", begin);
   vm.runInContext(`async function save() { ${source.slice(begin, end)} }`, context);

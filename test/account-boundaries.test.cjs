@@ -12,7 +12,7 @@ test('logout clears renderer corporate data, signatures, drafts, meetings and lo
     demoWaitingReplies: [{ id: 'old-wait' }], demoMailReminders: [{ id: 'old-reminder' }], localValues: { 'aster-signature': 'private' }, localSave: Promise.resolve(),
     localPreferences: { getItem: () => null },
     messageOpenSequence: 1, readingMessages: new Map([['mail', Promise.resolve()]]),
-    mailSelection: new Set(['private-mail-id']), mailSelectionScope: 'old-account',
+    mailSelection: new Set(['private-mail-id']), mailSelectionScope: 'old-account', expandedMailThreads: new Set(['private-thread']), mailThreadScope: 'old-account',
     serverSignature: { html: 'private' }, composeData: { body: 'private draft' }, activeMeeting: { body: 'private' }, meetingEdit: {}, meetingRequest: 1,
     moveRuleContext: {}, mailDrag: {}, mailPeopleChoices: ['private'], colleagueData: ['private'], directoryResults: ['private'], directoryRequest: 1, colleagueRequest: 1,
     document: { body: { classList: { toggle() {} } } }, $: key => nodes[key], renderMailAlerts() {}, renderSidebar() {}, refreshWaitingReplyCount: async () => {},

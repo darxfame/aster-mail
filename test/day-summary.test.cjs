@@ -88,7 +88,7 @@ function renderer(now = Date.now()) {
     static now() { return clockNow; }
   }
   const pending = [], calls = [], state = { account: {}, view: 'mail', generation: 1, selected: null };
-  const context = vm.createContext({ window: { asterCalendar: C }, state, T, timeZone: 'UTC', Date: Clock, mailWriteEpoch: 0, mailWrites: 0, mailboxWriting: () => context.mailWrites, ready: () => true, $: () => ({}), dayKey: value => T.wall(value, 'UTC').slice(0, 10), api: (operation, data) => { calls.push({ operation, data }); return new Promise((resolve, reject) => pending.push({ resolve, reject })); } });
+  const context = vm.createContext({ window: { asterCalendar: C }, state, T, timeZone: 'UTC', Date: Clock, localPreferences: { getItem: () => null }, mailWriteEpoch: 0, mailWrites: 0, mailboxWriting: () => context.mailWrites, ready: () => true, $: () => ({}), dayKey: value => T.wall(value, 'UTC').slice(0, 10), api: (operation, data) => { calls.push({ operation, data }); return new Promise((resolve, reject) => pending.push({ resolve, reject })); } });
   context.agentMailSession = null;
   const appSource = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   vm.runInContext(appSource.slice(appSource.indexOf('function mailboxWriting()'), appSource.indexOf('async function api(')), context);

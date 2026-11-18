@@ -52,7 +52,7 @@ app.whenReady().then(async () => {
       const form=document.querySelector('#settings-form');
       form.elements.oofState.value='Scheduled'; form.elements.oofState.dispatchEvent(new Event('input',{bubbles:true})); form.elements.oofState.dispatchEvent(new Event('change',{bubbles:true}));
       form.elements.oofStart.value='2026-11-12T09:00'; form.elements.oofEnd.value='2026-11-13T18:00';
-      form.elements.oofInternal.value='Я в отпуске до 13 ноября. По срочным вопросам обратитесь к коллеге.';
+      form.elements.oofInternal.value='  Я в отпуске до 13 ноября.\\n\\nПо срочным вопросам  обратитесь к коллеге.';
       form.elements.oofAudience.value='Known'; form.elements.oofAudience.dispatchEvent(new Event('change',{bubbles:true}));
       form.elements.oofExternal.value='Спасибо за письмо. Отвечу после возвращения.';
     })()`);
@@ -74,7 +74,7 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("#auto-replies-fields").disabled'), true);
     await js('document.querySelector("#auto-replies-load").click()');
     await waitFor('!document.querySelector("#auto-replies-fields").disabled');
-    assert.equal(await js('document.querySelector("[name=oofInternal]").value'), 'Я в отпуске до 13 ноября. По срочным вопросам обратитесь к коллеге.');
+    assert.equal(await js('document.querySelector("[name=oofInternal]").value'), '  Я в отпуске до 13 ноября.\n\nПо срочным вопросам  обратитесь к коллеге.');
     await js(`setModalDirty(false);document.querySelector('#modal').close();applyLanguage('en');state.theme='dark';document.body.classList.add('dark');settingsModal()`);
     await js('document.querySelector("#settings-tab-auto-replies").click();document.querySelector("#auto-replies-load").click()');
     await waitFor('!document.querySelector("#auto-replies-fields").disabled');

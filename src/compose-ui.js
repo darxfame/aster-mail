@@ -1,3 +1,39 @@
+function undoSendSeconds() {
+  const seconds = Number(localPreferences.getItem('aster-undo-send-seconds'));
+  return [5, 10, 20, 30].includes(seconds) ? seconds : 0;
+}
+
+async function waitForComposeSend() {
+  const seconds = undoSendSeconds();
+  if (!seconds) return true;
+  const notice = document.createElement('div');
+  notice.className = 'compose-send-delay';
+  const status = document.createElement('span'), undo = document.createElement('button');
+  status.setAttribute('role', 'status');
+  status.textContent = `${tr('Письмо будет отправлено через')} ${seconds} ${tr('сек.')}`;
+  const countdown = document.createElement('span');
+
+  countdown.setAttribute('aria-hidden', 'true');
+  const deadline = Date.now() + seconds * 1000;
+  const updateCountdown = () => { countdown.textContent = `${tr('Письмо будет отправлено через')} ${Math.max(1, Math.ceil((deadline - Date.now()) / 1000))} ${tr('сек.')}`; };
+  updateCountdown();
+  undo.type = 'button'; undo.className = 'secondary'; undo.textContent = tr('Отменить отправку');
+  notice.append(status, countdown, undo);
+  $('#modal .modal-header').after(notice);
+  undo.focus({ preventScroll: true });
+  const tick = setInterval(updateCountdown, 250);
+  let timer;
+  try {
+    return await new Promise(resolve => {
+      timer = setTimeout(() => resolve(true), seconds * 1000);
+      undo.addEventListener('click', () => resolve(false), { once: true });
+    });
+  } finally {
+    clearTimeout(timer); clearInterval(tick);
+    notice.remove();
+  }
+}
+
 function composeMessageSnapshot(message) {
   if (!message) return null;
   return Object.fromEntries(['id', 'changeKey', 'parentId', 'from', 'to', 'cc', 'bcc', 'subject', 'html', 'text', 'preview', 'attachments', 'folder', 'isDraft'].filter(key => message[key] !== undefined).map(key => [key, message[key]]));
@@ -18,7 +54,7 @@ async function detachCompose(mode) {
       reader.readAsDataURL(file);
     })));
     if (generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
-    await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true }, snapshot: {
+    await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true, undoSendSeconds: undoSendSeconds() }, snapshot: {
       mode, fields: Object.fromEntries(new FormData(form)), data, files, body: editor.read(), history: historyEditor?.read(),
       selected: composeMessageSnapshot(sourceMessage || state.selected), recipientPeople: window.asterRecipients.composePeople(form), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
     } });
@@ -34,6 +70,7 @@ async function bootComposeWindow() {
   state.account = context.account; state.demo = context.demo; state.selected = snapshot.selected;
   if (state.demo) demoQuickReplies = window.asterQuickReplies.normalize(snapshot.quickReplies || []);
   notificationPreferences.debugErrors = preferences.debugErrors === true;
+  localValues['aster-undo-send-seconds'] = String(preferences.undoSendSeconds || 0);
   state.theme = preferences.theme || 'light'; timeZone = preferences.timeZone || 'system';
   applyTheme();
   document.body.classList.add('compose-window');

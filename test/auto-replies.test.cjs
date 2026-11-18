@@ -44,10 +44,10 @@ test('OOF saves each mode once, preserves unedited OWA HTML, language and disabl
 });
 test('edited OOF text is escaped HTML, including literal markup and newlines', async () => {
   const { client, calls } = fixture(); const value = await R.read(client);
-  await R.save(client, { ...value, internal: '<script>alert(1)</script>\nA & B', external: '' });
+  await R.save(client, { ...value, internal: '  <script>alert(1)</script>\n\nA  & B', external: '' });
   const parsed = P.parseSOAP(calls.at(-1).options.body.replace('<m:SetUserOofSettingsRequest>', '<m:SetUserOofSettingsRequest><m:ResponseCode>NoError</m:ResponseCode>'));
   const settings = parsed.Envelope.Body.SetUserOofSettingsRequest.UserOofSettings;
-  assert.equal(settings.InternalReply.Message, '<html><body>&lt;script&gt;alert(1)&lt;/script&gt;<br>A &amp; B</body></html>');
+  assert.equal(settings.InternalReply.Message, '<html><body><div style="white-space:pre-wrap">  &lt;script&gt;alert(1)&lt;/script&gt;<br><br>A  &amp; B</div></body></html>');
 });
 test('OOF rejects invalid values and server policy violations before any write', async () => {
   const { client, calls } = fixture(); client.response = response('', 'Disabled', 'Known');
