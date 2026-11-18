@@ -1,4 +1,4 @@
-let updateSnapshot = { installed: '0.2.40', status: 'idle', autoCheck: true, available: null, error: '' };
+let updateSnapshot = { installed: '0.2.41', status: 'idle', autoCheck: true, available: null, error: '' };
 const promptedUpdateVersions = new Set();
 let updatePromptsReady = false;
 let updateInstallAttempt = 0, updateOpening = false, updateCheckTimer;
@@ -38,24 +38,36 @@ function receiveUpdate(value) {
 function renderUpdates() {
   clearTimeout(updateCheckTimer);
   const panel = document.querySelector('#updates-panel'); if (!panel) return;
+  if (!panel.firstElementChild) panel.innerHTML = '<div></div><div></div><div></div>';
+  const [status, notes, actions] = panel.children;
   const focused = panel.contains?.(document.activeElement) ? document.activeElement.dataset.update : null;
   const value = updateSnapshot, busy = updateOpening || value.installing || ['checking', 'downloading'].includes(value.status);
   const checkWaiting = value.checkRetryAt > Date.now();
   if (checkWaiting) updateCheckTimer = setTimeout(renderUpdates, Math.min(value.checkRetryAt - Date.now() + 10, 2147483647));
-  const notesFocused = Boolean(document.activeElement && document.activeElement === panel.querySelector?.('.update-notes summary'));
-  const notesOpen = panel.dataset.notesVersion === value.available?.version && panel.querySelector?.('.update-notes')?.open;
-  panel.dataset.notesVersion = value.available?.version || '';
-  panel.innerHTML = `<p class="update-status" role="status">${esc(updateStatus(value))}</p>
+  status.innerHTML = `<p class="update-status" role="status">${esc(updateStatus(value))}</p>
     ${value.lastChecked ? `<p class="form-note">${tr("Последняя проверка:")} ${esc(new Date(value.lastChecked).toLocaleString(window.asterI18n.locale))}</p>` : ''}
-    ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="${tr("Загрузка обновления")}"></progress>` : ''}
-    ${value.available?.notes ? `<details class="update-notes" ${notesOpen ? 'open' : ''}><summary>${tr("Что нового в")} ${esc(value.available.version)}</summary><pre>${esc(value.available.notes)}</pre></details>` : ''}
-    ${checkWaiting ? `<p class="form-note">${tr('Повторная проверка доступна после')} ${esc(new Date(value.checkRetryAt).toLocaleTimeString(window.asterI18n.locale))}</p>` : ''}
+    ${value.status === 'downloading' ? `<progress max="100" value="${value.progress}" aria-label="${tr("Загрузка обновления")}"></progress>` : ''}`;
+  const release = value.available;
+  if (release?.notes) {
+    // Keep the scrollable node mounted while download and retry status changes.
+    const replaceNotes = !notes.firstElementChild || notes.dataset.version !== release.version;
+    const restoreFocus = replaceNotes && notes.contains(document.activeElement);
+    if (replaceNotes) {
+      notes.innerHTML = '<details class="update-notes"><summary></summary><pre tabindex="0"></pre></details>';
+      notes.dataset.version = release.version;
+    }
+    const [summary, body] = notes.firstElementChild.children;
+    const title = `${tr('Что нового в')} ${release.version}`;
+    if (summary.textContent !== title) summary.textContent = title;
+    if (body.textContent !== release.notes) body.textContent = release.notes;
+    if (restoreFocus) summary.focus({ preventScroll: true });
+  } else if (notes.firstElementChild) notes.replaceChildren();
+  actions.innerHTML = `${checkWaiting ? `<p class="form-note">${tr('Повторная проверка доступна после')} ${esc(new Date(value.checkRetryAt).toLocaleTimeString(window.asterI18n.locale))}</p>` : ''}
     ${value.error ? `<p class="form-error" role="alert">${esc(errorText(value.error))}</p>` : ''}
     <div class="update-actions"><button class="secondary" data-update="checkUpdates" ${busy || value.staged || checkWaiting ? 'disabled' : ''}>${tr("Проверить обновления")}</button>
     ${value.available ? `<button class="primary" data-update="${panel.dataset.installFlow || value.available.restart ? 'installUpdate' : value.status === 'ready' ? 'openUpdateInstaller' : 'downloadUpdate'}" ${busy ? 'disabled' : ''}>${value.status === 'paused' ? tr('Продолжить загрузку') : value.available.restart ? tr('Обновить и перезапустить') : panel.dataset.installFlow ? tr('Обновить приложение') : value.status === 'ready' ? tr('Открыть установщик') : tr('Скачать установщик')}</button>` : ''}
     ${value.status === 'downloading' ? `<button class="secondary" data-update="pauseUpdateDownload">${tr('Пауза')}</button>` : ''}
     ${['downloading', 'paused'].includes(value.status) ? `<button class="secondary" data-update="cancelUpdateDownload">${tr('Отменить загрузку')}</button>` : ''}</div>`;
-  if (notesFocused) panel.querySelector('.update-notes summary')?.focus({ preventScroll: true });
   if (focused) (panel.querySelector(`[data-update="${focused}"]:not(:disabled)`) || panel.querySelector('[data-update="downloadUpdate"]:not(:disabled),[data-update="installUpdate"]:not(:disabled)'))?.focus({ preventScroll: true });
 }
 async function updatesModal() {

@@ -55,7 +55,8 @@ app.whenReady().then(async () => {
   await host.invoke(manifest.id, 'logout'); assert.equal(records[0].auth, undefined);
   const nextFiles = new Map(bundle.files), nextManifest = structuredClone(manifest);
   nextManifest.version = '1.0.1'; nextManifest.authentication.startOrigin = startOrigin; nextManifest.authentication.identityOrigins = [startOrigin];
-  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest))); await host.install(M.fromFiles(nextFiles), true);
+  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest)));
+  const nextBundle = M.fromFiles(nextFiles); await host.install(nextBundle, true, nextBundle.digest);
   await host.invoke(manifest.id, 'login');
   assert.equal(new URL(authWindow.webContents.getURL()).origin, startOrigin);
   await new Promise(resolve => setTimeout(resolve, 900)); assert.equal(records[0].auth, undefined);
@@ -71,7 +72,8 @@ app.whenReady().then(async () => {
   assert.equal(host.entries.get(manifest.id).authBlockedOrigin, corporateOrigin); assert.equal(records[0].auth, undefined);
   await host.invoke(manifest.id, 'logout');
   nextManifest.version = '1.0.2'; nextManifest.authentication.identityRedirects = true;
-  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest))); await host.install(M.fromFiles(nextFiles), true);
+  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest)));
+  const redirectBundle = M.fromFiles(nextFiles); await host.install(redirectBundle, true, redirectBundle.digest);
   await host.invoke(manifest.id, 'login');
   await authWindow.webContents.executeJavaScript('document.querySelector("#sso").click()');
   const corporateDeadline = Date.now() + 5000;

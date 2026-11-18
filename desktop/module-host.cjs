@@ -8,7 +8,7 @@ const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inl
 class ModuleHost {
   constructor({ electron, directory, scope, save, sdk }) {
     Object.assign(this, { electron, directory, scope, save, sdk });
-    this.updating = new Set(); this.entries = new Map(); this.senders = new Map(); this.pending = new Map(); this.views = new Map(); this.mountRevisions = new WeakMap(); this.owners = new WeakSet(); this.saving = Promise.resolve();
+    this.updating = new Set(); this.starting = new Map(); this.entries = new Map(); this.senders = new Map(); this.pending = new Map(); this.views = new Map(); this.mountRevisions = new WeakMap(); this.owners = new WeakSet(); this.saving = Promise.resolve();
     electron.ipcMain.handle('aster-module-api', async (event, method, input) => {
       try { return { ok: true, value: await this.receive(event, method, input) }; }
       catch (error) { return { ok: false, error: tr('Запрос модуля отклонён'), code: ['http-error', 'network-unknown', 'permission-denied', 'rate-limit'].includes(error.code) ? error.code : 'module-request-rejected', ...(Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? { status: error.status } : {}) }; }
@@ -23,7 +23,15 @@ class ModuleHost {
       }
     });
   }
-  current(entry) { const active = this.scope(); if (!active || active.signal.aborted || entry && (entry.retired || entry.sessionId !== active.sessionId)) throw new Error(tr('Сессия аккаунта завершена')); return active; }
+  current(entry) {
+    const active = this.scope();
+    if (!active || active.signal.aborted || entry && (entry.retired || entry.sessionId !== active.sessionId)) throw new Error(tr('Сессия аккаунта завершена'));
+    if (entry && (this.entries.get(entry.id) !== entry || !this.enabledRecord(active, entry.id, entry.bundle))) throw new Error(tr('Модуль выключен или не настроен'));
+    return active;
+  }
+  enabledRecord(active, id, { digest, manifest }) {
+    return active.records?.find(record => record.id === id && record.enabled === true && record.digest === digest && record.version === manifest.version);
+  }
   sender(event) { const sender = this.senders.get(event.sender); if (!sender || event.senderFrame !== event.sender.mainFrame) throw new Error('Untrusted module sender'); this.current(sender.entry); return sender; }
   records() { return M.records(this.current().records || []); }
   update(action) {
@@ -41,7 +49,7 @@ class ModuleHost {
     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     return result;
   }
-  definition(entry) { this.current(entry); const record = this.records().find(record => record.id === entry.id && record.enabled); if (!record) throw new Error(tr('Модуль выключен или не настроен')); return M.effectiveManifest(entry.bundle.manifest, record.originGrants); }
+  definition(entry) { return M.effectiveManifest(entry.bundle.manifest, this.enabledRecord(this.current(entry), entry.id, entry.bundle).originGrants); }
   // Called only by trusted user-initiated join handlers, never exposed through module RPC.
   async openMeeting(value) {
     const url = new URL(value);
@@ -58,38 +66,43 @@ class ModuleHost {
     if (route && !this.records().some(item => item.id === route.id && item.enabled && item.digest === route.digest)) throw new Error(tr('Модуль выключен или не настроен'));
     await this.electron.shell.openExternal(target);
   }
-  async install(bundle, enabled = false) {
+  async install(bundle, enabled = false, approvedDigest) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
-    if (this.records().some(record => record.id === bundle.manifest.id)) return this.upgrade(bundle, enabled);
-    if (this.records().length >= 8) throw new Error(tr('Достигнут лимит подключённых модулей'));
+    const { id, version, settingsVersion } = bundle.manifest;
+    if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
+    const records = this.records();
+    if (records.some(record => record.id === id)) return this.upgrade(bundle, approvedDigest === bundle.digest);
+    if (records.length >= 8) throw new Error(tr('Достигнут лимит подключённых модулей'));
     const sessionId = this.current().sessionId;
-    await M.installPackage(this.directory, bundle);
-    await this.bundle({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest });
-    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    await this.update(records => records.push({ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled, settingsVersion: bundle.manifest.settingsVersion, data: {} }));
+    this.updating.add(id);
+    try {
+      await M.installPackage(this.directory, bundle);
+      await this.bundle({ id, version, digest: bundle.digest });
+      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+      await this.update(next => next.push({ id, version, digest: bundle.digest, ...(bundle.source ? { source: bundle.source } : {}), enabled, settingsVersion, data: {} }));
+    } finally { this.updating.delete(id); }
   }
   async upgrade(bundle, authorized = false) {
     const Settings = require('./module-settings.cjs'), equal = require('node:util').isDeepStrictEqual;
     const id = bundle.manifest.id, sessionId = this.current().sessionId;
     const original = this.records().find(record => record.id === id);
     if (!original || !Settings.newer(bundle.manifest.version, original.version)) throw new Error(tr('Для обновления нужна новая версия модуля'));
-    let previous;
-    try { previous = await this.bundle(original); }
-    catch {
-      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-      // Recover opaque encrypted settings without executing an obsolete/corrupt package.
-      // An empty capability baseline forces full consent for the replacement.
-      previous = { manifest: { settingsVersion: original.settingsVersion ?? 1, permissions: [], networkOrigins: [], networkHeaders: [] } };
-    }
-    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
     if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
     const assertIdle = () => { const entry = this.entries.get(id); if (entry?.context || entry?.calls || entry?.authFlow) throw new Error(tr('Завершите операцию модуля перед обновлением')); };
     assertIdle(); this.updating.add(id);
     try {
+      let previous;
+      try { previous = await this.bundle(original); }
+      catch {
+        // Recover opaque settings from the trusted record, but assume no existing grants.
+        previous = { manifest: { settingsVersion: original.settingsVersion ?? 1, permissions: [], networkOrigins: [], networkHeaders: [] } };
+      }
+      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+      assertIdle();
       const before = previous.manifest, after = bundle.manifest;
       const expanded = ['permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins'].some(key => (after[key] || []).some(value => !(before[key] || []).some(old => equal(old, value)))) || ['meetingLinks', 'authentication'].some(key => !equal(before[key], after[key])) || original.source?.repository !== bundle.source?.repository;
       if (expanded && !authorized) {
-        const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.permissionSummary(after.permissions, after.authentication)}\n${after.networkOrigins.join(', ')}\n${(after.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${M.meetingLaunchSummary(after)}\n${[...(after.authentication?.origins || []), ...(after.authentication?.identityOrigins || [])].join(', ')}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
+        const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.grantSummary(after)}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
         if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
         if (answer.response !== 1) return false;
       }
@@ -117,19 +130,26 @@ class ModuleHost {
     if (typeof enabled !== 'boolean') throw new Error('Invalid module settings');
     const sessionId = this.current().sessionId;
     const record = this.records().find(record => record.id === id); if (!record) throw new Error(tr('Модуль не найден'));
-    if (enabled) await this.bundle(record);
-    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    this.stop(id); await this.update(records => { records.find(record => record.id === id).enabled = enabled; });
+    this.updating.add(id);
+    try {
+      if (enabled) await this.bundle(record);
+      if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+      this.stop(id); await this.update(records => { records.find(record => record.id === id).enabled = enabled; });
+    } finally { this.updating.delete(id); }
   }
   async remove(id) {
     if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
     const sessionId = this.current().sessionId;
     const record = this.records().find(record => record.id === id); if (!record) throw new Error(tr('Модуль не найден'));
     const directory = M.recordDirectory(this.directory, record);
-    this.stop(id); await this.update(records => { const index = records.findIndex(record => record.id === id); if (index < 0) throw new Error(tr('Модуль не найден')); records.splice(index, 1); });
-    if (this.current().sessionId === sessionId) await fs.rm(directory, { recursive: true, force: true });
+    this.updating.add(id);
+    try {
+      this.stop(id); await this.update(records => { const index = records.findIndex(record => record.id === id); if (index < 0) throw new Error(tr('Модуль не найден')); records.splice(index, 1); });
+      if (this.current().sessionId === sessionId) await fs.rm(directory, { recursive: true, force: true });
+    } finally { this.updating.delete(id); }
   }
   stop(id) {
+    this.starting.delete(id);
     const entry = this.entries.get(id); if (!entry) return;
     entry.retired = true; entry.controller.abort(); this.entries.delete(id);
     require('./module-auth.cjs').closeAuthentication(entry);
@@ -140,7 +160,7 @@ class ModuleHost {
     for (const [sender, info] of this.senders) if (info.entry === entry) this.senders.delete(sender);
     void entry.session.clearStorageData().catch(() => {}); void entry.network.clearStorageData().catch(() => {}); void entry.network.closeAllConnections().catch(() => {});
   }
-  closeAll() { for (const id of [...this.entries.keys()]) this.stop(id); }
+  closeAll() { this.starting.clear(); for (const id of [...this.entries.keys()]) this.stop(id); }
   protect(contents, entry, role) {
     this.senders.set(contents, { entry, role });
     contents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
@@ -173,19 +193,31 @@ class ModuleHost {
   }
   async start(id) {
     if (this.updating.has(id)) throw new Error(tr('Модуль уже обновляется'));
-    let entry = this.entries.get(id); if (entry) { await entry.ready; this.current(entry); return entry; }
+    const existing = this.entries.get(id); if (existing) { await existing.ready; this.current(existing); return existing; }
+    const pending = this.starting.get(id); if (pending) return pending.ready;
     if (this.electron.app.commandLine.hasSwitch('no-sandbox')) throw new Error(tr('Песочница отключена. Запуск модулей запрещён.'));
     const active = this.current(), record = this.records().find(record => record.id === id && record.enabled === true);
     if (!record) throw new Error(tr('Модуль выключен или не настроен'));
-    const bundle = await this.bundle(record); if (this.current().sessionId !== active.sessionId) throw new Error(tr('Сессия аккаунта завершена'));
-    if (this.entries.has(id)) return this.start(id);
+    const startup = {};
+    this.starting.set(id, startup);
+    startup.ready = this.launch(id, record, active.sessionId, startup);
+    try { return await startup.ready; }
+    finally { if (this.starting.get(id) === startup) this.starting.delete(id); }
+  }
+  async launch(id, record, sessionId, startup) {
+    const bundle = await this.bundle(record);
+    const guard = () => {
+      const active = this.current();
+      if (active.sessionId !== sessionId || this.starting.get(id) !== startup || !this.enabledRecord(active, id, bundle)) throw new Error(tr('Модуль выключен или не настроен'));
+    };
+    guard();
     const isolated = this.electron.session.fromPartition(`aster-module-${crypto.randomUUID()}`, { cache: false });
     await this.configureProxy(isolated);
-    if (this.current().sessionId !== active.sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+    guard();
     const network = this.electron.session.fromPartition(`aster-module-network-${crypto.randomUUID()}`, { cache: false });
     const webPreferences = { session: isolated, preload: path.join(__dirname, 'module-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInWorker: false, webSecurity: true, webviewTag: false, plugins: false, spellcheck: false, backgroundThrottling: false };
     const window = new this.electron.BrowserWindow({ show: false, width: 320, height: 240, webPreferences });
-    entry = { id, sessionId: active.sessionId, bundle, session: isolated, network, window, webPreferences, controller: new AbortController(), retired: false, context: null, calls: 0 };
+    const entry = { id, sessionId, bundle, session: isolated, network, window, webPreferences, controller: new AbortController(), retired: false, context: null, calls: 0 };
     entry.ready = new Promise((resolve, reject) => { entry.readyResolve = resolve; entry.readyReject = reject; });
     // Avoid an unhandled rejection if a module fails before its first command.
     entry.ready.catch(() => {}); this.entries.set(id, entry);
@@ -212,6 +244,7 @@ class ModuleHost {
   }
   async invoke(id, command, input = {}, context = null) {
     const entry = await this.start(id); M.bounded(input); M.bounded(context);
+    this.current(entry);
     if (!entry.bundle.manifest.commands.some(item => item.id === command) || entry.context) throw new Error(tr('Дождитесь завершения операции модуля'));
     const safeContext = entry.bundle.manifest.permissions.includes('meeting.draft') && context?.editorId ? M.bounded({ editorId: String(context.editorId).slice(0, 100), draft: context.draft || null }) : {};
     entry.context = safeContext; const key = crypto.randomUUID();
@@ -272,7 +305,14 @@ class ModuleHost {
       return await this.sdk(entry, method, input, entry.context);
     } finally { entry.calls--; }
   }
-  publish(topic, data) { const value = M.bounded({ topic, data }); for (const [sender, info] of this.senders) if (!info.entry.retired && info.entry.bundle.manifest.permissions.includes('events') && !sender.isDestroyed()) try { sender.send('aster-module-event', value); } catch { this.senders.delete(sender); } }
+  publish(topic, data) {
+    const value = M.bounded({ topic, data });
+    for (const [sender, { entry }] of this.senders) {
+      if (!entry.bundle.manifest.permissions.includes('events') || sender.isDestroyed()) continue;
+      try { this.current(entry); } catch { continue; }
+      try { sender.send('aster-module-event', value); } catch { this.senders.delete(sender); }
+    }
+  }
   closeView(key) { const info = this.views.get(key); if (!info) return; this.views.delete(key); if (!info.owner.isDestroyed()) info.owner.contentView.removeChildView(info.container); if (!info.view.webContents.isDestroyed()) info.view.webContents.close({ waitForBeforeUnload: false }); }
   async mounts(owner, mounts) {
     if (!Array.isArray(mounts) || mounts.length > 4) throw new Error('Invalid module views');
@@ -286,6 +326,7 @@ class ModuleHost {
       const entry = await this.start(item.id), definition = entry.bundle.manifest.views.find(view => view.id === item.view);
       if (!live()) return;
       if (!definition) throw new Error('Unknown module view');
+      this.current(entry);
       const key = `${item.id}:${item.view}`; let info = this.views.get(key);
       if (!info) {
         const view = new this.electron.WebContentsView({ webPreferences: entry.webPreferences });

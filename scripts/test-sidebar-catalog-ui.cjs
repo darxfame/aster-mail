@@ -52,6 +52,7 @@ app.whenReady().then(async () => {
   assert.equal(await wc.executeJavaScript(`document.querySelector('[data-action="module-approved-connect"]').textContent`), 'Подтвердить подключение');
   assert.equal(await wc.executeJavaScript(`catalogCalls.includes('moduleInstallApproved')`), false);
   assert.equal(await wc.executeJavaScript(`document.querySelector('.module-catalog-row details').open`), false);
+  assert.equal(await wc.executeJavaScript(`document.querySelector('.module-confirm-note').textContent.includes('https://service.example.test')`), true);
   await new Promise(resolve => setTimeout(resolve, 150));
   await capture('confirm.png');
   await wc.executeJavaScript(`handleModuleAction(document.querySelector('[data-action="module-approved-cancel"]'))`);
@@ -72,11 +73,11 @@ app.whenReady().then(async () => {
   await new Promise(resolve => setTimeout(resolve, 150));
   await capture('connected.png');
   await wc.executeJavaScript(`(async () => {
-    window.fixtureInstalledVersion='1.0.0'; window.fixtureUpdateWrites=0;
+    window.fixtureInstalledVersion='1.0.0'; window.fixtureUpdateWrites=0; window.fixtureAcceptUpdate=false;
     loadModuleContributions=async () => { connectedModules=[{id:'fictional.module',name:'Fictional meetings',version:fixtureInstalledVersion,enabled:true,permissions:['ui'],views:[{id:'settings',title:'Настроить',slot:'panel'}]}]; };
     api=async (operation) => {
-      if(operation==='moduleInstallApproved') { fixtureUpdateWrites++; fixtureInstalledVersion='1.1.0'; return true; }
-      return {revision:'a'.repeat(40),modules:[{manifest:{id:'fictional.module',version:'1.1.0'},digest:'b'.repeat(64)}]};
+      if(operation==='moduleInstallApproved') { fixtureUpdateWrites++; if (!fixtureAcceptUpdate) return false; fixtureInstalledVersion='1.1.0'; return true; }
+      return {revision:'a'.repeat(40),modules:[{manifest:{id:'fictional.module',version:'1.1.0',permissions:['ui','calendar.read']},digest:'b'.repeat(64)}]};
     };
     await refreshModuleList();
   })()`);
@@ -85,8 +86,13 @@ app.whenReady().then(async () => {
   await capture('module-update.png');
   await wc.executeJavaScript('handleModuleAction(document.querySelector("#module-list [data-action=module-approved-connect]"))');
   assert.equal(await wc.executeJavaScript('fixtureUpdateWrites'), 0);
+  assert.match(await wc.executeJavaScript('document.querySelector("#module-list .module-confirm-note").textContent'), /Чтение основного календаря/);
   await wc.executeJavaScript('handleModuleAction(document.querySelector("#module-list [data-action=module-approved-connect]"))');
   assert.equal(await wc.executeJavaScript('fixtureUpdateWrites'), 1);
+  assert.equal(await wc.executeJavaScript('fixtureInstalledVersion'), '1.0.0');
+  assert.equal(await wc.executeJavaScript('Boolean(document.querySelector("#module-list .module-confirm-note"))'), false);
+  await wc.executeJavaScript(`(async () => { fixtureAcceptUpdate=true; const button=document.querySelector('#module-list [data-action=module-approved-connect]'); await handleModuleAction(button); await handleModuleAction(button); })()`);
+  assert.equal(await wc.executeJavaScript('fixtureUpdateWrites'), 2);
   assert.equal(await wc.executeJavaScript('document.querySelectorAll("#module-list .module-update").length'), 0);
   await wc.executeJavaScript('api=async()=>{throw new Error("Fictional offline catalog")}; refreshModuleList()');
   assert.equal(await wc.executeJavaScript('Boolean(document.querySelector("#module-list [data-action=module-panel]"))'), true);

@@ -41,8 +41,40 @@ test('empty module browsing needs no encryption prompt; invalid legacy packages 
   const bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
   await M.installPackage(packages, bundle);
   await fs.appendFile(path.join(M.recordDirectory(packages, { id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest }), 'main.js'), '// tampered');
-  const invalid = new ModuleProfile(path.join(root, 'invalid-profile'), packages, encryption); await invalid.initialize();
+  const invalid = new ModuleProfile(path.join(root, 'invalid-profile'), packages, encryption, () => [
+    { id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: true },
+  ]);
+  await invalid.initialize();
   assert.deepEqual(invalid.scope().records, []);
+});
+
+test('a package copy conveys no grant and prelogin browsing preserves deferred legacy migration', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'aster-module-migrate-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const bundle = await M.readPackage(path.join(__dirname, '../examples/modules/sandbox-demo'));
+  const packages = path.join(root, 'packages');
+  await M.installPackage(packages, bundle);
+  let legacy = null;
+  const directory = path.join(root, 'profile');
+  const profile = new ModuleProfile(directory, packages, encryption, () => legacy);
+  await profile.initialize();
+  assert.deepEqual(profile.scope().records, []);
+
+  const files = new Map(bundle.files);
+  files.set('module.json', Buffer.from(JSON.stringify({ ...bundle.manifest, id: 'example.prelogin' })));
+  const standalone = M.fromFiles(files);
+  const host = new ModuleHost({ directory: packages, electron: { ipcMain: { handle() {}, on() {} } }, scope: () => profile.scope(), save: (records, sessionId) => profile.save(records, sessionId) });
+  await host.install(standalone, true);
+  assert.deepEqual(profile.scope().records.map(record => record.id), [standalone.manifest.id]);
+
+  legacy = [{ id: bundle.manifest.id, version: bundle.manifest.version, digest: bundle.digest, enabled: false, data: { setting: 'legacy-value' } }];
+  const restored = new ModuleProfile(directory, packages, encryption, () => legacy);
+  await Promise.all([restored.initialize(), restored.initialize()]);
+  const [installed, migrated] = restored.scope().records;
+  assert.equal(installed.id, standalone.manifest.id);
+  assert.equal(installed.enabled, true);
+  assert.equal(migrated.enabled, false);
+  assert.equal(migrated.data.setting, 'legacy-value');
 });
 
 test('removing and reinstalling a module cannot resurrect its server, secrets or legacy settings', async t => {

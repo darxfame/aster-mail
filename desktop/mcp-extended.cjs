@@ -32,7 +32,7 @@ const definitions = [
   ['select_attachments', 'Let the user select local files in Aster. Returns memory handles to use when sending; no filesystem paths are exposed.', session, ['sessionId'], false],
   ['release_attachment', 'Discard an uploaded/picked attachment from memory.', { ...session, handle: str(100) }, ['sessionId', 'handle'], false],
   ['read_attachment', 'Read a mail/meeting attachment as base64 chunks after verifying it belongs to the source. No disk persistence. offset is decoded bytes; default length 256 KiB.', { ...session, sourceId: str(), sourceKind: choice(['mail', 'meeting']), attachmentId: str(), offset: integer(0, 31457280), length: integer(1, 524288) }, ['sessionId', 'sourceId', 'attachmentId'], false],
-  ['attachment_action', 'Preview/open an attachment in Aster or its system application, or explicitly Save As using a native picker. Source ownership and active-file protections apply.', { ...session, ...attachment.properties, action: choice(['preview', 'open', 'save', 'close_preview']) }, ['sessionId', 'action'], true],
+  ['attachment_action', 'Preview an attachment in Aster, request user confirmation to open it in the system application, or Save As using a native picker. Source ownership and active-file protections apply.', { ...session, ...attachment.properties, action: choice(['preview', 'open', 'save', 'close_preview']) }, ['sessionId', 'action'], true],
   ['search_contacts', 'Search Exchange GAL by name/email, or list saved contacts when query is empty. Does not translate names.', { ...session, query: { type: 'string', maxLength: 1000 }, offset: integer() }, ['sessionId'], false],
   ['create_contact', 'Create an Exchange contact with name, email, company and phone.', { ...session, name: str(2000), email: str(254), company: text(2000), phone: str(200) }, ['sessionId', 'name', 'email'], true],
   ['contact_history', 'Read verified mail history for one exact contact email, up to 200 candidates. Returns server pagination and completeness limits.', { ...session, email: str(254), offset: integer(0, 199) }, ['sessionId', 'email'], false],
@@ -128,7 +128,7 @@ async function mail(input, ctx, original) {
 async function prepare(name, input, ctx) {
   const { client, guard, host, files, owner } = ctx;
   const invoke = (operation, data = input) => host.invoke(operation, data, guard);
-  let perform, detail = '', noConfirm = sends.has(name), lifecycle = globals.has(name);
+  let perform, detail = '', message = tr('MCP: выполнить изменение?'), noConfirm = sends.has(name), lifecycle = globals.has(name);
   if (name === 'send_mail' || name === 'create_draft') {
     const data = await mail(input, ctx); P.sendSOAP(data, name === 'create_draft');
     detail = `${data.to}\nCc: ${data.cc}\nBcc: ${data.bcc}\n${data.subject}\n\n${data.bodyHtml ? P.mailPreview(data.bodyHtml, true) : data.body}\n\n${data.attachments.map(file => `${file.name} (${Buffer.from(file.content, 'base64').length})`).join('\n')}`;
@@ -168,7 +168,16 @@ async function prepare(name, input, ctx) {
     if (offset > value.bytes.length) throw new Error('Attachment offset exceeds size');
     perform = () => ({ name: value.name, type: value.type, size: value.bytes.length, offset, nextOffset: offset + chunk.length, more: offset + chunk.length < value.bytes.length, content: chunk.toString('base64') });
   }
-  if (name === 'attachment_action') { const value = input.action === 'close_preview' ? null : await file(input, ctx); guard(); perform = () => host.attachment(input.action, value, guard); noConfirm = true; }
+  if (name === 'attachment_action') {
+    const value = input.action === 'close_preview' ? null : await file(input, ctx);
+    guard();
+    perform = () => host.attachment(input.action, value, guard);
+    noConfirm = input.action !== 'open';
+    if (!noConfirm) {
+      message = tr('MCP: открыть вложение в системном приложении?');
+      detail = require('./attachment-files.cjs').safeName(value.name).replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '�');
+    }
+  }
   if (name === 'search_contacts') perform = () => client.contacts({ query: input.query || '', offset: input.offset || 0 });
   if (name === 'get_identity') perform = () => client.identity();
   if (name === 'get_content_images') perform = () => client.contentImages({ ref: { id: input.sourceId }, kind: input.sourceKind === 'meeting' ? 'event' : 'message' });
@@ -203,6 +212,6 @@ async function prepare(name, input, ctx) {
   if (name === 'run_module_command') perform = () => invoke('moduleInvoke', { id: input.id, command: input.command, input: input.input || {} });
   if (!perform) throw new Error('Unknown extended MCP tool');
   const reviewed = Object.fromEntries(Object.entries(input).filter(([key]) => !['sessionId', 'revision', 'expectedChangeKey', 'token'].includes(key)));
-  return { perform, noConfirm, lifecycle, prompt: { message: tr('MCP: выполнить изменение?'), detail: detail || `${name}\n${JSON.stringify(reviewed, null, 2)}` } };
+  return { perform, noConfirm, lifecycle, prompt: { message, detail: detail || `${name}\n${JSON.stringify(reviewed, null, 2)}` } };
 }
 module.exports = { definitions, prepare, globals, meetingWrites, sends };

@@ -203,4 +203,15 @@ function meetingTarget(definition, value) {
 function meetingLaunchSummary(definition) {
   return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
 }
-module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'auth.identity-redirects', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+function grantSummary(definition) {
+  const { permissions, authentication, networkOrigins, networkHeaders, optionalOrigins } = definition;
+  return [
+    [tr('Разрешения:'), permissionSummary(permissions, authentication)],
+    [tr('Сетевые адреса:'), networkOrigins.join(', ')],
+    [tr('Сетевые заголовки:'), networkHeaders.join(', ')],
+    [tr('Дополнительные серверы с отдельным разрешением:'), (optionalOrigins || []).map(rule => rule.includeSubdomains ? `${rule.domain}, *.${rule.domain}` : rule.domain).join(', ')],
+    [tr('Приложение встречи:'), meetingLaunchSummary(definition)],
+    [tr('Серверы входа:'), [...new Set([authentication?.startOrigin, ...(authentication?.origins || []), ...(authentication?.identityOrigins || [])].filter(Boolean))].join(', ')],
+  ].filter(([, value]) => value).map(([label, value]) => `${label} ${value}`).join('\n');
+}
+module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'auth.identity-redirects', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, grantSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };

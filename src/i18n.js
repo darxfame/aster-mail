@@ -360,6 +360,8 @@
     "Для этой версии модуля требуется обновить Aster Mail.": "Update Aster Mail to use this module version.",
     "Создать комнату": "Create room",
     "Модуль будет доступен сразу после установки.": "The module will be available immediately after installation.",
+    "Сетевые заголовки:": "Network headers:",
+    "MCP: открыть вложение в системном приложении?": "MCP: open the attachment in the system app?",
     "Установленные модули работают в песочнице. Их настройки доступны без входа в Exchange.": "Installed modules run in a sandbox. Their settings are available without signing in to Exchange.",
     "Подключите модуль, чтобы открыть его настройки. Вход в Exchange для этого не нужен.": "Connect a module to open its settings. Exchange sign-in is not required.",
     "Подключить этот модуль?": "Connect this module?",

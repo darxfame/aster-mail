@@ -7,7 +7,7 @@ for (const [address, prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],
 for (const [address, prefix] of [['::',128],['::1',128],['fc00::',7],['fe80::',10],['ff00::',8]]) localAddresses.addSubnet(address, prefix, 'ipv6');
 function sourceURL(value, origin) {
   const url = new URL(value);
-  if (!['http:', 'https:'].includes(url.protocol) || !origin || url.username || url.password || value.length > 16000) throw new Error(tr('Неподдерживаемый адрес изображения'));
+  if (!['http:', 'https:'].includes(url.protocol) || !origin || url.username || url.password || value.length > 16000 || isTrackingImage(url.href)) throw new Error(tr('Неподдерживаемый адрес изображения'));
   const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, ''), family = isIP(host);
   // HTTP/HTTPS images use an anonymous session, including corporate short names.
   // Preserve OWA access while rejecting unrelated literal local endpoints.
@@ -65,9 +65,8 @@ async function fetchContentImage(url, origin, imageSession, lifetime) {
     for (let redirect = 0; redirect <= 4; redirect++) {
       response = await imageSession.fetch(url, { credentials: 'omit', redirect: 'manual', referrerPolicy: 'no-referrer', signal });
       if (![301, 302, 303, 307, 308].includes(response.status)) break;
-      const next = sourceURL(new URL(response.headers.get('location'), url).href, origin);
-
-      await response.body?.cancel(); url = next;
+      await response.body?.cancel();
+      url = sourceURL(new URL(response.headers.get('location'), url).href, origin);
     }
     if (!response.ok || response.status >= 300) throw new Error(`${tr("Изображение: HTTP")} ${response.status}`);
     const type = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();

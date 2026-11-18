@@ -84,7 +84,8 @@ test('optional origin grants are exact, account-scoped and cannot widen domain o
   const active = { sessionId: 'one', signal: new AbortController().signal, records: [{ id: d.id, version: d.version, digest: 'a'.repeat(64), enabled: true, data: {} }] };
   let response = 0, prompts = 0;
   const host = new ModuleHost({ electron: { ipcMain: { handle() {}, on() {} }, dialog: { async showMessageBox(options) { prompts++; assert.match(options.detail, /https:\/\/diy.example.test/); return { response }; } } }, scope: () => active, save: async value => { active.records = value; } });
-  const sender = { mainFrame: {} }, entry = { id: d.id, sessionId: 'one', retired: false, context: {}, calls: 0, bundle: { manifest: d } };
+  const sender = { mainFrame: {} }, entry = { id: d.id, sessionId: 'one', retired: false, context: {}, calls: 0, bundle: { manifest: d, digest: active.records[0].digest } };
+  host.entries.set(entry.id, entry);
   host.senders.set(sender, { entry, role: 'view' });
   const event = { sender, senderFrame: sender.mainFrame };
   assert.equal((await host.receive(event, 'network.requestOrigin', { origin: 'https://diy.example.test' })).granted, false);

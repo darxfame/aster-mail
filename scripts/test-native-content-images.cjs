@@ -20,6 +20,7 @@ app.whenReady().then(async () => {
       requests.push(request.headers);
       assert.equal(request.headers.cookie, undefined); assert.equal(request.headers.authorization, undefined); assert.equal(request.headers.referer, undefined);
       if (request.url === '/redirect') { response.writeHead(302, { location: 'https://it/picture.png', 'set-cookie': 'tracking=fixture' }); response.end(); }
+      else if (request.url === '/tracker') { response.writeHead(302, { location: 'https://www.google-analytics.com./g/%63ollect' }); response.end(); }
       else if (request.url === '/unsafe') { response.writeHead(302, { location: 'https://127.0.0.1/private' }); response.end(); }
       else if (request.url === '/large') { response.writeHead(200, { 'content-type': 'image/png' }); response.end(Buffer.alloc(5 * 1024 * 1024 + 1)); }
       else if (request.url === '/slow') { response.writeHead(200, { 'content-type': 'image/png' }); response.write(image.subarray(0,8)); slowStarted(); }
@@ -61,13 +62,15 @@ app.whenReady().then(async () => {
     imageWindow.destroy(); imageWindow = null;
     await assert.rejects(fetchContentImage('https://it/unsafe', 'https://mail.example.test', fixture, lifetime.signal), /Неподдерживаемый адрес/);
     assert.equal(requests.length, 7);
+    await assert.rejects(fetchContentImage('https://it/tracker', 'https://mail.example.test', fixture, lifetime.signal), /Неподдерживаемый адрес/);
+    assert.equal(requests.length, 8);
     await assert.rejects(fetchContentImage('https://it/large', 'https://mail.example.test', fixture, lifetime.signal), /5 МБ/);
     const pending = fetchContentImage('https://it/slow', 'https://mail.example.test', fixture, lifetime.signal);
     const cancelled = assert.rejects(pending); await slowReady;
     lifetime.abort();
     await cancelled;
     await assert.rejects(fetchContentImage('https://it/picture.png', 'https://mail.example.test', fixture, lifetime.signal));
-    assert.equal(requests.length, 9);
+    assert.equal(requests.length, 10);
     console.log('PASS: HTTP/HTTPS images decode in the sandboxed reader, redirects, omitted cookies/auth/referrer, size limits, 401 and logout.');
   } finally {
     imageWindow?.destroy();

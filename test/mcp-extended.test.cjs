@@ -29,9 +29,27 @@ function fixture() {
   client.identity = async () => ({ email: 'self@example.test', emails: ['self@example.test'] });
   client.folders = async () => [{ id: 'inbox-id', wellKnown: 'inbox' }, { id: 'sent-id', wellKnown: 'sentitems' }];
   const host = { sanitize: async html => html, invoke: async (operation, input) => { invokes.push({ operation, input }); return true; }, local: async () => true, settings: async () => ({ theme: 'light' }), action: async input => ({ action: input.action }), panel: async panel => ({ opened: panel }) };
-  const call = createTools({ current: () => state.live ? client : null, host, confirm: async input => { approvals.push(input); return state.allowed; }, writing: delta => writes.push(delta) });
+  const call = createTools({ current: () => state.live ? client : null, host, confirm: async input => { approvals.push(input); state.afterApproval?.(); return state.allowed; }, writing: delta => writes.push(delta) });
   return { call, client, state, requests, approvals, writes, host, invokes };
 }
+test('opening MCP attachments needs confirmation and a live account while preview and save keep their own behavior', async () => {
+  const f = fixture(), operations = [];
+  f.host.attachment = async action => { operations.push(action); return true; };
+  const { handle } = await f.call('upload_attachment', { sessionId, name: 'report.txt', type: 'text/plain', content: 'dGVzdA==', offset: 0, final: true });
+  const action = action => f.call('attachment_action', { sessionId, handle, action });
+  f.state.allowed = false;
+  await assert.rejects(action('open'), /cancelled/);
+  assert.equal(f.approvals[0].prompt.detail, 'report.txt');
+  assert.deepEqual(operations, []);
+  await action('preview');
+  await action('save');
+  assert.equal(f.approvals.length, 1);
+  f.state.allowed = true;
+  await action('open');
+  f.state.afterApproval = () => { f.state.live = false; };
+  await assert.rejects(action('open'), /session/);
+  assert.deepEqual(operations, ['preview', 'save', 'open']);
+});
 test('mail sending skips native confirmation, preserves Cc/Bcc and uses fresh reply-all recipients', async () => {
   const f = fixture(); f.state.allowed = false;
   await f.call('send_mail', { sessionId, kind: 'reply-all', reference: { id: 'source', changeKey: 'stale' }, body: 'Reply', bcc: ['private@example.test'], signature: 'none' });

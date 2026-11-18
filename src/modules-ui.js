@@ -1,5 +1,16 @@
 const modulePermissionNames = () => ({ ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), 'meeting.launch': tr('Запуск приложения встречи по нажатию «Подключиться»'), 'auth.session': tr('Корпоративный вход в отдельное пространство сервиса'), events: tr('События приложения и модулей') });
 function modulePermissionSummary(item) { return (item.permissions || []).map(value => modulePermissionNames()[value] || value).concat(item.authentication?.identityRedirects ? [tr('Переходы в корпоративную систему входа')] : []).join(', '); }
+function moduleCatalogGrants(item) {
+  const { authentication, meetingLinks } = item;
+  return [
+    [tr('Разрешения:'), modulePermissionSummary(item)],
+    [tr('Сетевые адреса:'), item.networkOrigins?.join(', ')],
+    [tr('Сетевые заголовки:'), item.networkHeaders?.join(', ')],
+    [tr('Дополнительные серверы с отдельным разрешением:'), item.optionalOrigins?.map(rule => rule.includeSubdomains ? `${rule.domain}, *.${rule.domain}` : rule.domain).join(', ')],
+    [tr('Приложение встречи:'), meetingLinks && `${meetingLinks.scheme} → ${meetingLinks.origins.join(', ')}`],
+    [tr('Серверы входа:'), [...new Set([authentication?.startOrigin, ...(authentication?.origins || []), ...(authentication?.identityOrigins || [])].filter(Boolean))].join(', ')],
+  ].filter(([, value]) => value).map(([label, value]) => `${label} ${value}`).join('\n');
+}
 let connectedModules = [], moduleMountState = '', moduleMountBusy = false;
 function moduleSettingsMarkup() {
   return `<p class="form-note">${tr('Установленные модули работают в песочнице. Их настройки доступны без входа в Exchange.')}</p><p class="form-note">${tr('Модули автора и предложения сообщества — в репозитории Aster Mail Modules.')}</p><p><button type="button" class="secondary" data-action="link" data-url="https://github.com/darxfame/aster-mail-modules">${tr('Модули автора · предложить свой модуль')}</button></p><button type="button" class="primary" data-action="module-approved-list">${tr('Каталог одобренных модулей')}</button> <button type="button" class="secondary" data-action="module-import" ${!window.aster ? 'disabled' : ''}>${tr('Подключить модуль')}</button> <button type="button" class="secondary" data-action="module-github" ${!window.aster ? 'disabled' : ''}>${tr('Подключить с GitHub')}</button><div id="module-list" aria-live="polite"></div>`;
@@ -20,7 +31,7 @@ async function refreshModuleList() {
       const installed = connectedModules.find(item => item.id === row.dataset.module), next = catalog.modules.find(item => item.manifest.id === installed?.id);
       if (!next || !moduleVersionNewer(next.manifest.version, installed.version)) continue;
       const update = document.createElement('div'); update.className = 'module-update';
-      update.innerHTML = `<p class="form-note">${tr('Доступно обновление:')} ${esc(next.manifest.version)}</p><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(next.manifest.id)}" data-digest="${esc(next.digest)}" data-revision="${esc(catalog.revision)}" ${next.compatible === false ? 'disabled' : ''}>${tr(next.compatible === false ? 'Для этой версии модуля требуется обновить Aster Mail.' : 'Обновить с сохранением настроек')}</button>`;
+      update.innerHTML = `<p class="form-note">${tr('Доступно обновление:')} ${esc(next.manifest.version)}</p><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(next.manifest.id)}" data-digest="${esc(next.digest)}" data-grants="${esc(moduleCatalogGrants(next.manifest))}" data-revision="${esc(catalog.revision)}" ${next.compatible === false ? 'disabled' : ''}>${tr(next.compatible === false ? 'Для этой версии модуля требуется обновить Aster Mail.' : 'Обновить с сохранением настроек')}</button>`;
       row.querySelector('.module-actions').prepend(update);
     }
     note.remove();
@@ -168,7 +179,7 @@ async function moduleAuthorCatalog() {
     if (!container.isConnected || state.account !== account) return;
     container.innerHTML = `${installedResult.status === 'rejected' ? `<p class="form-error" role="alert">${esc(errorText(installedResult.reason))}</p>` : ''}<p class="form-note">${tr('Подключите модуль, чтобы открыть его настройки. Вход в Exchange для этого не нужен.')}</p><div class="module-catalog-list">` + (catalog.modules.map(item => {
       const m = item.manifest, existing = installed.find(value => value.id === m.id), update = existing && moduleVersionNewer(m.version, existing.version);
-      return `<article class="module-catalog-row"><div><h3>${esc(m.name)}<span class="module-version">${esc(m.version)}</span></h3>${item.description !== m.name ? `<p>${esc(item.description)}</p>` : ''}<details><summary>${tr('Разрешения и сведения о модуле')}</summary><p>${tr('Разрешения:')} ${esc(modulePermissionSummary(m))}</p><p>${esc(item.directory || '/')}<br>commit: ${esc(item.commit)}<br>SHA-256: ${esc(item.digest)}</p></details></div><div class="module-catalog-actions"><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(m.id)}" data-digest="${esc(item.digest)}" data-revision="${esc(catalog.revision)}" ${existing && !update || item.compatible === false ? 'disabled' : ''}>${item.compatible === false ? tr('Для этой версии модуля требуется обновить Aster Mail.') : update ? tr('Обновить с сохранением настроек') : existing ? tr('Уже подключён') : tr('Подключить')}</button></div></article>`;
+      return `<article class="module-catalog-row"><div><h3>${esc(m.name)}<span class="module-version">${esc(m.version)}</span></h3>${item.description !== m.name ? `<p>${esc(item.description)}</p>` : ''}<details><summary>${tr('Разрешения и сведения о модуле')}</summary><p>${tr('Разрешения:')} ${esc(modulePermissionSummary(m))}</p><p>${esc(item.directory || '/')}<br>commit: ${esc(item.commit)}<br>SHA-256: ${esc(item.digest)}</p></details></div><div class="module-catalog-actions"><button type="button" class="primary" data-action="module-approved-connect" data-id="${esc(m.id)}" data-digest="${esc(item.digest)}" data-grants="${esc(moduleCatalogGrants(m))}" data-revision="${esc(catalog.revision)}" ${existing && !update || item.compatible === false ? 'disabled' : ''}>${item.compatible === false ? tr('Для этой версии модуля требуется обновить Aster Mail.') : update ? tr('Обновить с сохранением настроек') : existing ? tr('Уже подключён') : tr('Подключить')}</button></div></article>`;
     }).join('') || `<p class="form-note">${tr(catalog.published === false ? 'Каталог ещё не опубликован автором.' : 'Одобренных модулей пока нет.')}</p>`) + '</div>';
   } catch (error) { if (container.isConnected && state.account === account) container.textContent = errorText(error); }
 }
@@ -186,9 +197,9 @@ async function connectApprovedModule(button) {
     document.querySelectorAll('.module-catalog-row').forEach(resetModuleConfirmation);
     button.dataset.confirmed = 'true'; button.dataset.confirmAccount = state.account?.sessionId || '';
     button.dataset.confirmLabel = button.textContent; button.textContent = tr('Подтвердить подключение');
-    // Installation itself authorizes the capabilities disclosed in the optional details.
     const note = document.createElement('p'); note.className = 'module-confirm-note'; note.setAttribute('role', 'status');
-    note.textContent = tr('Подключить этот модуль?'); row.querySelector('div').append(note);
+    note.textContent = [tr('Подключить этот модуль?'), button.dataset.grants].filter(Boolean).join('\n');
+    row.querySelector('div').append(note);
     const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'secondary'; cancel.dataset.action = 'module-approved-cancel'; cancel.textContent = tr('Отмена'); button.after(cancel);
     return;
   }
@@ -196,9 +207,12 @@ async function connectApprovedModule(button) {
   const container = button.closest('#module-author-catalog, #module-list'), account = state.account;
   modalBusy = true; container.inert = true; container.setAttribute('aria-busy', 'true'); button.textContent = tr('Подключаем модуль…');
   let success = false;
-  try { await api('moduleInstallApproved', { id: button.dataset.id, digest: button.dataset.digest, revision: button.dataset.revision }); success = true; }
+  try {
+    success = await api('moduleInstallApproved', { id: button.dataset.id, digest: button.dataset.digest, revision: button.dataset.revision }) !== false;
+    if (!success) resetModuleConfirmation(row);
+  }
   catch (error) { if (container.isConnected && state.account === account) { const message = document.createElement('p'); message.setAttribute('role', 'alert'); message.textContent = errorText(error); container.append(message); } }
-  finally { modalBusy = false; container.inert = false; container.removeAttribute('aria-busy'); button.textContent = tr('Подтвердить подключение'); }
+  finally { modalBusy = false; container.inert = false; container.removeAttribute('aria-busy'); if (button.dataset.confirmed) button.textContent = tr('Подтвердить подключение'); }
   if (success && container.isConnected && state.account === account) {
     if (container.id === 'module-list') await refreshModuleList();
     else { await loadModuleContributions(); await moduleAuthorCatalog(); }

@@ -47,10 +47,12 @@ test('module network broker isolates credentials, refuses undeclared destination
 });
 test('module host rejects foreign frames, retired accounts and undeclared host methods', async () => {
   const { ModuleHost } = require('../desktop/module-host.cjs');
-  const ipcMain = { handle() {}, on() {} }, active = { sessionId: 'one', signal: new AbortController().signal, records: [] };
+  const manifest = M.manifest(example), digest = 'a'.repeat(64);
+  const ipcMain = { handle() {}, on() {} }, active = { sessionId: 'one', signal: new AbortController().signal, records: [{ id: manifest.id, version: manifest.version, digest, enabled: true }] };
   let current = active, sdkCalls = 0;
   const host = new ModuleHost({ electron: { ipcMain }, scope: () => current, sdk: () => { sdkCalls++; }, save: async () => {} });
-  const sender = { mainFrame: {} }, entry = { sessionId: 'one', retired: false, calls: 0, bundle: { manifest: M.manifest(example) } };
+  const sender = { mainFrame: {} }, entry = { id: manifest.id, sessionId: 'one', retired: false, calls: 0, bundle: { manifest, digest } };
+  host.entries.set(entry.id, entry);
   host.senders.set(sender, { entry, role: 'view' });
   await assert.rejects(host.receive({ sender, senderFrame: {} }, 'storage.get', {}), /Untrusted/);
   await assert.rejects(host.receive({ sender, senderFrame: sender.mainFrame }, 'mail.send', {}), /разрешений/);
@@ -67,6 +69,21 @@ test('module event delivery cannot turn a successful Exchange write into an erro
   const body = source.slice(source.indexOf('      const value = await activeClient[operation]'), source.indexOf('\n    } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: debugErrors })'));
   const result = await vm.runInContext(`(async () => {${body}})()`, context);
   assert.equal(result.ok, true); assert.equal(result.value.id, 'fictional-meeting'); assert.equal(writes, 1); assert.equal(polls, 1);
+});
+test('event delivery excludes runtimes whose package is no longer the enabled version', () => {
+  const { ModuleHost } = require('../desktop/module-host.cjs');
+  const manifest = M.manifest({ ...example, permissions: ['events'] }), digest = 'a'.repeat(64);
+  const record = { id: manifest.id, version: manifest.version, digest, enabled: true };
+  const active = { sessionId: 'one', signal: new AbortController().signal, records: [record] };
+  const host = new ModuleHost({ electron: { ipcMain: { handle() {}, on() {} } }, scope: () => active });
+  const received = [], sender = { isDestroyed: () => false, send: (_channel, value) => received.push(value) };
+  const entry = { id: manifest.id, sessionId: 'one', bundle: { manifest, digest } };
+  host.entries.set(entry.id, entry);
+  host.senders.set(sender, { entry, role: 'runtime' });
+  host.publish('calendar.changed', { operation: 'createEvent' });
+  record.digest = 'b'.repeat(64);
+  host.publish('calendar.changed', { operation: 'updateEvent' });
+  assert.deepEqual(received, [{ topic: 'calendar.changed', data: { operation: 'createEvent' } }]);
 });
 test('module preload bounds messages before IPC and never exposes generic IPC or host errors', async () => {
   const vm = require('node:vm'), listeners = {}, sent = [];
@@ -119,7 +136,8 @@ test('module storage is namespaced and secrets never enter the catalog', async (
   const active = { sessionId: 'one', signal: new AbortController().signal, records: [record('first'), record('second')] };
   const host = new ModuleHost({ electron: { ipcMain: { handle() {}, on() {} } }, scope: () => active, save: async value => { active.records = value; } });
   host.bundle = async record => ({ manifest: { ...example, id: record.id }, digest: record.digest });
-  const sender = { mainFrame: {} }, entry = { id: 'first', sessionId: 'one', calls: 0, bundle: { manifest: { ...example, id: 'first' } } };
+  const sender = { mainFrame: {} }, entry = { id: 'first', sessionId: 'one', calls: 0, bundle: await host.bundle(active.records[0]) };
+  host.entries.set(entry.id, entry);
   host.senders.set(sender, { entry, role: 'view' });
   const event = { sender, senderFrame: sender.mainFrame };
   assert.deepEqual(await host.receive(event, 'storage.get', {}), { secret: 'first-private-key' });

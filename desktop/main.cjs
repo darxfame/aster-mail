@@ -576,10 +576,10 @@ async function connect(data, remember, restoring = false) {
 async function installModuleBundle(bundle, guard) {
   guard();
   const source = bundle.source ? `${bundle.source.repository}\ncommit: ${bundle.source.commit}\n${bundle.source.directory}` : tr('Локальный пакет');
-  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions, bundle.manifest.authentication)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Дополнительные серверы с отдельным разрешением:')} ${(bundle.manifest.optionalOrigins || []).map(rule => rule.domain).join(', ')}\n${tr('Приложение встречи:')} ${require('./modules.cjs').meetingLaunchSummary(bundle.manifest)}\n${tr('Серверы входа:')} ${[...(bundle.manifest.authentication?.origins || []), ...(bundle.manifest.authentication?.identityOrigins || [])].join(', ')}\n${tr('Модуль будет доступен сразу после установки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
+  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${require('./modules.cjs').grantSummary(bundle.manifest)}\n${tr('Модуль будет доступен сразу после установки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
   guard();
   if (answer.response !== 1) return;
-  await moduleHost.install(bundle, true);
+  await moduleHost.install(bundle, true, bundle.digest);
   guard();
 }
 
@@ -601,7 +601,7 @@ app.whenReady().then(async () => {
     : safeStorage;
   const { ModuleHost } = require('./module-host.cjs');
   const packages = path.join(app.getPath('userData'), 'modules');
-  moduleProfile = new (require('./module-profile.cjs').ModuleProfile)(path.join(app.getPath('userData'), 'module-profile'), packages, localEncryption, () => localStore?.data.modules || []);
+  moduleProfile = new (require('./module-profile.cjs').ModuleProfile)(path.join(app.getPath('userData'), 'module-profile'), packages, localEncryption, () => client ? localStore.data.modules || [] : null);
   moduleHost = new ModuleHost({ electron: require('electron'), directory: packages,
     scope: () => connection && !client ? null : moduleProfile.scope(),
     save: (records, sessionId) => moduleProfile.save(records, sessionId),
@@ -878,12 +878,13 @@ app.whenReady().then(async () => {
         const isolated = session.fromPartition(`aster-module-catalog-${crypto.randomUUID()}`, { cache: false });
         try {
           const read = (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal);
-          await Catalog.install(data, read, controller.signal, { install: async bundle => {
+          const installed = await Catalog.install(data, read, controller.signal, { install: async bundle => {
             guard();
-            await moduleHost.install(bundle, true);
+            const result = await moduleHost.install(bundle, true);
             guard();
+            return result;
           } }, guard);
-          return { ok: true, value: true };
+          return { ok: true, value: installed !== false };
         } finally {
           sender.removeListener('destroyed', cancel); accountSignal?.removeEventListener('abort', cancel);
           await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]);

@@ -29,7 +29,8 @@ app.whenReady().then(async () => {
     await window.loadFile(path.join(root, 'src/index.html'));
     await window.webContents.executeJavaScript(`(async () => {
       window.asterI18n.setLanguage('ru');
-      const value = { installed:'0.0.1', status:'available', autoCheck:true, available:{version:'0.0.2', restart:true, notes:'Вымышленное обновление для проверки'}, error:'' };
+      const notes = ['<b>Вымышленное обновление</b>', ...Array.from({ length: 100 }, (_, index) => 'Вымышленное изменение ' + (index + 1))].join('\\n');
+      const value = { installed:'0.0.1', status:'available', autoCheck:true, available:{version:'0.0.2', restart:true, notes}, error:'' };
       window.aster = { invoke: async () => ({ ok:true, value }) };
       receiveUpdate(value); await updatesModal();
     })()`);
@@ -56,14 +57,27 @@ app.whenReady().then(async () => {
           ]) {
             const notes = document.querySelector('.update-notes');
             notes.open = true;
+            const body = notes.querySelector('pre');
+            body.scrollTop = 135;
+            if (body.scrollTop !== 135) throw new Error('Long release notes are not scrollable');
             notes.querySelector('summary').focus();
             receiveUpdate({ ...initial, ...snapshot, progress: 35, received: 350 });
             if (!document.querySelector('.update-notes').open) throw new Error('Release notes collapsed during ' + JSON.stringify(snapshot));
+            if (document.querySelector('.update-notes pre').scrollTop !== 135) throw new Error('Release notes lost scroll position during ' + snapshot.status);
+            if (document.querySelector('.update-notes pre') !== body) throw new Error('Release notes scroll area was replaced');
             if (document.activeElement !== document.querySelector('.update-notes summary')) throw new Error('Release notes lost keyboard focus');
             document.querySelector('.update-notes').open = false;
             receiveUpdate({ ...initial, ...snapshot, progress: 40, received: 400 });
             if (document.querySelector('.update-notes').open) throw new Error('Manually closed notes reopened');
           }
+          receiveUpdate({ ...initial, status: 'downloading', progress: 41 });
+          document.querySelector('.update-notes').open = true;
+          const body = document.querySelector('.update-notes pre');
+          if (body.children.length || !body.textContent.startsWith('<b>')) throw new Error('Release notes did not render as plain text');
+          body.focus();
+          body.scrollTop = 200;
+          for (const progress of [42, 43, 44]) receiveUpdate({ ...initial, status: 'downloading', progress });
+          if (document.activeElement !== body || body.scrollTop !== 200) throw new Error('Progress update disrupted keyboard scrolling');
           document.querySelector('.update-notes').open = true;
           receiveUpdate({ ...initial, available: { ...initial.available, version: '0.0.3' } });
           if (document.querySelector('.update-notes').open) throw new Error('New release inherited old disclosure state');
@@ -100,7 +114,7 @@ app.whenReady().then(async () => {
     })()`), undefined);
     await fs.mkdir(path.join(root, 'release'), { recursive: true });
     await fs.writeFile(path.join(root, 'release/update-restart-ui.png'), (await window.webContents.capturePage()).toPNG());
-    console.log('PASS: restart-update dialog, automatic/manual prompts, release-note disclosure and keyboard focus across checks/downloads/pause/retry/install/error, manual collapse, version changes, cooldown/unlock and GitHub errors');
+    console.log('PASS: automatic/manual update dialogs preserve release-note scroll, focus and disclosure across progress, pause, retry and install; version changes, cooldown and GitHub errors work');
   } finally { window.destroy(); }
   app.exit(0);
 }).catch(error => { console.error(error); app.exit(1); });

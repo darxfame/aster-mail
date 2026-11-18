@@ -5,7 +5,17 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../src/updates-ui.js'), 'utf8');
 const available = { installed: '0.1.24', status: 'available', autoCheck: true, available: { version: '0.1.25', notes: '<b>Fictional notes</b>' }, error: '' };
 function fixture(api = async () => assert.fail('Unexpected request')) {
-  const dialog = { open: false }, panel = { dataset: { installFlow: 'true' }, innerHTML: '' }, listeners = {}, shown = [];
+  const dialog = { open: false }, listeners = {}, shown = [];
+  const status = {}, actions = {};
+  const notes = {
+    dataset: {}, contains: () => false,
+    set innerHTML(_value) { this.firstElementChild = { children: [{}, {}] }; },
+    replaceChildren() { this.firstElementChild = null; },
+  };
+  const panel = {
+    dataset: { installFlow: 'true' }, firstElementChild: status, children: [status, notes, actions],
+    get innerHTML() { return status.innerHTML + actions.innerHTML; },
+  };
   const version = { classList: { toggle() {} } };
   const document = { visibilityState: 'visible', querySelector: selector => selector === '#modal' ? dialog : selector === '#updates-panel' ? dialog.open ? panel : null : version,
     addEventListener(name, callback) { listeners[name] = callback; } };
@@ -13,7 +23,7 @@ function fixture(api = async () => assert.fail('Unexpected request')) {
     tr: value => value, bytes: value => `${value} B`, esc: value => String(value).replaceAll('<', '&lt;'), modalBusy: false, modalDirty: false, modalSequence: 0, api,
     modal(title, description, body) { context.modalSequence++; dialog.open = true; shown.push({ title, description, body }); }, toast() {}, clearTimeout() {}, setTimeout: callback => callback() });
   vm.runInContext(source, context);
-  return { context, dialog, panel, listeners, shown };
+  return { context, dialog, panel, notes, listeners, shown };
 }
 test('startup snapshot prompts once after boot and waits for an open form or hidden window', () => {
   const f = fixture(); f.context.receiveUpdate(available); assert.equal(f.shown.length, 0);
@@ -21,7 +31,8 @@ test('startup snapshot prompts once after boot and waits for an open form or hid
   f.dialog.open = false; f.context.modalDirty = true; f.context.maybePromptUpdate(); assert.equal(f.shown.length, 0);
   f.context.modalDirty = false; f.context.document.visibilityState = 'hidden'; f.context.maybePromptUpdate(); assert.equal(f.shown.length, 0);
   f.context.document.visibilityState = 'visible'; f.context.maybePromptUpdate(); assert.equal(f.shown.length, 1);
-  assert.match(f.panel.innerHTML, /installUpdate/); assert.match(f.panel.innerHTML, /&lt;b>Fictional notes/);
+  assert.match(f.panel.innerHTML, /installUpdate/);
+  assert.equal(f.notes.firstElementChild.children[1].textContent, '<b>Fictional notes</b>');
   f.dialog.open = false; f.context.receiveUpdate(available); assert.equal(f.shown.length, 1);
 });
 test('paused and retrying downloads expose resume, pause and cancel controls', () => {

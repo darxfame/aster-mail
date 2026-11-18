@@ -15,10 +15,11 @@
   };
   const styleAllowed = (name, value) => !!styles[name]?.test(value.trim());
   function isTrackingImage(value) {
-    if (!/^(?:https?:)?\/\//i.test(String(value || ''))) return false;
+    if (!/^(?:https?:)?\/\//i.test(String(value || '').trim())) return false;
     try {
       const url = new URL(value, 'https://image.invalid');
-      return ['http:', 'https:'].includes(url.protocol) && (url.hostname === 'google-analytics.com' || url.hostname.endsWith('.google-analytics.com')) && /^\/(?:[gj]\/)?collect\/?$/.test(url.pathname);
+      const host = url.hostname.replace(/\.$/, '');
+      return ['http:', 'https:'].includes(url.protocol) && (host === 'google-analytics.com' || host.endsWith('.google-analytics.com')) && /^\/(?:[gj]\/)?collect\/?$/.test(decodeURIComponent(url.pathname));
     } catch { return false; }
   }
   if (typeof module !== 'undefined') { module.exports = { styleAllowed, isTrackingImage }; return; }

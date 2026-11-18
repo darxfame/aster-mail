@@ -51,7 +51,7 @@ test('known analytics beacons do not use image slots or reach the network', asyn
 
 test('image redirects accept HTTPS hosts, reject unsafe targets, omit cookies, and abort at logout', async () => {
   const origin = 'https://mail.example.com';
-  for (const destination of ['http://127.0.0.1/a', 'https://127.0.0.1/a', 'https://user:password@cdn.example.com/a', 'file:///picture.png']) {
+  for (const destination of ['http://127.0.0.1/a', 'https://127.0.0.1/a', 'https://user:password@cdn.example.com/a', 'file:///picture.png', 'https://www.google-analytics.com/g/collect', '//www.google-analytics.com./g/%63ollect']) {
     const calls = [], lifetime = new AbortController();
     const session = { fetch: async (url, options) => { calls.push(url); assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'manual'); assert.equal(options.referrerPolicy, 'no-referrer'); return new Response(null, { status: 302, headers: { location: destination } }); } };
     await assert.rejects(I.fetchContentImage(`${origin}/image`, origin, session, lifetime.signal));

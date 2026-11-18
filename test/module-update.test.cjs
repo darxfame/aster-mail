@@ -45,10 +45,38 @@ test('module update retains settings, disabled state and uncertain writes; migra
 test('updates request changed capabilities, preserve data on refusal and never write across account retirement', async t => {
   const f = await fixture(t), before = structuredClone(f.records()[0]);
   const next = f.bundle('1.0.1', { permissions: [...example.permissions, 'network'], networkOrigins: ['https://service.example.test'] });
-  f.answer(0); assert.equal(await f.host.install(next), false); assert.deepEqual(f.records()[0], before); assert.equal(f.prompts(), 1);
+  f.answer(0); assert.equal(await f.host.install(next, true), false); assert.deepEqual(f.records()[0], before); assert.equal(f.prompts(), 1);
   const originalBundle = f.host.bundle.bind(f.host);
   f.host.bundle = async record => { const value = await originalBundle(record); f.switch(); return value; };
   await assert.rejects(f.host.install(next), /Сессия/); assert.equal(f.records().length, 0);
+});
+
+test('an update overtaking startup invalidates the pending runtime before proxy or window creation', async t => {
+  const f = await fixture(t);
+  const id = f.records()[0].id;
+  await f.host.configure(id, true);
+  f.host.electron.app = { commandLine: { hasSwitch: () => false } };
+  const originalBundle = f.host.bundle.bind(f.host);
+  const { promise: atRead, resolve: reading } = Promise.withResolvers();
+  const { promise: resume, resolve: release } = Promise.withResolvers();
+  let paused = false;
+  f.host.bundle = async record => {
+    const value = await originalBundle(record);
+    if (!paused && record.version === '1.0.0') {
+      paused = true;
+      reading();
+      await resume;
+    }
+    return value;
+  };
+  const starting = assert.rejects(f.host.start(id), /Модуль|Сессия/);
+  await atRead;
+  await f.host.configure(id, false);
+  await f.host.install(f.bundle('1.0.1'));
+  await f.host.configure(id, true);
+  release();
+  await starting;
+  assert.equal(f.host.entries.size, 0);
 });
 
 test('replacement of an obsolete or corrupt package retains encrypted account settings after explicit consent', async t => {
