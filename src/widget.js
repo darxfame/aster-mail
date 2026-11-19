@@ -21,6 +21,7 @@ function render(state, { resetDay = false } = {}) {
   if (!selectedDay || lastZone !== zone || !inRange(selectedDay)) selectedDay = today;
   lastZone = zone;
   document.body.classList.toggle('dark', state.theme === 'dark');
+  window.asterThemeSdk.apply(document.body, state.palette);
   document.querySelector('#connection').textContent = window.asterWidget ? state.connected ? `Exchange · ${state.secure === false ? 'HTTP' : 'HTTPS'}` : tr('Нет подключения') : tr('Демо · вымышленные встречи');
   document.querySelector('#updated').textContent = state.lastPoll ? `${clock(state.lastPoll)} · ${zone}` : zone;
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error || '';

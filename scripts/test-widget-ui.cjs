@@ -135,6 +135,7 @@ app.whenReady().then(async () => {
     const reopenContext = {
       ...context, widgetWindow: window, tr: value => value, process, client: null,
       widgetState: () => reopenState, refreshPrivacy: async () => {},
+      updateNativeIcon() {},
       tray: { getBounds: () => anchor, setTitle() {}, setToolTip() {} },
       nearestMeetings: () => [],
     };

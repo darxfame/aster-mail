@@ -108,6 +108,8 @@ body.custom-theme {
 .mail-list .day-label { padding: 7px 16px 5px; font-size: 10px; line-height: 1.4; }
 .mail-list .message-row, body.dark .mail-list .message-row { gap: 0; margin-bottom: 1px; }
 .mail-list .message-open { padding: 6px 5px 6px 13px; }
+.mail-list .message-open:focus-visible { outline: none; }
+.mail-list .message-row:has(> .message-open:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
 .mail-list .message-row:has(> .mail-select:not([hidden])) .message-open { padding-inline-start: 30px; }
 .mail-list .message-row:has(> .mail-select:checked):not(.selected) { background: var(--accent-bg); }
 .mail-list .message-open > .avatar { display: none; }

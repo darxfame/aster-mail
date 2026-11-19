@@ -196,13 +196,7 @@ function applyTheme() {
   const palette = themePreferences.themes.find(theme => theme.base === state.theme && theme.id === themePreferences.selected[state.theme]);
   const base = state.theme;
   document.body.classList.toggle('dark', base === 'dark');
-  if (window.asterThemeSdk) {
-    document.body.classList.toggle('custom-theme', Boolean(palette));
-    for (const [role, token] of Object.entries(window.asterThemeSdk.tokens)) {
-      if (palette) document.body.style.setProperty(token, palette.colors[role]);
-      else document.body.style.removeProperty(token);
-    }
-  }
+  window.asterThemeSdk?.apply(document.body, palette?.colors);
   if (window.aster?.platform === 'win32') void api('setWindowTheme', { theme: base }).catch(showError);
 }
 let themePreferences = { themes: [], selected: { light: null, dark: null } }, themeRequest = 0;

@@ -22,6 +22,7 @@ test('tray snapshots preserve normal titles and previews and redact content whil
   const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
   let hidden = false;
   const context = vm.createContext({ require: name => require('../desktop/' + name), privacyState: () => ({ privacyActive: hidden }), tr: value => value, privacyHidden: () => hidden,
+    desktopAppearance: { palettes: {} },
     notificationSettings: { preview: false, interfaceScale: 1 }, client: {}, account: { server: 'https://mail.example.test' }, presentationMode: false,
     widgetEvents: [{ id: 'e', title: 'Secret title', body: 'Secret body', organizer: { name: 'Private person' }, joinUrl: 'https://meet.example.test/secret', start: '2026-11-02T10:00:00Z', end: '2026-11-02T11:00:00Z' }],
     upcomingMeetings: events => events, meetingLink: e => e.joinUrl, pollingRange: () => ({}), countdown: () => ({}), dismissedMeetings: new Set(), mailAlerts: [{id:'private-mail',subject:'Private mail subject'}], i18n: { language: 'ru' }, lastPoll: null, lastMailError: '', lastPollError: '', errorMessage: value => value });

@@ -20,6 +20,8 @@ const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
 const { ThemeStore } = require('./theme-store.cjs');
+const { tintIcon } = require('./appearance-icon.cjs');
+const iconPath = path.join(__dirname, '../assets/icon.png');
 const { WaitingReplies } = require('./waiting-replies.cjs');
 const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.cjs');
 const { fetchContentImage, fetchImageResponse } = require('./content-images.cjs');
@@ -247,6 +249,7 @@ let widgetWindow, widgetEvents = [], widgetDetail = null;
 let window, client, account, tray, createWindow, quitting = false;
 let unsavedChanges = false, resettingLocalData = false;
 let themeStore;
+const desktopAppearance = { palettes: {}, revision: 0, icon: null, iconKey: null, iconWindow: null };
 let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false, mailPolling = false;
 let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
@@ -385,6 +388,13 @@ async function resetLocalData() {
 }
 
 function notifyThemeChanged(disabledId) {
+  if (disabledId) {
+    ++desktopAppearance.revision;
+    for (const mode of ['light', 'dark']) {
+      if (desktopAppearance.palettes[mode]?.id === disabledId) delete desktopAppearance.palettes[mode];
+    }
+    refreshWidget();
+  }
   for (const target of [window, ...Array.from(composeWindows.entries.values(), entry => entry.window)]) {
     if (target && !target.isDestroyed() && !target.webContents.isDestroyed()) target.webContents.send('aster-theme-changed', disabledId);
   }
@@ -410,10 +420,28 @@ function widgetState() {
   const project = event => ({ id: event.id, title: hidden ? tr('Встреча') : event.title, preview: hidden ? '' : require('./protocol.cjs').mailPreview(event.preview || event.body || event.html || '', Boolean(!event.preview && !event.body && event.html)), start: event.start, end: event.end, allDay: event.allDay, cancelled: event.cancelled, response: event.response, isOrganizer: event.isOrganizer, joinUrl: !hidden && Boolean(meetingLink(event)) });
   const calendarEvents = widgetEvents.filter(event => !event.cancelled).map(project);
   const events = upcomingMeetings(calendarEvents).slice(0, 5);
-  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), workSchedule: notificationSettings.workSchedule, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme: notificationSettings.theme, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
+  const { theme } = notificationSettings;
+  return { connected: Boolean(client), secure: account?.server.startsWith('https:') !== false, events, calendarEvents, dismissedMeetings: hidden ? [] : [...dismissedMeetings], range: pollingRange(), countdown: countdown(events[0]), ...privacyState(), workSchedule: notificationSettings.workSchedule, interfaceScale: notificationSettings.interfaceScale, timeZone: notificationSettings.timeZone, theme, palette: desktopAppearance.palettes[theme]?.colors ?? null, language: i18n.language, debugErrors: notificationSettings.debugErrors, lastPoll, error: errorMessage(lastMailError || lastPollError, { debug: notificationSettings.debugErrors }) };
+}
+function updateNativeIcon(palette) {
+  const current = desktopAppearance;
+  const key = palette ? [palette.accentSurface, palette.accent, palette.text].join(':') : null;
+  if (current.iconKey !== key) {
+    const original = nativeImage.createFromPath(iconPath);
+    current.icon = palette ? tintIcon(nativeImage, original, palette) : original;
+    current.iconKey = key;
+    current.iconWindow = null;
+    app.dock?.setIcon(current.icon);
+    tray?.setImage(current.icon.resize({ width: 18, height: 18 }));
+  }
+  if (process.platform === 'win32' && current.icon && window && !window.isDestroyed() && current.iconWindow !== window) {
+    window.setIcon(current.icon);
+    current.iconWindow = window;
+  }
 }
 function refreshWidget(resetDay = false) {
   const state = widgetState();
+  updateNativeIcon(state.palette);
   if (tray) {
     const nearest = nearestMeetings(state.calendarEvents);
     const multiple = nearest.length > 1;
@@ -459,7 +487,7 @@ function notify(kind, title, body, navigation) {
   if (!Notification.isSupported()) { lastPollError = tr('Системные уведомления недоступны'); return false; }
   // Play our sound explicitly; system notification audio can be suppressed independently.
   const notification = new Notification({ title, body, silent: true,
-    timeoutType: kind === 'mail' ? 'never' : 'default', groupId: `aster-${kind}`, icon: path.join(__dirname, '../assets/icon.png'),
+    timeoutType: kind === 'mail' ? 'never' : 'default', groupId: `aster-${kind}`, icon: desktopAppearance.icon || iconPath,
   });
   if (activeNotifications.size >= 20) { const oldest = activeNotifications.values().next().value; oldest.close(); activeNotifications.delete(oldest); }
   activeNotifications.add(notification);
@@ -780,7 +808,9 @@ app.whenReady().then(async () => {
         };
         if (Object.keys(data).some(key => !['selected', 'sessionId'].includes(key)) ||
             composeEntry && data.selected !== undefined) throw new Error('Invalid theme preferences request');
-        guard(); await moduleProfile.initialize(guard);
+        guard();
+        const appearanceRevision = composeEntry ? null : ++desktopAppearance.revision;
+        await moduleProfile.initialize(guard);
         const catalog = await moduleHost.catalog(); guard();
         const available = () => {
           const enabled = moduleHost.records().filter(record => record.enabled);
@@ -800,9 +830,15 @@ app.whenReady().then(async () => {
         }
         const { light, dark } = await themeStore.read(); guard();
         const themes = available();
+        const selected = { light: valid(themes, 'light', light) ? light : null, dark: valid(themes, 'dark', dark) ? dark : null };
+        if (appearanceRevision === desktopAppearance.revision) {
+          desktopAppearance.palettes = Object.fromEntries(themes.filter(({ id, palette }) => selected[palette.base] === id)
+            .map(({ id, palette }) => [palette.base, { id, colors: palette.colors }]));
+          refreshWidget();
+        }
         return { ok: true, value: {
           themes: themes.map(({ id, name, palette }) => ({ id, name, ...palette })),
-          selected: { light: valid(themes, 'light', light) ? light : null, dark: valid(themes, 'dark', dark) ? dark : null },
+          selected,
         } };
       }
       if (operation === 'setWindowTheme') {
@@ -828,7 +864,12 @@ app.whenReady().then(async () => {
       }
       if (operation === 'resetLocalData') {
         const cleared = await resetLocalData();
-        if (cleared) notifyThemeChanged();
+        if (cleared) {
+          ++desktopAppearance.revision;
+          desktopAppearance.palettes = {};
+          refreshWidget();
+          notifyThemeChanged();
+        }
         return { ok: true, value: cleared };
       }
       if (operation === 'mcpState') return { ok: true, value: { enabled: mcpEnabled, changing: mcpChanging, configuration: mcpConfiguration(data.format), instructions: mcpAgentInstructions(data.format) } };
@@ -1147,7 +1188,7 @@ app.whenReady().then(async () => {
       return { ok: true };
     } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: notificationSettings.debugErrors }), userFacing: true }; }
   });
-  const image = nativeImage.createFromPath(path.join(__dirname, '../assets/icon.png')).resize({ width: 18, height: 18 });
+  const image = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 });
   tray = new Tray(image); tray.setToolTip(tr('Aster Mail · почта и встречи'));
   updateTrayMenu();
   if (process.platform === 'darwin') tray.on('right-click', () => tray.popUpContextMenu(trayMenuCurrent));

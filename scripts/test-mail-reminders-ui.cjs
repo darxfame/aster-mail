@@ -94,6 +94,7 @@ app.whenReady().then(async () => {
     // independent of successfully submitting a notification to Electron.
     const source = await fs.readFile(path.join(root, 'desktop/main.cjs'), 'utf8');
     const context = vm.createContext({ Notification, activeNotifications: notifications, tr: value => value, privacyHidden: () => false,
+      desktopAppearance: {}, iconPath: path.join(root, 'assets/icon.png'),
       notificationSettings: { sounds: false }, client: { syncId: 'fixture-session' }, lastPollError: '', path, __dirname: path.join(root, 'desktop'), reveal() {}, process, app });
     vm.runInContext(source.slice(source.indexOf('function notify('), source.indexOf('function closeMailReminderAlerts(')), context);
     const store = { data: {}, async save(patch, guard) { guard(); this.data = { ...this.data, ...patch }; } };

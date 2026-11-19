@@ -1,5 +1,5 @@
 // Exercise the real module/renderer lifecycle with synthetic data and an offline catalog.
-const { app, BrowserWindow, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, dialog, nativeImage, safeStorage, Tray } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -31,6 +31,22 @@ app.setPath('userData', profile);
 app.getVersion = () => require('../package.json').version;
 
 let window;
+let tray, trayImage, dockImage;
+const setTrayImage = Tray.prototype.setImage;
+Tray.prototype.setImage = function (image) {
+  tray = this;
+  trayImage = image;
+  return setTrayImage.call(this, image);
+};
+if (process.platform === 'darwin') {
+  const setDockIcon = app.dock.setIcon.bind(app.dock);
+  app.dock.setIcon = image => { dockImage = image; setDockIcon(image); };
+}
+function iconTile(image) {
+  const { width, height } = image.getSize();
+  const offset = (Math.floor(height * 0.15) * width + Math.floor(width / 2)) * 4;
+  return '#' + image.toBitmap().subarray(offset, offset + 3).reverse().toString('hex');
+}
 async function waitFor(check) {
   const end = Date.now() + 12000;
   while (Date.now() < end) {
@@ -64,6 +80,7 @@ app.on('browser-window-created', (_event, candidate) => {
         const themeId = JSON.stringify(manifest.id);
         const custom = 'document.body.classList.contains("custom-theme")';
         const accent = 'getComputedStyle(document.body).getPropertyValue("--accent").trim()';
+        const notice = () => js('getComputedStyle(document.querySelector(".mail-alert-heading")).color');
         await js("applyLanguage('ru'); settingsModal()");
         assert.equal(await js('state.account'), null);
         assert.equal(await js(`Boolean(${fields}.darkPalette || ${fields}.lightPalette)`), false);
@@ -87,6 +104,23 @@ app.on('browser-window-created', (_event, candidate) => {
         await js(`${fields}.theme.value = "dark"; ${fields}.darkPalette.value = ${themeId}; document.querySelector("#settings-form").requestSubmit()`);
         await wait(`!document.querySelector("#modal").open && ${custom}`);
         assert.equal(await js(accent), manifest.palette.colors.accent);
+        await js('renderMailAlerts([{ id: "fixture", title: "Sample message", body: "Fictional body" }])');
+        assert.equal(await notice(), 'rgb(121, 228, 206)');
+        await js('renderMailAlerts([])');
+        const originalIcon = nativeImage.createFromPath(path.join(root, 'assets/icon.png'));
+        const { tintIcon } = require('../desktop/appearance-icon.cjs');
+        const trayBitmap = image => image.resize({ width: 18, height: 18 }).toBitmap();
+        const expectedTray = trayBitmap(tintIcon(nativeImage, originalIcon, manifest.palette.colors));
+        await waitFor(() => trayImage && trayImage.toBitmap().equals(expectedTray));
+        if (process.platform === 'darwin') assert.equal(iconTile(dockImage), manifest.palette.colors.accentSurface);
+        tray.emit('click');
+        let widget;
+        await waitFor(() => {
+          widget = BrowserWindow.getAllWindows().find(candidate => candidate.webContents.getURL().endsWith('/widget.html'));
+          return widget && !widget.webContents.isLoading();
+        });
+        await waitFor(() => widget.webContents.executeJavaScript(`${accent} === ${JSON.stringify(manifest.palette.colors.accent)}`));
+        widget.hide();
         await js('document.querySelector("[data-action=theme]").click()');
         await wait(`state.theme === "light" && !${custom}`);
         assert.equal(await js(accent), '#7760d6');
@@ -125,6 +159,9 @@ app.on('browser-window-created', (_event, candidate) => {
         await js(`${configure}.click()`);
         await wait(`state.theme === "dark" && !${custom} && !${fields}.darkPalette`);
         assert.equal(await js(accent), '#ab92ee');
+        await waitFor(() => widget.webContents.executeJavaScript(`snapshot.theme === "dark" && ${accent} === "#ab92ee"`));
+        assert.ok(trayImage.toBitmap().equals(trayBitmap(originalIcon)));
+        if (process.platform === 'darwin') assert.equal(iconTile(dockImage), '#29283e');
         await waitFor(() => child.webContents.executeJavaScript(`state.theme === "dark" && ${accent} === "#ab92ee"`));
         child.destroy();
 

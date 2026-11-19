@@ -9,8 +9,9 @@ test('widget keeps three readable cards and expands remaining simultaneous meeti
   const handlers = {}, calls = [];
   const context = vm.createContext({ tr: value => value, Date: class extends Date { static now() { return now; } },
     window: { asterWorkSchedule: require('../src/work-schedule.js'), asterTime: require('../src/time.js'), asterEvents: E, asterCalendarLayout: require('../src/calendar-layout.js'),
+      asterThemeSdk: require('../src/theme-sdk.js'),
       asterI18n: { language: 'ru', setLanguage() {} }, asterWidget: { onUpdate() {}, state: () => new Promise(() => {}), action: async (...args) => { calls.push(args); return { ok: true }; } } },
-    document: { querySelector: key => nodes[key], body: { classList: { toggle() {} } }, addEventListener: (type, callback) => { handlers[type] = callback; } }, setInterval() {},
+    document: { querySelector: key => nodes[key], body: { classList: { toggle() {} }, style: { removeProperty() {} } }, addEventListener: (type, callback) => { handlers[type] = callback; } }, setInterval() {},
   });
   vm.runInContext(fs.readFileSync(require.resolve('../src/widget.js'), 'utf8'), context);
   const events = Array.from({ length: 7 }, (_, index) => ({ id: `event-${index}`, title: `Meeting ${index}`, start: '2026-10-30T08:30:00Z', end: `2026-10-30T${index % 2 ? '10' : '09'}:30:00Z`, joinUrl: `https://calls.example.com/${index}` }));
@@ -41,6 +42,7 @@ test('menu bar identifies all concurrent meetings instead of choosing one ending
   const events = ['one', 'two'].map((id, index) => ({ id, title: `Meeting ${id}`, start: new Date(now - (index + 1) * 60000).toISOString(), end: new Date(now + (index + 1) * 60000).toISOString() }));
   let title, tooltip;
   const context = vm.createContext({ tr: value => value, process: { platform: 'darwin' }, client: {}, widgetWindow: null,
+    updateNativeIcon() {},
     nearestMeetings: values => E.nearestMeetings(values, now), widgetState: () => ({ events, calendarEvents: events, countdown: E.countdown(events[0], now) }),
     tray: { setTitle: value => { title = value; }, setToolTip: value => { tooltip = value; } },
   });

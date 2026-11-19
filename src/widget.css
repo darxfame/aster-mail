@@ -66,8 +66,8 @@ body.dark {
 }
 .widget-shell {
   padding: 8px; gap: 8px;
-  background: radial-gradient(ellipse at 0 0, #a58adf20, transparent 65%),
-    radial-gradient(ellipse at 100% 0, #9bbfd51a, transparent 60%), var(--bg);
+  background: radial-gradient(ellipse at 0 0, var(--widget-glow, #a58adf20), transparent 65%),
+    radial-gradient(ellipse at 100% 0, var(--widget-glow-alt, #9bbfd51a), transparent 60%), var(--bg);
 }
 header {
   background: var(--surface); color: var(--text);
@@ -110,3 +110,11 @@ footer { padding: 3px 4px; border-color: transparent; }
 .featured .featured-heading .actions .join { color:var(--accent); }
 .featured .featured-heading .actions button:hover { background:var(--soft); color:var(--accent); }
 .featured-heading .actions[hidden] { display:none; }
+
+body.custom-theme {
+  --soft: var(--accent-bg);
+  --widget-edge: var(--line);
+  --widget-glass: color-mix(in srgb, var(--surface) 78%, transparent);
+  --widget-glow: color-mix(in srgb, var(--accent) 13%, transparent);
+  --widget-glow-alt: color-mix(in srgb, var(--accent) 8%, transparent);
+}

@@ -78,10 +78,12 @@ test('reminder notifications use existing mail sound and reject clicks from reti
     show() {}
   }
   const context = vm.createContext({ tr: value => value, Notification, privacyHidden: () => false, notificationSettings: { sounds: true }, activeNotifications: new Set(), client: { syncId: 'alice' },
+    desktopAppearance: { icon: 'themed-icon' }, iconPath: 'standard-icon',
     reveal: value => navigation.push(value), process: { platform: 'win32' }, path: require('node:path'), __dirname: '/fixture', window: { isDestroyed: () => false, webContents: { send: (...args) => sounds.push(args) } } });
   vm.runInContext(source.slice(source.indexOf('function notify('), source.indexOf('function closeMailReminderAlerts(')), context);
   assert.equal(context.notify('mail-reminder', 'Generic reminder', 'Open reminder list', { view: 'mail', mailReminders: true, sessionId: 'alice' }), true);
   assert.deepEqual(sounds, [['aster-sound', 'mail']]); assert.equal(notes[0].silent, true);
+  assert.equal(notes[0].icon, 'themed-icon');
   listeners.click(); assert.equal(navigation.length, 1); context.client.syncId = 'bob'; listeners.click(); assert.equal(navigation.length, 1);
 });
 

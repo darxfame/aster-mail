@@ -37,6 +37,21 @@ app.whenReady().then(async () => {
       };
       window.selectionKey = (key, shiftKey = true) => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true })); void 0;`);
     assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden]), .mail-selection-bar").length'), 0);
+    await js('selectionButtons()[0].parentElement.classList.add("selected"); selectionButtons()[0].focus()');
+    function tab(modifiers = []) {
+      for (const type of ['keyDown', 'keyUp']) window.webContents.sendInputEvent({ type, keyCode: 'Tab', modifiers });
+    }
+    tab();
+    await waitFor('document.activeElement.matches(".message-quick-actions button:focus-visible")');
+    assert.equal(await js('getComputedStyle(selectionButtons()[0].parentElement).outlineStyle'), 'none');
+    assert.equal(await js('getComputedStyle(document.activeElement).outlineStyle'), 'solid');
+    tab(['shift']);
+    await waitFor('document.activeElement === selectionButtons()[0] && document.activeElement.matches(":focus-visible")');
+    assert.deepEqual(await js(`(() => {
+      const button = selectionButtons()[0], row = getComputedStyle(button.parentElement);
+      return [getComputedStyle(button).outlineStyle, row.outlineStyle, row.outlineOffset, parseFloat(row.borderRadius) > 0];
+    })()`), ['none', 'solid', '-2px', true], 'Keyboard focus follows the rounded row, including its quick actions');
+    await js('selectionButtons()[0].parentElement.classList.remove("selected")');
     await js(`selectionButtons()[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true, clientX:400, clientY:300 }))`);
     assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden])").length'), 0, 'Opening the menu alone leaves checkboxes hidden');
     await js('document.querySelector("[data-mail-context=select]").click()');

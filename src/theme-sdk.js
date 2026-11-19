@@ -33,7 +33,15 @@
     return { base: input.base, colors };
   }
 
-  const sdk = Object.freeze({ tokens, normalize });
+  function apply(element, palette) {
+    element.classList.toggle('custom-theme', Boolean(palette));
+    for (const [role, token] of Object.entries(tokens)) {
+      if (palette) element.style.setProperty(token, palette[role]);
+      else element.style.removeProperty(token);
+    }
+  }
+
+  const sdk = Object.freeze({ tokens, normalize, apply });
   if (typeof module === 'object') module.exports = sdk;
   else window.asterThemeSdk = sdk;
 })();
