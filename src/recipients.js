@@ -266,7 +266,7 @@
     }
   };
   const inputs = new WeakMap(); let nextId = 0, activeInput = null;
-  const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#event-form input[data-participant-target],#meeting-message-form input[name="to"],#compose-form input[data-participant-target],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"]') && !input.disabled;
+  const eligible = input => input.matches('#event-form input[name="attendees"],#event-form input[name="optionalAttendees"],#event-form input[data-participant-target],#meeting-message-form input[name="to"],#compose-form input[data-participant-target],#compose-form input[name="to"],#compose-form input[name="cc"],#compose-form input[name="bcc"],#settings-panel-rules [data-rule-row="sender"]:not([hidden]) input[name="ruleSender"]') && !input.matches(':disabled');
   function setup(input) {
     if (inputs.has(input)) return inputs.get(input);
     const box = document.createElement('div'); box.className = 'recipient-suggestions'; box.id = `recipients-${++nextId}`; box.setAttribute('role', 'listbox'); box.setAttribute('aria-label', tr('Подсказки участников')); box.hidden = true;

@@ -925,6 +925,8 @@ function selectSettingsTab(selected) {
   if (panels) panels.scrollTop = 0;
   const autoRepliesSave = form.querySelector('#auto-replies-save');
   const settingsSave = form.querySelector('.settings-footer [type="submit"]');
+  const ruleSave = form.querySelector('[data-rule-save]');
+  if (ruleSave) ruleSave.hidden = selected.id !== 'settings-tab-rules' || ruleSave.dataset.editing !== 'true';
   if (autoRepliesSave) autoRepliesSave.hidden = selected.id !== 'settings-tab-auto-replies';
   if (settingsSave) settingsSave.hidden = ['settings-tab-auto-replies', 'settings-tab-mcp', 'settings-tab-rules'].includes(selected.id);
   for (const tab of form.querySelectorAll('[role="tab"]')) {
@@ -1046,7 +1048,7 @@ async function settingsModal() {
     <button class="secondary" type="button" data-action="updates">${tr("Обновления Aster Mail")}</button>
     </section>
     </div>
-    <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
+    <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button type="button" class="primary" data-rule-save disabled hidden>${tr('Сохранить правило в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
   $('.settings-section-picker').addEventListener('change', event => selectSettingsTab(document.getElementById(event.target.value)));
   receivePresentation(p);

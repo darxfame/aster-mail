@@ -195,15 +195,41 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .day-footer { display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6; }
 @container(max-width:520px) { .day-columns{grid-template-columns:1fr;gap:24px}.day-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.day-stats>div{display:grid}.day-stats strong{font-size:18px}.day-stats span{display:block;font-size:11px}.day-stats small{font-size:10px}.day-mail-meta{flex-wrap:wrap;gap:4px} }
 
-[data-rules-editor]{border:0;border-top:1px solid var(--line);padding:8px 0 0;margin:18px 0 0;min-width:0}
-[data-rules-editor] legend{padding-inline-end:8px;font-weight:600;overflow-wrap:anywhere}
-[data-rules-list]{display:grid;gap:6px;margin-top:12px}
-[data-rules-list] button{justify-content:space-between;flex-wrap:wrap;white-space:normal;overflow-wrap:anywhere;text-align:left}
-[data-rules-list] button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
-[data-rules-list] button>span{color:var(--muted)}
-.rules-actions{display:flex;flex-wrap:wrap;gap:8px}
-.rule-details{font-size:12px;overflow-wrap:anywhere}
-.rule-details dd{color:var(--muted);margin:3px 0 10px}
+#settings-panel-rules { container-type: inline-size; }
+.rules-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+[data-rules-list] { display: grid; gap: 6px; margin-block: 12px; }
+[data-rules-list] button { justify-content: space-between; flex-wrap: wrap; white-space: normal; overflow-wrap: anywhere; text-align: start; padding: 10px 12px; }
+[data-rules-list] button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); }
+[data-rules-list] button > span { color: var(--muted); }
+.rules-detail { margin-block: 12px; }
+[data-rules-status]:empty, #settings-panel-rules > .form-error:empty { display: none; }
+.rules-back { margin-block-end: 12px; }
+[data-rules-editor] { border: 0; padding: 0; margin: 0; min-width: 0; }
+[data-rules-editor] legend { padding: 0; margin-block-end: 4px; font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
+.rule-basics { display: grid; grid-template-columns: minmax(0, 1fr) minmax(84px, max-content) auto; gap: 0 12px; align-items: end; }
+.rule-basics > .checkbox { align-self: end; min-height: 32px; margin: 0 0 8px; }
+.rule-section { margin-block: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface2); }
+.rule-section header h4 { margin: 0; font-size: 13px; }
+.rule-section .form-note { margin: 3px 0 8px; }
+.rule-rows { display: grid; gap: 7px; }
+.rule-row { padding: 5px 8px 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.rule-row-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; }
+.rule-row-heading .icon-button { width: 28px; height: 28px; flex: 0 0 28px; }
+.rule-row-heading .icon-button svg { width: 14px; height: 14px; }
+.rule-row .field { margin: 4px 0; min-width: 0; }
+.rule-row .field textarea { min-height: 48px; }
+.rules-senders { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.rules-senders .checkbox { margin: 4px 0; padding: 4px 8px; border-radius: 7px; background: var(--accent-bg); overflow-wrap: anywhere; }
+.rule-section select[data-rule-add] { margin-block-start: 8px; max-width: 100%; padding: 6px 8px; font-size: 11px; color: var(--accent); }
+.rules-stop { margin: 12px 0; }
+.rules-save-actions { justify-content: flex-end; padding-block: 8px; border-block-start: 1px solid var(--line); }
+.rule-details { font-size: 12px; overflow-wrap: anywhere; }
+.rule-details dd { color: var(--muted); margin: 3px 0 10px; }
+@container (max-width: 380px) {
+  .rule-basics { grid-template-columns: minmax(0, 1fr) auto; }
+  .rule-basics > .field:first-child { grid-column: 1 / -1; }
+  .rule-section { padding: 8px; }
+}
 
 .day-columns[data-single="true"] { grid-template-columns: minmax(0, 1fr); }
 .day-personal-note { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); margin: 0 0 14px; line-height: 1.55; }
