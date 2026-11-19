@@ -43,12 +43,17 @@ app.whenReady().then(async () => {
     await waitFor('Boolean(document.querySelector("#signature-preview iframe")?.contentDocument?.querySelector("[title=hex]"))');
     assert.equal(await js(`document.querySelector('#signature-preview iframe').contentDocument.querySelector('[title=hex]').style.color`), 'rgb(32, 32, 32)', 'Light mode retains the original color');
     assert.equal(await js('fixtureSignature.html'), html);
-    // Original mail colors belong to the message, even in a dark application.
+    // Outlook-style white text blocks follow the dark reader without editing the message.
     await js(`setModalDirty(false);document.querySelector('#modal').close();state.theme='dark';document.body.classList.add('dark');state.messages[0].html=${JSON.stringify(html)};state.messages[0].meeting=null;openMessage(state.messages[0].id)`);
     await waitFor('Boolean(document.querySelector("#message-body iframe")?.contentDocument?.querySelector("[title=hex]"))');
-    assert.equal(await js(`(()=>{const frame=document.querySelector('#message-body iframe');return frame.contentWindow.getComputedStyle(frame.contentDocument.body).backgroundColor;})()`), 'rgba(0, 0, 0, 0)', 'Only the authored box is white; the frame stays transparent');
-    assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('[title=hex]').style.color`), 'rgb(32, 32, 32)', 'Mail keeps authored text colors');
-    assert.equal(await js(`document.querySelector('#message-body iframe').contentDocument.querySelector('div').style.backgroundColor`), 'white', 'Mail keeps authored backgrounds');
+    const colors = selector => js(`(() => {
+      const frame = document.querySelector('#message-body iframe');
+      const style = frame.contentWindow.getComputedStyle(frame.contentDocument.querySelector(${JSON.stringify(selector)}));
+      return [style.backgroundColor, style.color];
+    })()`);
+    assert.deepEqual(await colors('body'), ['rgba(0, 0, 0, 0)', 'rgb(236, 238, 242)']);
+    assert.deepEqual(await colors('div'), await colors('body'), 'White text blocks use the dark reader surface');
+    assert.deepEqual(await colors('[title=hex]'), await colors('body'), 'Dark original text inherits readable color');
     assert.equal(await js('state.messages[0].html'), html, 'Viewing must not rewrite the original message');
     await fs.writeFile(path.join(output,'dark-mail.png'),(await window.webContents.capturePage()).toPNG());
     await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<p>Fictional image failure</p><img src="https://images.example.test/logo.png">',{dark:true,title:'Fictional image',loadImages:async()=>({images:{},errors:{'https://images.example.test/logo.png':'Неподдерживаемый адрес изображения'}}),openLink(){}})`);
@@ -70,10 +75,24 @@ app.whenReady().then(async () => {
     await waitFor('document.querySelector("#message-body iframe")?.contentDocument?.querySelector("p")?.textContent==="Short text without background"');
     await new Promise(resolve=>setTimeout(resolve,60));
     assert.equal(await js(`(()=>{const f=document.querySelector('#message-body iframe'),v=f.contentWindow;return v.getComputedStyle(f.contentDocument.body).backgroundColor==='rgba(0, 0, 0, 0)' && v.getComputedStyle(f.contentDocument.querySelector('p')).color===v.getComputedStyle(f.contentDocument.body).color && f.offsetHeight<100;})()`),true,'Unstyled HTML follows the theme and fits its content');
-    await js(`window.asterRichContent.render(document.querySelector('#message-body'),'<html><body bgcolor="#ffffff"><table style="width:100%"><tr><td>Full width table</td></tr></table></body></html>',{dark:true,title:'Authored background',openLink(){}})`);
-    await waitFor('document.querySelector("#message-body iframe")?.contentDocument?.querySelector("td")?.textContent==="Full width table"');
-    assert.equal(await js(`(()=>{const f=document.querySelector('#message-body iframe'),d=f.contentDocument;return f.contentWindow.getComputedStyle(d.body).backgroundColor==='rgb(255, 255, 255)' && Math.abs(d.querySelector('table').getBoundingClientRect().width-d.body.clientWidth)<2;})()`),true,'Explicit body backgrounds and full-width table layouts are preserved');
-    await fs.writeFile(path.join(output,'authored-background.png'),(await window.webContents.capturePage()).toPNG());
-    console.log('PASS: dark signature contrast for hex/named/HSL/alpha/nested/legacy colors, preserved emphasis/transparency, light colors and original outgoing markup.');
-  } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
+    const table = '<html><body bgcolor="#ffffff"><table style="width:100%"><tr><td title="paper" style="background:#f5f5f5;color:#222">Full width table</td></tr>'
+      + '<tr><td title="tint" bgcolor="#fff0b0" style="color:#222"><span title="inside" style="background:rgba(255,255,255,.9);color:#222">Tinted section</span></td></tr></table></body></html>';
+    for (const dark of [true, false]) {
+      await js(`window.asterRichContent.render(document.querySelector('#message-body'), ${JSON.stringify(table)}, { dark: ${dark}, title: 'Authored backgrounds', openLink(){} })`);
+      await waitFor('document.querySelector("#message-body iframe")?.contentDocument?.querySelector("td")?.textContent==="Full width table"');
+      assert.deepEqual(await colors('[title=paper]'), dark ? await colors('body') : ['rgb(245, 245, 245)', 'rgb(34, 34, 34)']);
+      assert.deepEqual(await colors('[title=tint]'), ['rgb(255, 240, 176)', 'rgb(34, 34, 34)']);
+      assert.deepEqual(await colors('[title=inside]'), [dark ? 'rgba(0, 0, 0, 0)' : 'rgba(255, 255, 255, 0.9)', 'rgb(34, 34, 34)']);
+      assert.equal((await colors('body'))[0], dark ? 'rgba(0, 0, 0, 0)' : 'rgb(255, 255, 255)');
+      assert.equal(await js(`(() => { const d = document.querySelector('#message-body iframe').contentDocument; return Math.abs(d.querySelector('table').getBoundingClientRect().width - d.body.clientWidth) < 2; })()`), true, 'Full-width table layout is preserved');
+      if (dark) await fs.writeFile(path.join(output,'authored-background.png'),(await window.webContents.capturePage()).toPNG());
+    }
+    console.log('PASS: signature contrast, dark-mode white HTML backgrounds, original light-mode colors, tinted sections, table layout and unsaved display changes.');
+  } finally {
+    window?.destroy();
+    // Chromium can hold the temporary profile until Electron exits on Windows.
+    await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }).catch(error => {
+      if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(error.code)) throw error;
+    });
+  }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

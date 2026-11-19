@@ -34,14 +34,13 @@
       ADD_DATA_URI_TAGS: ['img'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
     });
     const doc = new DOMParser().parseFromString(safe, 'text/html');
-    let originalColor = '';
+    let originalColor = '', originalBackground = '';
     if (wholeDocument) {
       originalColor = doc.body.style.color || doc.body.getAttribute('color') || '';
-      const background = doc.body.style.backgroundColor || doc.body.getAttribute('bgcolor') || doc.documentElement.style.backgroundColor || doc.documentElement.getAttribute('bgcolor') || '';
+      originalBackground = doc.body.style.backgroundColor || doc.body.getAttribute('bgcolor') || doc.documentElement.style.backgroundColor || doc.documentElement.getAttribute('bgcolor') || '';
       for (const node of [doc.documentElement, doc.body]) {
         for (const attr of ['style', 'color', 'bgcolor']) node.removeAttribute(attr);
       }
-      if (styleAllowed('background-color', background)) doc.body.style.backgroundColor = background;
     }
     const canvas = dark || preserveBackgrounds ? document.createElement('canvas') : null;
     if (canvas) canvas.width = canvas.height = 1;
@@ -50,6 +49,13 @@
       colors.clearRect(0, 0, 1, 1); colors.fillStyle = '#000'; colors.fillStyle = value; colors.fillRect(0, 0, 1, 1);
       return colors.getImageData(0, 0, 1, 1).data;
     };
+    const isNearWhiteBackground = value => {
+      if (!dark || !preserveBackgrounds || !value) return false;
+      const [red, green, blue, alpha] = rgba(value);
+      const darkest = Math.min(red, green, blue);
+      return alpha >= 192 && darkest >= 230 && Math.max(red, green, blue) - darkest <= 16;
+    };
+    if (styleAllowed('background-color', originalBackground) && !isNearWhiteBackground(originalBackground)) doc.body.style.backgroundColor = originalBackground;
     const surfaceFor = node => {
       let surface = dark ? darkSurface : [255, 255, 255];
       const parents = []; for (let parent = node; parent; parent = parent.parentElement) parents.unshift(parent);
@@ -73,6 +79,8 @@
       if (node.tagName === 'IMG' && isTrackingImage(node.getAttribute('src'))) { node.remove(); return; }
       if (node.hasAttribute('color')) node.style.color = node.getAttribute('color');
       if (node.hasAttribute('bgcolor')) node.style.backgroundColor = node.getAttribute('bgcolor');
+      // Drop near-white fills before checking foreground contrast against the remaining surface.
+      if (isNearWhiteBackground(node.style.backgroundColor)) node.style.removeProperty('background-color');
       if (node.hasAttribute('face')) node.style.fontFamily = node.getAttribute('face');
       if (node.hasAttribute('size')) node.style.fontSize = ({ 1:'10px', 2:'13px', 3:'16px', 4:'18px', 5:'24px', 6:'32px', 7:'48px' })[node.getAttribute('size')] || '';
       if (node.hasAttribute('align')) node.style.textAlign = node.getAttribute('align');
@@ -117,6 +125,9 @@
     // Scripts remain forbidden by both sandbox and CSP; same-origin lets the parent attach listeners.
     frame.setAttribute('sandbox', 'allow-same-origin');
     frame.style.height = '1px'; frame.style.minHeight = '0'; frame.style.background = 'transparent';
+    // Chromium can paint an opaque default canvas when the frame and its document disagree.
+    const scheme = dark ? 'only dark' : 'only light';
+    frame.style.colorScheme = scheme;
     frame.addEventListener('load', async () => {
       const body = frame.contentDocument?.body; if (!body) return;
       const resize = () => { if (frame.isConnected && frame.getClientRects().length) frame.style.height = `${Math.max(1, Math.ceil(body.getBoundingClientRect().height) + 8)}px`; };
@@ -160,7 +171,7 @@
     });
     const background = adaptToTheme ? dark ? `rgb(${darkSurface.join(',')})` : '#ffffff' : doc.body.style.backgroundColor || 'transparent';
     const text = doc.body.style.color || (dark ? '#eceef2' : '#4d5063'), line = dark ? '#49494d' : '#e4e4eb';
-    frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}html{background:transparent}body{background:${background};color:${text};margin:0}body{display:flow-root;font:13px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}body *{box-sizing:border-box;max-width:100%}a[href]{color:inherit!important;text-decoration:underline;cursor:pointer}img{max-width:100%;height:auto;object-fit:contain}.aster-image-unavailable{display:inline-block!important;font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif!important;letter-spacing:normal!important;word-spacing:normal!important;white-space:normal!important;color:${text}!important;background:${background}!important;padding:4px 8px!important;border:1px solid ${line}!important;border-radius:4px;max-width:100%}table{border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}td,th{padding:5px;border-color:${line}!important}p{margin:0 0 16px}pre{white-space:pre-wrap}blockquote{border-left:2px solid ${line};padding-left:14px}ul,ol{padding-left:24px}</style></head><body>${doc.body.innerHTML}</body></html>`;
+    frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>:root{color-scheme:${scheme};background:transparent}body{background:${background};color:${text};margin:0}body{display:flow-root;font:13px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}body *{box-sizing:border-box;max-width:100%}a[href]{color:inherit!important;text-decoration:underline;cursor:pointer}img{max-width:100%;height:auto;object-fit:contain}.aster-image-unavailable{display:inline-block!important;font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif!important;letter-spacing:normal!important;word-spacing:normal!important;white-space:normal!important;color:${text}!important;background:${background}!important;padding:4px 8px!important;border:1px solid ${line}!important;border-radius:4px;max-width:100%}table{border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}td,th{padding:5px;border-color:${line}!important}p{margin:0 0 16px}pre{white-space:pre-wrap}blockquote{border-left:2px solid ${line};padding-left:14px}ul,ol{padding-left:24px}</style></head><body>${doc.body.innerHTML}</body></html>`;
     target.replaceChildren(frame);
   }
   root.asterRichContent = { render, sanitize };

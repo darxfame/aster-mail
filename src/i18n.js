@@ -1501,7 +1501,7 @@
   english["Искать по"] = "Search by";
   english["Текст письма"] = "Message text";
   english["От кого"] = "From";
-  english["Поиск в выбранной папке"] = "Search in the selected folder";
+  english["Поиск в папке"] = "Search this folder";
   english["Удалить условие"] = "Remove condition";
   english["Нажмите, чтобы исправить email."] = "Click to edit the email address.";
   english["Удалить адресата"] = "Remove recipient";

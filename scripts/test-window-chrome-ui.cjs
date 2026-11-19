@@ -48,19 +48,42 @@ app.whenReady().then(async () => {
           await js('renderSidebar()');
           assert.equal(await js("getComputedStyle(document.querySelector('.sidebar')).backgroundColor"), 'rgba(0, 0, 0, 0)');
           assert.equal(await js("getComputedStyle(document.querySelector('.sidebar')).borderTopColor"), 'rgba(0, 0, 0, 0)');
-          const layout = await js(`(()=>{const bar=document.querySelector('.topbar'),r=bar.getBoundingClientRect();return {right:r.right,top:r.top,bottom:r.bottom,height:r.height,viewport:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth+1,buttons:[...bar.children].every(el=>el.getBoundingClientRect().right<=r.right+1),drag:getComputedStyle(bar).webkitAppRegion,noDrag:getComputedStyle(document.querySelector('#quick-create')).webkitAppRegion};})()`);
+          const layout = await js(`(() => {
+            const bar = document.querySelector('.topbar'), rect = bar.getBoundingClientRect();
+            const children = [...bar.children].map(el => el.getBoundingClientRect()).filter(rect => rect.width);
+            return { right: rect.right, top: rect.top, viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth + 1,
+              actionsRight: Math.max(...children.map(rect => rect.right)),
+              drag: getComputedStyle(bar).webkitAppRegion, noDrag: getComputedStyle(document.querySelector('#quick-create')).webkitAppRegion };
+          })()`);
           assert.equal(layout.top, 10, 'No separate title row or extra top padding');
           assert.equal(layout.overflow, false, `${theme} ${width}/${zoom} overflow`);
-          assert.equal(layout.buttons, true, `${theme} ${width}/${zoom} toolbar`);
+          assert.ok(layout.actionsRight <= layout.right + 1, `${theme} ${width}/${zoom} toolbar`);
+          assert.ok(layout.right >= layout.viewport - 11, 'The toolbar surface spans the window');
           assert.equal(layout.drag, 'drag'); assert.equal(layout.noDrag, 'no-drag');
           if (process.platform === 'win32') {
             const safe = await js('(()=>{const r=navigator.windowControlsOverlay.getTitlebarAreaRect();return {x:r.x,width:r.width}})()');
-            assert.ok(layout.right <= safe.x + safe.width + 1, 'No action underneath native controls');
-          } else assert.ok(layout.right <= layout.viewport - 138 / zoom, 'Preview reserves the native control area');
+            assert.ok(layout.actionsRight <= safe.x + safe.width + 1, 'No action underneath native controls');
+          } else assert.ok(layout.actionsRight <= layout.viewport - 138 / zoom, 'Preview reserves the native control area');
         }
         if (width === 1440 && zoom === 1) {
           await js("document.body.classList.remove('sidebar-collapsed');renderSidebar();openMessage(state.messages[0].id)");
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await waitFor('document.querySelector(".email-frame")?.offsetHeight > 8');
+          assert.equal(await js('document.fonts.ready.then(() => [...document.fonts].some(font => font.family === "Inter" && font.status === "loaded"))'), true, 'The shared UI font is loaded');
+          const mail = await js(`(() => {
+            const recipients = document.querySelector('.mail-recipients');
+            const list = recipients.querySelector('.mail-recipient-list');
+            const hidden = !list.getClientRects().length;
+            recipients.querySelector('summary').click();
+            const visible = list.getClientRects().length > 0;
+            recipients.querySelector('summary').click();
+            const frame = document.querySelector('.email-frame'), inner = frame.contentDocument.documentElement;
+            return { hidden, visible, closedAgain: !list.getClientRects().length,
+              outerScheme: getComputedStyle(frame).colorScheme, innerScheme: frame.contentWindow.getComputedStyle(inner).colorScheme,
+              background: frame.contentWindow.getComputedStyle(inner).backgroundColor };
+          })()`);
+          assert.deepEqual(mail, { hidden: true, visible: true, closedAgain: true,
+            outerScheme: `${theme} only`, innerScheme: `${theme} only`, background: 'rgba(0, 0, 0, 0)' });
+          await new Promise(resolve => setTimeout(resolve, 200));
           await fs.writeFile(path.join(output, `windows-${theme}.png`), (await window.webContents.capturePage()).toPNG());
         }
       }
@@ -68,20 +91,28 @@ app.whenReady().then(async () => {
     // A blurred toolbar is a stacking context: its directory popup must remain
     // above the contacts container, including its clickable actions.
     window.setSize(1280, 940); window.webContents.setZoomFactor(1);
+    await waitFor('Math.abs(innerWidth - 1280) < 2');
     await js("document.documentElement.style.setProperty('--interface-scale','1');state.view='contacts';state.query='';loadView();document.querySelector('#demo-banner').hidden=true");
     for (const theme of ['light', 'dark']) {
       await js(`state.theme=${JSON.stringify(theme)};applyTheme();(()=>{const input=document.querySelector('#search');input.focus();input.value='example';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-      await waitFor("!document.querySelector('#people-search-suggestions').hidden && Boolean(document.querySelector('[data-person-pin]'))");
-      const point = await js(`(()=>{const button=[...document.querySelectorAll('[data-person-pin]')].at(-1),r=button.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,top:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('[data-person-pin]')===button};})()`);
-      assert.equal(point.top, true, `${theme}: directory actions must be above the contacts surface`);
+      await waitFor("!document.querySelector('#people-search-suggestions').hidden && Boolean(document.querySelector('[data-person-pin]')) && !document.querySelector('#people-search-suggestions .recipient-note')");
+      const point = await js(`(() => {
+        const button = [...document.querySelectorAll('[data-person-pin]')].at(-1);
+        button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        const r = button.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return { x, y, hit: hit?.className, top: hit?.closest('[data-person-pin]') === button };
+      })()`);
       await new Promise(resolve => setTimeout(resolve, 100));
       await fs.writeFile(path.join(output, `contacts-search-${theme}.png`), (await window.webContents.capturePage()).toPNG());
+      assert.equal(point.top, true, `${theme}: directory actions must be above the contacts surface at ${JSON.stringify(point)}`);
       await js("document.querySelector('#search').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
       assert.equal(await js("document.querySelector('#people-search-suggestions').hidden"), true);
     }
     await js("(()=>{const input=document.querySelector('#search');input.value='Ирина';input.dispatchEvent(new Event('input',{bubbles:true}));})()");
     await waitFor("Boolean(document.querySelector('[data-person-pin]:not(:disabled)')) && !document.querySelector('#people-search-suggestions').hidden");
     const pin = await js("(()=>{const r=document.querySelector('[data-person-pin]:not(:disabled)').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()");
+    window.focus();
     window.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', x: Math.round(pin.x), y: Math.round(pin.y), clickCount: 1 });
     window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', x: Math.round(pin.x), y: Math.round(pin.y), clickCount: 1 });
     await waitFor("Boolean(document.querySelector('[data-person-pin]:disabled'))");

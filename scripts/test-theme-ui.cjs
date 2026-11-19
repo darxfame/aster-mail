@@ -135,6 +135,18 @@ app.on('browser-window-created', (_event, candidate) => {
         await wait(custom);
         await js('openMessage(state.messages[0].id)');
         await wait('document.querySelector("#reader iframe")?.offsetHeight > 30');
+        const folderHoverColor = `rgb(${manifest.palette.colors.accentSurface.slice(1).match(/../g).map(channel => parseInt(channel, 16)).join(', ')})`;
+        window.focus();
+        for (const selector of ['#sidebar .folder.active', '#sidebar .folder:not(.active)']) {
+          const point = await js(`(() => {
+            const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+            return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+          })()`);
+          contents.sendInputEvent({ type: 'mouseMove', ...point });
+          const hovered = `document.querySelector(${JSON.stringify(selector + ':hover')})`;
+          await wait(`Boolean(${hovered})`);
+          assert.equal(await js(`getComputedStyle(${hovered}).backgroundColor`), folderHoverColor, selector);
+        }
         await screenshot('palette-module-mail');
         await js('settingsModal()');
         assert.equal(await js('getComputedStyle(document.querySelector("#modal"), "::backdrop").backdropFilter.includes("12px")'), true);

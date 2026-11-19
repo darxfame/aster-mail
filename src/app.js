@@ -371,7 +371,7 @@ function renderSidebar() {
   create.innerHTML = `${icon('plus')}<span>${{ mail: tr('Написать'), calendar: tr('Встреча'), contacts: tr('Контакт') }[state.view]}</span>`;
   create.setAttribute('aria-label', { mail: tr('Написать'), calendar: tr('Создать встречу'), contacts: tr('Новый контакт') }[state.view]);
   document.body.classList.toggle('mail-view', isMail);
-  $('#search').placeholder = { mail: tr('Поиск в выбранной папке'), calendar: tr('Поиск по календарю'), contacts: tr('Поиск людей в Exchange') }[state.view];
+  $('#search').placeholder = { mail: tr('Поиск в папке'), calendar: tr('Поиск по календарю'), contacts: tr('Поиск людей в Exchange') }[state.view];
   renderMailSearchControls();
   renderConnection();
   $('#demo-banner').hidden = !state.demo;

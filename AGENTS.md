@@ -13,6 +13,12 @@ explicit demo data. `test/` contains Node.js tests, `assets/` contains the origi
 app mark, and `scripts/` contains development utilities. Generated bundles go in
 ignored `release/`.
 
+Apply shared features, fixes, and UI changes to both macOS and Windows in the
+same change. Prefer shared code and styles so behavior and appearance stay in
+sync. A change may target only one platform when it addresses a platform-specific
+issue or native integration. Keep that exception scoped and state which platform
+it affects.
+
 `desktop/folder-actions.cjs` performs folder changes: protect system folders by identity, suppress read receipts for bulk reads, and move removed folders to Deleted Items without permanent deletion or mutation retries.
 
 `desktop/mail-cache.cjs` caches mail in account-local memory only; never persist payloads, cache failed reads, or let an old in-flight read repopulate an invalidated cache. Background mail polls bypass TTL and publish account-session-scoped inbox snapshots.
@@ -97,6 +103,11 @@ user folder names or protocol identifiers. No formatter
 or linter is configured; avoid introducing tooling without a concrete need.
 
 ## Testing Guidelines
+
+Verify shared behavior and visible UI changes in the actual Electron runtime
+on both macOS and Windows. For a platform-specific change, verify the affected
+platform and check any shared behavior it touches. Report any platform checks
+that could not be run.
 
 Before modifying any existing algorithm, inspect its callers, current contracts,
 normal success paths, error handling and recovery behavior. Explicitly check

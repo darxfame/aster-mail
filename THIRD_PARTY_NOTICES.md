@@ -31,6 +31,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Inter — SIL Open Font License 1.1
+
+Aster Mail bundles [Inter 4.1](https://github.com/rsms/inter/tree/v4.1).
+The copyright and license are included in `src/fonts/OFL.txt`.
+
 ## Runtime dependencies
 
 The original synthesized notification sounds and their generator are available

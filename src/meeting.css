@@ -154,7 +154,8 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .mail-recipient-groups { margin: -12px 0 16px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .mail-recipient-groups .mail-recipients[open] { flex-basis: 100%; }
 .mail-recipient-groups .mail-recipients { margin: 0; }
-.mail-recipient-groups .mail-recipient-list { max-height: 144px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
+.mail-recipient-groups .mail-recipient-list { display: none; }
+.mail-recipient-groups .mail-recipients[open] > .mail-recipient-list { max-height: 144px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
 .recipient-empty { color: var(--muted); font-size: 10px; }
 .contact-card-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .contact-card-actions .primary { margin-top: 0; }
