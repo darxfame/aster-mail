@@ -125,7 +125,7 @@ test('approved install IPC prepares before login, grants only the matching accou
   const source = fs.readFileSync(require.resolve('../desktop/main.cjs'), 'utf8');
   const start = source.indexOf("      if (operation === 'moduleInstallApproved')");
   const end = source.indexOf("      if (!client) throw", start);
-  for (const scenario of ['prepare', 'account', 'stale', 'signed-out', 'changed', 'reset']) {
+  for (const scenario of ['prepare', 'account', 'unchanged', 'stale', 'signed-out', 'changed', 'reset']) {
     const sender = new EventEmitter(); sender.isDestroyed = () => false;
     const active = ['account', 'stale'].includes(scenario) ? { syncId: 'current' } : null;
     const calls = [], isolated = { closeAllConnections: async () => {}, clearStorageData: async () => {} };
@@ -134,16 +134,23 @@ test('approved install IPC prepares before login, grants only the matching accou
       connection: active ? { controller: new AbortController() } : null, event: { sender },
       data: { sessionId: scenario === 'account' ? 'current' : ['stale', 'signed-out'].includes(scenario) ? 'retired' : undefined },
       path, app: { getPath: () => '/fictional' }, moduleHost: { install: async () => calls.push({ approved: true, prepare: false }) },
+      notifyThemeChanged() { calls.push({ refreshPalettes: true }); },
       AbortController, tr: value => value, net: {}, crypto: { randomUUID: () => 'fictional' }, session: { fromPartition: () => isolated },
       require: name => name === './module-github.cjs' ? { getBytes() {} } : { prepare: async (_directory, _bundle, guard) => { guard(); calls.push({ approved: true, prepare: true }); }, async install(_data, _read, _signal, host, guard) {
         if (scenario === 'changed') context.accountEpoch++;
-        guard(); await host.install({ manifest: {} }); guard();
+        guard();
+        if (scenario === 'unchanged') return false;
+        await host.install({ manifest: {} }); guard(); return true;
       } },
       installModuleBundle: () => assert.fail('Catalog installation must not open a native confirmation') });
     const run = () => vm.runInContext(`(async () => { ${source.slice(start, end)} })()`, context);
     if (['prepare', 'account'].includes(scenario)) {
       assert.equal((await run()).ok, true);
-      assert.deepEqual(calls, [{ approved: true, prepare: false }]);
+      assert.deepEqual(calls, [{ approved: true, prepare: false }, { refreshPalettes: true }]);
+    } else if (scenario === 'unchanged') {
+      const result = await run();
+      assert.equal(result.ok, true); assert.equal(result.value, false);
+      assert.deepEqual(calls, []);
     } else { await assert.rejects(run(), /Сессия/); assert.deepEqual(calls, []); }
     assert.equal(sender.listenerCount('destroyed'), 0);
   }

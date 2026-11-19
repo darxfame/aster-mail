@@ -1,28 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Aster Mail Theme SDK v1",
+  "title": "Aster Mail Module Palette",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "themeVersion",
-    "id",
-    "name",
     "base",
     "colors"
   ],
   "properties": {
-    "themeVersion": {
-      "const": 1
-    },
-    "id": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9.-]{0,63}$"
-    },
-    "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 80
-    },
     "base": {
       "enum": [
         "light",

@@ -60,7 +60,10 @@ async function list(read, signal) {
           const definition = await get(root + 'module.json', 16000);
           try {
             manifest = M.manifest(definition);
-            compatible = item.host?.apiVersion === 1 && Array.isArray(item.host.features) && item.host.features.every(feature => M.features.includes(feature)) && ['id', 'name', 'version', 'permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins', 'meetingLinks', 'authentication'].every(key => require('node:util').isDeepStrictEqual(['networkOrigins', 'networkHeaders'].includes(key) ? definition[key] || [] : definition[key], ['networkOrigins', 'networkHeaders'].includes(key) ? item[key] || [] : item[key]));
+            compatible = item.host?.apiVersion === 1 && Array.isArray(item.host.features) &&
+              item.host.features.every(feature => M.features.includes(feature)) &&
+              (manifest.type === 'theme') === item.host.features.includes('appearance.palette') &&
+              ['id', 'name', 'version', 'permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins', 'meetingLinks', 'authentication'].every(key => require('node:util').isDeepStrictEqual(['networkOrigins', 'networkHeaders'].includes(key) ? definition[key] || [] : definition[key], ['networkOrigins', 'networkHeaders'].includes(key) ? item[key] || [] : item[key]));
           } catch { /* Unsupported contracts remain visible, never installable. */ }
         } catch (error) { if (error.status !== 404) throw error; }
         if (!compatible) manifest = { id: item.id, name: item.name, version: item.version, permissions: item.permissions, networkOrigins: item.networkOrigins || [], optionalOrigins: item.optionalOrigins, meetingLinks: item.meetingLinks, authentication: item.authentication };

@@ -9,7 +9,6 @@
     "version",
     "name",
     "type",
-    "main",
     "permissions",
     "files"
   ],
@@ -36,7 +35,8 @@
         "integration",
         "workflow",
         "panel",
-        "hybrid"
+        "hybrid",
+        "theme"
       ]
     },
     "main": {
@@ -153,7 +153,6 @@
     },
     "files": {
       "type": "array",
-      "minItems": 1,
       "maxItems": 199,
       "uniqueItems": true,
       "items": {
@@ -425,6 +424,56 @@
           }
         }
       }
+    },
+    "palette": {
+      "$ref": "theme.schema.json"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "theme"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "palette"
+        ],
+        "propertyNames": {
+          "enum": [
+            "apiVersion",
+            "id",
+            "version",
+            "type",
+            "name",
+            "permissions",
+            "files",
+            "palette"
+          ]
+        },
+        "properties": {
+          "files": {
+            "maxItems": 0
+          },
+          "permissions": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "main"
+        ],
+        "properties": {
+          "palette": false,
+          "files": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }

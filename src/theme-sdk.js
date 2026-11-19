@@ -1,5 +1,4 @@
 (() => {
-  const maxBytes = 8192;
   const tokens = Object.freeze({
     background: '--bg', surface: '--surface', surfaceAlt: '--surface2', text: '--text',
     mutedText: '--muted', border: '--line', accent: '--accent', accentSurface: '--accent-bg',
@@ -15,11 +14,9 @@
   }
 
   function normalize(input) {
-    if (!input || typeof input !== 'object' || Object.keys(input).length !== 5 ||
-        input.themeVersion !== 1 || typeof input.id !== 'string' || !/^[a-z][a-z0-9.-]{0,63}$/.test(input.id) || input.id.trim() !== input.id ||
-        typeof input.name !== 'string' || !input.name.trim() || input.name.length > 80 ||
-        /[\p{Cc}\p{Cf}]/u.test(input.name) || !['light', 'dark'].includes(input.base) ||
-        !input.colors || typeof input.colors !== 'object' || Object.keys(input.colors).length !== Object.keys(tokens).length) {
+    if (!input || typeof input !== 'object' || Object.keys(input).length !== 2 ||
+        !['light', 'dark'].includes(input.base) || !input.colors ||
+        typeof input.colors !== 'object' || Object.keys(input.colors).length !== Object.keys(tokens).length) {
       throw new Error('format');
     }
     const colors = Object.fromEntries(Object.keys(tokens).map(role => {
@@ -33,10 +30,10 @@
     if (surfaces.some(surface => (levels.text > levels[surface]) !== (input.base === 'dark') ||
         ['text', 'mutedText', 'accent'].some(role => contrast(role, surface) < 4.5)) ||
         contrast('onAccent', 'accent') < 4.5) throw new Error('contrast');
-    return { themeVersion: 1, id: input.id, name: input.name.trim(), base: input.base, colors };
+    return { base: input.base, colors };
   }
 
-  const sdk = Object.freeze({ maxBytes, tokens, normalize });
+  const sdk = Object.freeze({ tokens, normalize });
   if (typeof module === 'object') module.exports = sdk;
   else window.asterThemeSdk = sdk;
 })();

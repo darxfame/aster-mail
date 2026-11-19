@@ -19,7 +19,7 @@ let updates, macUpdates, windowsUpdates, localEncryption, activeServerWrites = 0
 const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
-const { ThemeStore, readTheme } = require('./theme-store.cjs');
+const { ThemeStore } = require('./theme-store.cjs');
 const { WaitingReplies } = require('./waiting-replies.cjs');
 const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.cjs');
 const { fetchContentImage, fetchImageResponse } = require('./content-images.cjs');
@@ -382,6 +382,12 @@ async function resetLocalData() {
     if (failure) throw failure.reason;
     attachmentCleanupError = ''; return true;
   } finally { resettingLocalData = false; }
+}
+
+function notifyThemeChanged(disabledId) {
+  for (const target of [window, ...Array.from(composeWindows.entries.values(), entry => entry.window)]) {
+    if (target && !target.isDestroyed() && !target.webContents.isDestroyed()) target.webContents.send('aster-theme-changed', disabledId);
+  }
 }
 
 function reveal(navigation) {
@@ -762,33 +768,42 @@ app.whenReady().then(async () => {
       if (operation === 'detachCompose') {
         if (!data.snapshot || !['new', 'reply', 'reply-all', 'forward', 'draft'].includes(data.snapshot.mode) || !data.snapshot.data || !Array.isArray(data.snapshot.files)) throw new Error('Invalid compose context');
         if (!data.demo && (!client || data.sessionId !== client.syncId)) throw new Error(tr('Сессия аккаунта завершена'));
-        const palette = data.preferences?.palette ? require('../src/theme-sdk.js').normalize(data.preferences.palette) : null;
-        const preferences = { ...data.preferences, palette, theme: palette?.base || data.preferences?.theme };
-        return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
+        return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences: data.preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
       }
       if (operation === 'themePreferences') {
-        const { action } = data;
-        if (!action) return { ok: true, value: await themeStore.read() };
-        if (resettingLocalData || !['import', 'select', 'remove'].includes(action)) throw new Error('Invalid theme operation');
-        let value = data.id;
-        try {
-          if (action === 'import') {
-            const epoch = accountEpoch;
-            const choice = await dialog.showOpenDialog(window, { title: tr('Импортировать тему'), properties: ['openFile'],
-              filters: [{ name: 'Aster Theme (JSON)', extensions: ['json'] }] });
-            if (choice.canceled) return { ok: true, value: null };
-            value = await readTheme(choice.filePaths[0]);
-            if (resettingLocalData || epoch !== accountEpoch || quitting) return { ok: true, value: null };
+        const epoch = accountEpoch;
+        const guard = () => {
+          if (resettingLocalData || epoch !== accountEpoch || connection && !client ||
+              (client && !composeEntry?.demo ? data.sessionId !== client.syncId : data.sessionId)) {
+            throw new Error(tr('Сессия аккаунта завершена'));
           }
-          return { ok: true, value: await themeStore.change(action, value) };
-        } catch (error) {
-          const message = error.message === 'contrast' ? tr('В палитре недостаточный контраст текста или акцента.') :
-            error.message === 'duplicate' ? tr('Тема с этим идентификатором уже импортирована.') :
-            error.message === 'limit' ? tr('Можно хранить до 64 тем. Удалите одну из импортированных тем.') :
-            error.message === 'format' || error instanceof SyntaxError ? tr('Файл не соответствует формату темы Aster (JSON до 8 КБ).') :
-            tr('Не удалось прочитать или сохранить тему.');
-          throw Object.assign(new Error(message), { userFacing: true });
+        };
+        if (Object.keys(data).some(key => !['selected', 'sessionId'].includes(key)) ||
+            composeEntry && data.selected !== undefined) throw new Error('Invalid theme preferences request');
+        guard(); await moduleProfile.initialize(guard);
+        const catalog = await moduleHost.catalog(); guard();
+        const available = () => {
+          const enabled = moduleHost.records().filter(record => record.enabled);
+          return catalog.filter(item => item.type === 'theme' && item.enabled &&
+            enabled.some(record => record.id === item.id && record.digest === item.digest));
+        };
+        const valid = (themes, mode, id) => id === null || themes.some(theme => theme.palette.base === mode && theme.id === id);
+        if (data.selected !== undefined) {
+          const { light, dark } = data.selected || {};
+          const validateSelection = () => {
+            guard();
+            const themes = available();
+            if (!valid(themes, 'light', light) || !valid(themes, 'dark', dark)) throw Object.assign(new Error(tr('Выбранная палитра недоступна. Проверьте, включён ли модуль.')), { userFacing: true });
+          };
+          await themeStore.change('select', { light, dark }, validateSelection); guard();
+          notifyThemeChanged();
         }
+        const { light, dark } = await themeStore.read(); guard();
+        const themes = available();
+        return { ok: true, value: {
+          themes: themes.map(({ id, name, palette }) => ({ id, name, ...palette })),
+          selected: { light: valid(themes, 'light', light) ? light : null, dark: valid(themes, 'dark', dark) ? dark : null },
+        } };
       }
       if (operation === 'setWindowTheme') {
         if (!['light', 'dark'].includes(data.theme)) throw new Error('Invalid window theme');
@@ -811,7 +826,11 @@ app.whenReady().then(async () => {
         i18n.setLanguage(data.language); updateTrayMenu(); refreshWidget();
         return { ok: true, value: i18n.language };
       }
-      if (operation === 'resetLocalData') return { ok: true, value: await resetLocalData() };
+      if (operation === 'resetLocalData') {
+        const cleared = await resetLocalData();
+        if (cleared) notifyThemeChanged();
+        return { ok: true, value: cleared };
+      }
       if (operation === 'mcpState') return { ok: true, value: { enabled: mcpEnabled, changing: mcpChanging, configuration: mcpConfiguration(data.format), instructions: mcpAgentInstructions(data.format) } };
       if (operation === 'setMcpEnabled') {
         if (typeof data.enabled !== 'boolean') throw new Error('Invalid MCP setting');
@@ -943,6 +962,7 @@ app.whenReady().then(async () => {
             guard();
             return result;
           } }, guard);
+          if (installed !== false) notifyThemeChanged();
           return { ok: true, value: installed !== false };
         } finally {
           sender.removeListener('destroyed', cancel); accountSignal?.removeEventListener('abort', cancel);
@@ -959,6 +979,7 @@ app.whenReady().then(async () => {
           if (!selected.canceled && selected.filePaths.length === 1) {
             const bundle = await require('./modules.cjs').readPackage(selected.filePaths[0]); guard();
             await installModuleBundle(bundle, guard);
+            notifyThemeChanged();
           }
         }
         if (operation === 'moduleImportGitHub') {
@@ -967,10 +988,22 @@ app.whenReady().then(async () => {
           try {
             const bundle = await Github.load({ url: data.url, ref: data.ref, directory: data.directory }, (url, limit, signal) => Github.getBytes(net, isolated, url, limit, signal), moduleHost.current().signal);
             guard(); await installModuleBundle(bundle, guard);
+            notifyThemeChanged();
           } finally { await Promise.allSettled([isolated.closeAllConnections(), isolated.clearStorageData()]); }
         }
-        if (operation === 'moduleConfigure') await moduleHost.configure(data.id, data.enabled);
-        if (operation === 'moduleRemove') await moduleHost.remove(data.id);
+        if (operation === 'moduleConfigure' || operation === 'moduleRemove') {
+          let disabledId;
+          try {
+            if (operation === 'moduleConfigure') await moduleHost.configure(data.id, data.enabled);
+            else await moduleHost.remove(data.id);
+            if (operation === 'moduleRemove' || data.enabled === false) {
+              disabledId = data.id;
+              await themeStore.change('remove', data.id).catch(() => {});
+            }
+          } finally {
+            notifyThemeChanged(disabledId);
+          }
+        }
         if (operation === 'moduleInvoke') {
           const value = await moduleHost.invoke(data.id, data.command, data.input || {}, data.editorId ? { editorId: data.editorId, draft: data.draft || null } : {}); guard(); return { ok: true, value };
         }

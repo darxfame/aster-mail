@@ -100,7 +100,7 @@ class ModuleHost {
       if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
       assertIdle();
       const before = previous.manifest, after = bundle.manifest;
-      const expanded = ['permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins'].some(key => (after[key] || []).some(value => !(before[key] || []).some(old => equal(old, value)))) || ['meetingLinks', 'authentication'].some(key => !equal(before[key], after[key])) || original.source?.repository !== bundle.source?.repository;
+      const expanded = before.type !== after.type && Boolean(before.type) || before.palette?.base !== after.palette?.base || ['permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins'].some(key => (after[key] || []).some(value => !(before[key] || []).some(old => equal(old, value)))) || ['meetingLinks', 'authentication'].some(key => !equal(before[key], after[key])) || original.source?.repository !== bundle.source?.repository;
       if (expanded && !authorized) {
         const answer = await this.electron.dialog.showMessageBox({ type: 'question', message: tr('Подтвердить изменение возможностей модуля?'), detail: `${after.name} ${after.version}\n${M.grantSummary(after)}\n${bundle.source?.repository || tr('Локальный пакет')}\n${tr('Настройки сохранятся и будут доступны новой версии модуля.')}`, buttons: [tr('Отмена'), tr('Обновить')], defaultId: 0, cancelId: 0 });
         if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
@@ -206,6 +206,7 @@ class ModuleHost {
   }
   async launch(id, record, sessionId, startup) {
     const bundle = await this.bundle(record);
+    if (bundle.manifest.type === 'theme') throw new Error('Theme modules have no runtime');
     const guard = () => {
       const active = this.current();
       if (active.sessionId !== sessionId || this.starting.get(id) !== startup || !this.enabledRecord(active, id, bundle)) throw new Error(tr('Модуль выключен или не настроен'));

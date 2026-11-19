@@ -1,7 +1,7 @@
 // Compose windows share the active transport, never credentials or account switching.
 const path = require('node:path');
 const { windowsChrome } = require('./window-chrome.cjs');
-const allowed = new Set(['setWindowTheme', 'composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft', 'quickReplies', 'saveQuickReplies']);
+const allowed = new Set(['setWindowTheme', 'themePreferences', 'composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft', 'quickReplies', 'saveQuickReplies']);
 class ComposeWindows {
   constructor({ BrowserWindow, dialog, page, tr }) {
     Object.assign(this, { BrowserWindow, dialog, page, tr });

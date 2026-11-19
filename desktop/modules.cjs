@@ -10,6 +10,16 @@ function origin(value) { const url = new URL(value); if (url.protocol !== 'https
 function bounded(value, maximum = 65536) { const encoded = JSON.stringify(value); if (!encoded || Buffer.byteLength(encoded) > maximum) invalid(); return JSON.parse(encoded); }
 function manifest(input) {
   const m = bounded(input, 16000);
+  if (m?.type === 'theme') {
+    if (m.apiVersion !== 1 || typeof m.id !== 'string' || !/^[a-z][a-z0-9.-]{2,79}$/.test(m.id) ||
+        m.id !== m.id.trim() || typeof m.version !== 'string' || m.version.length > 40 || !/^\d+\.\d+\.\d+$/.test(m.version) ||
+        Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'files', 'permissions', 'palette'].includes(key)) ||
+        !Array.isArray(m.files) || m.files.length || !Array.isArray(m.permissions) || m.permissions.length) invalid();
+    text(m.name);
+    try { m.palette = require('../src/theme-sdk.js').normalize(m.palette); }
+    catch { invalid(); }
+    return { ...m, commands: [], views: [], networkOrigins: [], networkHeaders: [], settingsVersion: 1 };
+  }
   if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'optionalOrigins', 'settingsVersion', 'settingsMigrations', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
   if (m.apiVersion !== 1 || !/^[a-z][a-z0-9.-]{2,79}$/.test(m.id) || typeof m.version !== 'string' || m.version.length > 40 || !/^\d+\.\d+\.\d+$/.test(m.version) || !['integration', 'workflow', 'panel', 'hybrid'].includes(m.type)) invalid();
   text(m.name); relative(m.main); if (!/\.m?js$/.test(m.main)) invalid();
@@ -206,7 +216,8 @@ function meetingLaunchSummary(definition) {
 function grantSummary(definition) {
   const { permissions, authentication, networkOrigins, networkHeaders, optionalOrigins } = definition;
   return [
-    [tr('Разрешения:'), permissionSummary(permissions, authentication)],
+    [tr('Палитра оформления'), definition.palette && (definition.palette.base === 'dark' ? tr('Тёмная палитра') : tr('Светлая палитра'))],
+    [tr('Разрешения:'), permissionSummary(permissions, authentication) || tr('Без разрешений')],
     [tr('Сетевые адреса:'), networkOrigins.join(', ')],
     [tr('Сетевые заголовки:'), networkHeaders.join(', ')],
     [tr('Дополнительные серверы с отдельным разрешением:'), (optionalOrigins || []).map(rule => rule.includeSubdomains ? `${rule.domain}, *.${rule.domain}` : rule.domain).join(', ')],
@@ -214,4 +225,4 @@ function grantSummary(definition) {
     [tr('Серверы входа:'), [...new Set([authentication?.startOrigin, ...(authentication?.origins || []), ...(authentication?.identityOrigins || [])].filter(Boolean))].join(', ')],
   ].filter(([, value]) => value).map(([label, value]) => `${label} ${value}`).join('\n');
 }
-module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'auth.identity-redirects', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, grantSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+module.exports = { features: ['meeting.launch', 'auth.session', 'auth.start-origin', 'auth.identity-redirects', 'rpc.error-details', 'network.origin-grants', 'settings.migrations', 'appearance.palette'], optionalOriginMatches, effectiveManifest, fromFiles, relative, records, permissionSummary, grantSummary, meetingTarget, meetingLaunchSummary, validApplicationScheme, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };

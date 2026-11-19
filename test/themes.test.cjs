@@ -4,37 +4,40 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const sdk = require('../src/theme-sdk.js');
-const { ThemeStore, readTheme } = require('../desktop/theme-store.cjs');
-const example = require('../examples/themes/northern-tide.json');
+const { ThemeStore } = require('../desktop/theme-store.cjs');
+const { manifest, fromFiles, features } = require('../desktop/modules.cjs');
+const fixture = require('./fixtures/theme/module.json');
 const schema = require('../docs/modules/theme.schema.json');
 
-test('theme SDK validates the documented roles, opaque colors and readable palettes', () => {
+test('palette modules accept only verified colors and no runtime, permissions or contributions', () => {
   assert.deepEqual([...schema.properties.colors.required].sort(), Object.keys(sdk.tokens).sort());
-  assert.deepEqual(sdk.normalize(example), example);
-  assert.throws(() => sdk.normalize({ ...example, themeVersion: 2 }), /format/);
-  assert.throws(() => sdk.normalize({ ...example, script: 'main.js' }), /format/);
-  assert.throws(() => sdk.normalize({ ...example, colors: { ...example.colors, background: 'url(https://example.test)' } }), /format/);
-  assert.throws(() => sdk.normalize({ ...example, colors: { ...example.colors, onAccent: example.colors.accent } }), /contrast/);
-  assert.throws(() => sdk.normalize({ ...example, base: 'light' }), /contrast/);
+  assert.deepEqual(manifest(fixture).palette, fixture.palette);
+  const files = new Map([['module.json', Buffer.from(JSON.stringify(fixture))]]);
+  assert.equal(fromFiles(files).files.size, 1);
+  assert.ok(features.includes('appearance.palette'));
+  assert.throws(() => fromFiles(new Map([...files, ['main.js', Buffer.from('')]])));
+  for (const fields of [{ main: 'main.js' }, { commands: [] }, { permissions: ['network'] }, { files: ['style.css'] }]) {
+    assert.throws(() => manifest({ ...fixture, ...fields }));
+  }
+  const { palette } = fixture;
+  assert.throws(() => sdk.normalize({ ...palette, colors: { ...palette.colors, background: 'url(https://example.test)' } }), /format/);
+  assert.throws(() => sdk.normalize({ ...palette, colors: { ...palette.colors, onAccent: palette.colors.accent } }), /contrast/);
+  assert.throws(() => sdk.normalize({ ...palette, base: 'light' }), /contrast/);
 });
 
-test('theme imports are bounded, selection persists, and queued changes cannot resurrect a cleared theme', async t => {
+test('mode-specific selections persist and disabling a module clears only its selection', async t => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'aster-themes-test-'));
   t.after(() => fs.rm(folder, { recursive: true, force: true }));
   const file = path.join(folder, 'themes.json'), store = new ThemeStore(file);
-  const source = path.join(folder, 'example.json');
-  await fs.writeFile(source, ' '.repeat(sdk.maxBytes + 1));
-  await assert.rejects(readTheme(source), /format/);
-  await fs.writeFile(source, '\uFEFF' + JSON.stringify(example));
-  const parsed = await readTheme(source);
-  await store.change('import', parsed);
-  await assert.rejects(store.change('import', parsed), /duplicate/);
-  await assert.rejects(store.change('select', 'missing'), /format/);
-  assert.equal((await store.read()).selected, null);
-  await store.change('select', parsed.id);
-  assert.deepEqual(await new ThemeStore(file).read(), { themes: [parsed], selected: parsed.id });
-  const removed = await store.change('remove', parsed.id);
-  assert.deepEqual(removed, { themes: [], selected: null });
-  await Promise.all([store.change('import', parsed), store.change('select', parsed.id), store.change('clear')]);
-  assert.deepEqual(await new ThemeStore(file).read(), { themes: [], selected: null });
+  const selection = { light: 'fixture.theme.light', dark: fixture.id };
+  // Legacy standalone files lack mode-specific picks.
+  await fs.writeFile(file, JSON.stringify({ selected: fixture.id, themes: [fixture.palette] }));
+  assert.deepEqual(await store.read(), { light: null, dark: null });
+  await store.change('select', selection);
+  assert.deepEqual(await new ThemeStore(file).read(), selection);
+  await store.change('remove', fixture.id);
+  assert.deepEqual(await store.read(), { ...selection, dark: null });
+  await assert.rejects(store.change('select', selection, () => { throw new Error('disabled'); }), /disabled/);
+  await Promise.all([store.change('select', selection), store.change('clear')]);
+  assert.deepEqual(await store.read(), { light: null, dark: null });
 });

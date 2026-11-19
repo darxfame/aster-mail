@@ -1,0 +1,24 @@
+{
+  "apiVersion": 1,
+  "id": "fixture.theme.dark",
+  "version": "1.0.0",
+  "type": "theme",
+  "name": "Fixture Theme",
+  "files": [],
+  "permissions": [],
+  "palette": {
+    "base": "dark",
+    "colors": {
+      "background": "#152327",
+      "surface": "#202f35",
+      "surfaceAlt": "#1b2a2e",
+      "sidebar": "#192c32",
+      "text": "#eaf5f3",
+      "mutedText": "#adc7c8",
+      "border": "#465f66",
+      "accent": "#79e4ce",
+      "accentSurface": "#244740",
+      "onAccent": "#15332c"
+    }
+  }
+}
