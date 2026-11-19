@@ -22,7 +22,7 @@ app.whenReady().then(async () => {
     const js = code => window.webContents.executeJavaScript(code);
     await window.loadFile(path.join(root, 'src/index.html'));
     if (process.platform === 'darwin') await js("document.body.classList.add('desktop','mac')");
-    await js('document.querySelector("[data-action=demo]").click()');
+    await js('applyLanguage("ru");document.querySelector("[data-action=demo]").click()');
     const html = '<div style="background-color:white;color:#1f1f1f"><p title="nested">С уважением, Команда Aster</p>'
       + '<p><span title="hex" style="color:#202020">Тёмный текст</span><br><font title="legacy" color="#333333">Подпись из Outlook</font></p>'
       + '<p><span title="alpha" style="color:rgba(0,0,0,.87)">Полупрозрачный чёрный</span><br><span title="hsl" style="color:hsl(0,0%,12%)">HSL</span><br><span title="named" style="color:darkslategray">Именованный цвет</span></p>'
