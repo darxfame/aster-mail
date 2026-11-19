@@ -42,6 +42,12 @@ function updatedSettings(before, input) {
   // OWA replies can contain HTML. Preserve it verbatim unless the user edited that reply.
   for (const key of ['internal', 'external']) {
     if (!Object.hasOwn(input, key)) continue;
+    const value = input[key];
+    if (value && typeof value === 'object' && Object.keys(value).length === 1 && typeof value.html === 'string' && value.html.length <= 64000 &&
+      !/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value.html.replace(/<\/?(?:div|p|br|b|strong|i|em|u|s|strike|ul|ol|li)>/g, ''))) {
+      next[key] = `<html><body><div style="white-space:pre-wrap">${value.html}</div></body></html>`;
+      continue;
+    }
     if (typeof input[key] !== 'string' || input[key].length > 32000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input[key])) throw new Error(tr('Текст автоответа должен содержать не более 32000 символов.'));
     next[key] = `<html><body><div style="white-space:pre-wrap">${P.escapeXML(input[key]).replace(/\r\n?|\n/g, '<br>')}</div></body></html>`;
   }

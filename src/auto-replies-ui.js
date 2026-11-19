@@ -1,4 +1,11 @@
 let demoAutoReplies = { state: 'Disabled', audience: 'None', allowExternal: 'All', start: null, end: null, internal: '', external: '', revision: 'demo' };
+const autoReplyTags = ['div', 'p', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'ul', 'ol', 'li'];
+function autoReplyField(name, label) {
+  return `<div class="oof-reply" data-oof-reply="${name}">${textField(name, label, '', 'oof-message')}<button type="button" class="secondary" data-oof-format>${tr('Форматировать ответ')}</button><div class="oof-rich" hidden><div role="toolbar" aria-label="${tr('Форматирование автоответа')}">${[['bold', 'Жирный', 'B'], ['italic', 'Курсив', 'I'], ['underline', 'Подчёркнутый', 'U'], ['insertUnorderedList', 'Маркированный список', '• ≡'], ['insertOrderedList', 'Нумерованный список', '1. ≡']].map(([command, caption, text]) => `<button type="button" class="secondary" data-oof-command="${command}" aria-label="${tr(caption)}" title="${tr(caption)}">${text}</button>`).join('')}</div><div contenteditable="true" role="textbox" aria-multiline="true" aria-label="${label}" class="oof-message"></div></div></div>`;
+}
+function cleanRichAutoReply(html) {
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: autoReplyTags, ALLOWED_ATTR: [], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false });
+}
 function autoRepliesMarkup() {
   return `<h3 class="settings-section-title">${tr('Автоответы об отсутствии')}</h3>
     <p class="form-note">${tr('Автоответы отправляет Exchange, даже когда Aster закрыт. Они сохраняются отдельно от остальных настроек.')}</p>
@@ -9,9 +16,9 @@ function autoRepliesMarkup() {
     <div class="form-row" id="auto-replies-period">${field('oofStart', tr('Начало'), '', 'datetime-local')}${field('oofEnd', tr('Окончание'), '', 'datetime-local')}</div>
     <p class="form-note">${tr('Для отправки по расписанию выберите «В указанный период».')}</p>
     <p class="form-note">${tr('Часовой пояс:')} ${esc(T.zone(timeZone))}</p>
-    ${textField('oofInternal', tr('Ответ сотрудникам организации'), '', 'oof-message')}
+    ${autoReplyField('oofInternal', tr('Ответ сотрудникам организации'))}
     <label class="field"><span>${tr('Ответы внешним отправителям')}</span><select name="oofAudience"><option value="None">${tr('Не отправлять')}</option><option value="Known">${tr('Только моим контактам')}</option><option value="All">${tr('Всем внешним отправителям')}</option></select></label>
-    ${textField('oofExternal', tr('Ответ внешним отправителям'), '', 'oof-message')}
+    ${autoReplyField('oofExternal', tr('Ответ внешним отправителям'))}
     <p class="form-note">${tr('При редактировании сохраняются пробелы и переносы строк. Исходное оформление сохраняется, пока текст ответа не изменён.')}</p>
     </fieldset><p id="auto-replies-error" class="form-error" role="alert"></p>`;
 }
@@ -57,11 +64,47 @@ function setupAutoReplies(panel) {
   const fields = panel.querySelector('fieldset'), status = panel.querySelector('[role="status"]'), errorBox = panel.querySelector('[role="alert"]');
   const reload = panel.querySelector('#auto-replies-load'), save = form.querySelector('#auto-replies-save');
   let snapshot, initialInternal, initialExternal, sequence = 0;
+  const editors = [...panel.querySelectorAll('[data-oof-reply]')].map(wrapper => {
+    const field = form.elements[wrapper.dataset.oofReply], rich = wrapper.querySelector('.oof-rich');
+    const edit = wrapper.querySelector('[data-oof-format]'), area = rich.querySelector('[contenteditable]');
+    edit.onclick = () => {
+      const source = wrapper.dataset.oofReply === 'oofInternal' ? snapshot.internal : snapshot.external;
+      const original = field.value === (wrapper.dataset.oofReply === 'oofInternal' ? initialInternal : initialExternal);
+      const safe = original ? cleanRichAutoReply(source) : '';
+      if (safe && /<(?:div|p|br|b|strong|i|em|u|s|strike|ul|ol|li)(?:>|\s)/i.test(safe)) area.innerHTML = safe;
+      else area.textContent = field.value;
+      area.dataset.original = cleanRichAutoReply(area.innerHTML);
+      field.closest('label').hidden = true; edit.hidden = true; rich.hidden = false;
+      area.focus();
+    };
+    rich.addEventListener('pointerdown', event => { if (event.target.closest('[data-oof-command]')) event.preventDefault(); });
+    rich.addEventListener('click', event => {
+      const button = event.target.closest('[data-oof-command]');
+      if (button && area.isContentEditable && area.contains(getSelection()?.anchorNode)) {
+        area.focus(); document.execCommand(button.dataset.oofCommand, false, null); dirty(true);
+      }
+    });
+    area.addEventListener('paste', event => {
+      event.preventDefault(); document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
+    });
+    area.addEventListener('drop', event => event.preventDefault());
+    return { field, rich, area, edit };
+  });
+  const resetEditors = () => {
+    for (const { field, rich, area, edit } of editors) {
+      field.closest('label').hidden = false; edit.hidden = false; rich.hidden = true; area.replaceChildren();
+    }
+  };
+
   const current = () => panel.isConnected && state.account === account && state.demo === demo;
   const update = () => {
     const scheduled = form.elements.oofState.value === 'Scheduled';
     for (const name of ['oofStart', 'oofEnd']) form.elements[name].disabled = !scheduled;
     form.elements.oofExternal.disabled = form.elements.oofAudience.value === 'None';
+    for (const { field, area, edit } of editors) {
+      edit.disabled = field.disabled;
+      area.contentEditable = String(!fields.disabled && !field.disabled);
+    }
   };
   const dirty = value => { panel.dataset.dirty = String(value); setModalDirty(value || form.querySelector('#settings-panel-rules')?.dataset.dirty === 'true'); };
   panel.addEventListener('input', () => dirty(true));
@@ -69,11 +112,11 @@ function setupAutoReplies(panel) {
   reload.addEventListener('click', async () => {
     if (!current() || modalBusy || panel.dataset.dirty === 'true' && !confirm(tr('Загрузить автоответы заново и отменить несохранённые изменения?'))) return;
     const request = ++sequence;
-    reload.disabled = true; fields.disabled = true; save.disabled = true; errorBox.textContent = ''; status.textContent = tr('Загружаем автоответы…');
+    reload.disabled = true; fields.disabled = true; save.disabled = true; update(); errorBox.textContent = ''; status.textContent = tr('Загружаем автоответы…');
     try {
       const value = demo ? { ...demoAutoReplies } : await api('autoReplies');
       if (!current() || request !== sequence) return;
-      snapshot = value;
+      snapshot = value; resetEditors();
       initialInternal = autoReplyText(value.internal); initialExternal = autoReplyText(value.external);
       form.elements.oofState.value = value.state; form.elements.oofAudience.value = value.audience;
       form.elements.oofInternal.value = initialInternal; form.elements.oofExternal.value = initialExternal;
@@ -97,13 +140,21 @@ function setupAutoReplies(panel) {
         }
         if (input.end <= input.start) throw new Error(tr('Укажите корректный период автоответов.'));
       }
-      for (const [key, name, initial] of [['internal', 'oofInternal', initialInternal], ['external', 'oofExternal', initialExternal]]) if (form.elements[name].value !== initial) input[key] = form.elements[name].value;
+      for (const [index, key] of ['internal', 'external'].entries()) {
+        const { field, rich, area } = editors[index];
+        const initial = index ? initialExternal : initialInternal;
+        if (!rich.hidden) {
+          const html = cleanRichAutoReply(area.innerHTML);
+          if (html !== area.dataset.original || field.value !== initial) input[key] = { html };
+        }
+        else if (field.value !== initial) input[key] = field.value;
+      }
       // A lost write response must never turn into another write on a second click.
-      fields.disabled = true; save.disabled = true;
+      fields.disabled = true; save.disabled = true; update();
       try {
         if (demo) {
           demoAutoReplies = { ...snapshot, ...input };
-          for (const key of ['internal', 'external']) if (Object.hasOwn(input, key)) demoAutoReplies[key] = `<div style="white-space:pre-wrap">${esc(input[key]).replace(/\r\n?|\n/g, '<br>')}</div>`;
+          for (const key of ['internal', 'external']) if (Object.hasOwn(input, key)) demoAutoReplies[key] = typeof input[key] === 'string' ? `<div style="white-space:pre-wrap">${esc(input[key]).replace(/\r\n?|\n/g, '<br>')}</div>` : input[key].html;
         } else await api('saveAutoReplies', input);
         if (!current()) return;
         dirty(false);

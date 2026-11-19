@@ -1,12 +1,6 @@
 /* Air changes surfaces, not semantic colors or the information in each view.
    The opaque window base also makes blur useful without native transparency. */
 :root {
-  --bg: #f5f6f8;
-  --surface2: #f4f5f8;
-  --text: #242933;
-  --muted: #687281;
-  --line: #24293312;
-  --sidebar: #edf0f5;
   --air-glass: #ffffffb8;
   --air-glass-edge: #ffffffb3;
   --air-sidebar: #f4f5fac7;
@@ -16,14 +10,6 @@
   --air-unread: #f7f5fc;
 }
 body.dark {
-  --bg: #202124;
-  --surface: #292a2e;
-  --surface2: #25262a;
-  --text: #eceef2;
-  --muted: #a3acbb;
-  --line: #ffffff12;
-  --sidebar: #282c33;
-  --accent-bg: #413a55;
   --air-glass: #292a2ec7;
   --air-glass-edge: #ffffff16;
   --air-sidebar: #282c33c7;
@@ -70,6 +56,7 @@ body.dark {
 .topbar {
   position: relative;
   z-index: 20;
+  container-type: inline-size;
   margin: 10px 10px 8px;
   border: 1px solid var(--air-glass-edge);
   border-radius: 16px;
@@ -77,6 +64,9 @@ body.dark {
   box-shadow: var(--air-shadow);
 }
 .topbar .search-box { border-radius: 20px; background: var(--surface2); }
+.topbar .sidebar-toggle { flex: none; }
+.sidebar-toggle .sidebar-indicator { fill: currentColor; stroke: none; opacity: 0; }
+.sidebar-toggle[aria-expanded="true"] .sidebar-indicator { opacity: .35; }
 .topbar .presentation-toggle svg { display: none; }
 .topbar .primary, .topbar .secondary { border-radius: 12px; }
 .topbar .primary { background: var(--surface); color: var(--text); box-shadow: 0 2px 8px #29203f06; }
@@ -109,7 +99,9 @@ body.dark {
 .mail-list .messages { padding: 0 0 4px; }
 .mail-list .day-label { padding: 7px 16px 5px; font-size: 10px; line-height: 1.4; }
 .mail-list .message-row, body.dark .mail-list .message-row { gap: 0; margin-bottom: 1px; }
-.mail-list .message-open { padding: 6px 5px 6px 30px; }
+.mail-list .message-open { padding: 6px 5px 6px 13px; }
+.mail-list .message-row:has(> .mail-select:not([hidden])) .message-open { padding-inline-start: 30px; }
+.mail-list .message-row:has(> .mail-select:checked):not(.selected) { background: var(--accent-bg); }
 .mail-list .message-open > .avatar { display: none; }
 .mail-list .message-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto 18px; gap: 1px 5px; }
 .mail-list .row-top, .mail-list .subject { grid-column: 1 / -1; margin: 0; }
@@ -141,9 +133,9 @@ body.dark {
 .statusbar { background: transparent; border-top-color: transparent; }
 .demo-banner { margin: 0 10px 8px; border-radius: 10px; }
 dialog#modal { border-radius: 18px; }
-dialog#modal::backdrop { background: #17142655; backdrop-filter: blur(6px); }
+dialog#modal::backdrop { background: #17142655; }
 .modal-header, .meeting-card-header { gap: 10px; }
-dialog button[data-action="close"].icon-button { flex: 0 0 40px; width: 40px; height: 40px; -webkit-app-region: no-drag; }
+dialog button[data-action="close"].icon-button { flex: 0 0 44px; min-width: 44px; width: 44px; min-height: 44px; height: 44px; -webkit-app-region: no-drag; }
 dialog button[data-action="close"].icon-button svg { pointer-events: none; }
 .modal-header { background: var(--surface2); border-radius: 18px 18px 0 0; }
 .compose-window dialog#modal { border-radius: 0; }
@@ -227,7 +219,10 @@ body.mac .sidebar .wordmark { -webkit-app-region: no-drag; }
 body.mac { --mac-controls-width: calc(22px + 76px / var(--interface-scale, 1)); }
 body.mac.desktop.sidebar-collapsed .topbar { margin-left: var(--mac-controls-width); padding-left: 10px; }
 @media (max-width: 900px) {
-  body.mac .topbar { margin-left: var(--mac-controls-width); padding-left: 10px; }
+  body.mac .topbar { margin-left: 6px; padding-left: 10px; }
+  body.mac.desktop.sidebar-collapsed .topbar {
+    margin-left: max(6px, calc(var(--mac-controls-width) - var(--sidebar-collapsed-width)));
+  }
 }
 body.mac:not(.compose-window) .sidebar::before {
   content: "";
@@ -244,11 +239,17 @@ body.windows {
   --window-controls-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px / var(--interface-scale, 1)))));
 }
 body.windows .topbar { margin-right: calc(10px + var(--window-controls-right)); }
-@media (max-width: 500px) {
+@container (max-width: 640px) {
+  .topbar .search-box { min-width: 0; }
   .topbar .presentation-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; }
   .topbar .presentation-toggle svg { display: block; }
   .topbar .presentation-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .topbar .presentation-toggle[data-privacy-active] { color: var(--accent); background: var(--accent-bg); }
+}
+@media (max-width: 640px) {
+  body:not(.sidebar-collapsed) .topbar { flex-wrap: wrap; }
+}
+@media (max-width: 500px) {
   /* At high zoom the native buttons sit above the toolbar's controls. */
   body.windows .topbar { margin-right: 6px; }
   body.windows .topbar, body.windows.desktop.sidebar-collapsed .topbar {
@@ -301,8 +302,6 @@ body.windows.compose-window .modal-header button { -webkit-app-region: no-drag; 
 @media(max-width:560px) { .meeting-participant-columns { grid-template-columns: minmax(0, 1fr); }.meeting-participant-field .participant-cards { max-height: 184px; } }
 
 /* Mail recipients follow the address lines above the message editor. */
-.compose-dialog #compose-form { grid-template-columns: minmax(0, 1fr); }
-.compose-dialog #compose-form > * { grid-column: 1 / -1; min-width: 0; }
 .compose-participants { grid-template-columns: minmax(0, 1fr); gap: 0; margin: 2px 0 6px; }
 .compose-participants .meeting-participant-field {
   display: grid; grid-template-columns: minmax(62px, 80px) minmax(0, 1fr); align-items: baseline; gap: 4px 8px;
@@ -365,3 +364,124 @@ body.windows.compose-window .modal-header button { -webkit-app-region: no-drag; 
 .mail-thread-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
 .mail-thread-member { border-inline-start: 3px solid var(--line); }
 .mail-thread-member .message-copy { padding-inline-start: 8px; }
+
+/* Keep the primary compose actions in view while the fields scroll. */
+#modal.compose-dialog { height: min(760px, calc(var(--viewport-height, 100dvh) - 24px)); overflow: hidden; }
+.compose-dialog #modal-content, .compose-dialog .modal-body, .compose-dialog #compose-form {
+  display: flex; flex-direction: column; min-height: 0;
+}
+.compose-dialog #modal-content { height: 100%; }
+.compose-dialog .modal-header, .compose-dialog .compose-footer, .compose-send-delay { flex: none; }
+.compose-dialog .modal-body { flex: 1; padding: 0; }
+.compose-dialog #compose-form { flex: 1; }
+.compose-fields { flex: 1; min-height: 0; overflow: auto; padding: 0 24px 10px; scroll-padding-block: 6px; }
+.compose-footer { padding: 6px 24px 10px; background: var(--surface); border-top: 1px solid var(--line); }
+.compose-footer .modal-footer { margin: 0; padding: 0; border: 0; }
+.compose-footer .form-error:empty { display: none; }
+.compose-footer .form-error { margin: 0 0 6px; max-height: 42px; overflow: auto; }
+.compose-message-area:has(.compose-history:not([open])) { display: block; }
+.compose-dialog .quick-replies { margin: 6px 0; padding: 5px 8px; }
+.format-more { align-self: center; min-width: 0; font-size: 12px; }
+.format-more[open] { flex: 1 0 100%; }
+.format-more summary { cursor: pointer; padding: 4px; color: var(--accent); }
+.format-more-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 5px; }
+
+.settings-section-picker { display: none; }
+@container (max-width: 600px) {
+  .settings-section-picker { display: block; flex: none; min-height: 34px; width: 100%; padding: 4px 8px; }
+  .settings-dialog .settings-tabs { display: none; }
+}
+@container (max-height: 420px) {
+  .settings-section-picker { display: block; flex: none; min-height: 34px; width: 100%; padding: 4px 8px; }
+  .settings-dialog .settings-tabs { display: none; }
+  .settings-panels .settings-section-title { margin: 8px 0 6px; }
+  .settings-dialog .field { margin: 8px 0; }
+}
+
+.search-result-criteria { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px 12px; }
+.search-result-criteria button { min-height: 26px; padding: 2px 6px; color: var(--accent); font-size: 11px; }
+@container (max-width: 465px) {
+  .topbar #search-form:not(:focus-within) { flex: 0 0 34px; justify-content: center; min-height: 34px; padding: 0; }
+  .topbar .search-box:not(:focus-within) #search { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: text; }
+  .topbar .search-box:not(:focus-within) > svg { display: block; }
+  .topbar #search-form:focus-within { position: absolute; z-index: 2; inset: 4px; padding-inline: 10px; background: var(--surface); }
+  .topbar .search-box:focus-within #search { flex: 1; }
+}
+@media (max-width: 640px) {
+  .topbar, .desktop.sidebar-collapsed .topbar { flex-wrap: wrap; }
+}
+
+.mail-list .message-row:not(.selected) { box-shadow: inset 0 -1px var(--line); }
+.mail-list .message-row:not(.selected).unread { border-inline-start-color: transparent; background: color-mix(in srgb, var(--air-unread) 70%, var(--surface)); }
+.mail-list .message-row.unread .date { color: var(--muted); font-weight: 400; }
+.mail-list .message-copy { row-gap: 2px; }
+.mail-list .message-open { padding-block: 5px; }
+body.dark .planner-verdict.free, body.dark .planner-people .availability.free { color: #a8dfbd; }
+
+@media (max-height: 520px) {
+  .compose-dialog .modal-header, .meeting-create-dialog .modal-header, .mail-search-dialog .modal-header {
+    flex-wrap: nowrap; align-items: center; gap: 5px; padding: 4px 12px;
+  }
+  .compose-dialog .modal-header > div, .meeting-create-dialog .modal-header > div, .mail-search-dialog .modal-header > div {
+    flex: 1; min-width: 0;
+  }
+  .compose-dialog .modal-header p, .meeting-create-dialog .modal-header p, .mail-search-dialog .modal-header p { display: none; }
+  .compose-dialog .modal-header > .secondary { white-space: normal; font-size: 11px; padding: 3px 6px; min-height: 30px; }
+  .compose-fields { padding-inline: 12px; }
+  .compose-footer { padding: 5px 12px; }
+  .compose-footer .modal-footer { flex-wrap: nowrap; }
+  .compose-footer button { padding-inline: 7px; }
+  .compose-dialog .compose-editor { min-height: 96px; }
+  .compose-dialog .editor-expanded .compose-editor { min-height: 45dvh; }
+  .meeting-create-dialog .modal-body, .mail-search-dialog .modal-body { padding: 2px 14px 10px; }
+  #event-form .form-row { flex-direction: row; gap: 8px; }
+  #event-form .form-row input { min-width: 0; }
+  #event-form .field, #mail-search-form .field { margin-block: 7px; }
+}
+@media (max-height: 320px) {
+  .mail-list .message-open { padding-block: 3px; }
+  .search-results-list #messages:has(.search-result-criteria) .message-copy { grid-template-rows: auto auto; }
+  .search-results-list #messages:has(.search-result-criteria) .message-copy .preview { display: none; }
+  .search-results-list #messages:has(.search-result-criteria) .message-meta { grid-row: 2; }
+  .search-results-list #messages:has(.search-result-criteria) .subject { grid-column: 1; }
+  #compose-form .field:has(> input[name="subject"]) { display: flex; gap: 8px; align-items: center; margin-block: 3px; }
+  #compose-form .field:has(> input[name="subject"]) span { margin: 0; }
+  #compose-form input[name="subject"] { min-width: 0; }
+  .compose-recipient-options { padding-block: 1px; }
+  .compose-dialog .compose-editor-field { margin-block: 2px; }
+  .compose-dialog .editor-label { margin-bottom: 2px; }
+  .compose-dialog .format-toolbar { padding-block: 3px; }
+}
+@supports (backdrop-filter: blur(12px)) {
+  @media (prefers-reduced-transparency: no-preference) and (forced-colors: none) {
+    body { --overlay-opacity: 90%; }
+    body.dark { --overlay-opacity: 86%; }
+    body:not(.compose-window) dialog#modal, dialog#attachment-preview,
+    :is(.folder-context-menu, .mail-search-controls, .people-search-suggestions, .recipient-suggestions, .highlight-palette,
+      .compact-actions .reader-mail-actions, .module-command-menu > div) {
+      background: color-mix(in srgb, var(--surface) var(--overlay-opacity), transparent);
+      border-color: color-mix(in srgb, var(--accent) 27%, var(--line));
+    }
+    body:not(.compose-window) dialog#modal::backdrop, dialog#attachment-preview::backdrop {
+      backdrop-filter: blur(12px) saturate(108%);
+    }
+    :is(.folder-context-menu, .mail-search-controls, .people-search-suggestions, .recipient-suggestions, .highlight-palette,
+      .compact-actions .reader-mail-actions, .module-command-menu > div) {
+      backdrop-filter: blur(12px) saturate(108%);
+    }
+    body:not(.compose-window) dialog#modal :is(.modal-header, .meeting-card-header) {
+      background: linear-gradient(108deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 78%);
+    }
+    .compose-dialog .participant-entry input, .compose-dialog .mail-editor { background: var(--surface); }
+  }
+}
+
+.conversation-list { display: grid; gap: 8px; }
+.conversation-list button { display: grid; justify-items: start; gap: 5px; text-align: start; overflow-wrap: anywhere; }
+.conversation-list span { color: var(--muted); }
+.day-shortcuts { margin-block-end: 14px; }
+.day-shortcuts > div { display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 8px; }
+
+.oof-rich { display: grid; gap: 8px; margin-block: 8px 16px; }
+.oof-rich [role="toolbar"] { display: flex; flex-wrap: wrap; gap: 5px; }
+.oof-rich [contenteditable] { border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }

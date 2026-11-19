@@ -1,0 +1,32 @@
+/* Built-in palettes for the main renderer. Glass, shadows and status colors are host styles. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #fff;
+  --surface2: #f4f5f8;
+  --text: #242933;
+  --muted: #687281;
+  --line: #24293312;
+  --accent: #7760d6;
+  --accent-bg: #f0ebfc;
+  --sidebar: #edf0f5;
+  --rail: #252638;
+}
+
+/* Keep secondary text readable at small sizes. */
+body:not(.dark) {
+  --muted: #626a7c;
+}
+
+body.dark {
+  --bg: #202124;
+  --surface: #292a2e;
+  --surface2: #25262a;
+  --text: #eceef2;
+  --muted: #a3acbb;
+  --line: #ffffff12;
+  --accent: #ab92ee;
+  --accent-bg: #413a55;
+  --primary-ink: #242033;
+  --sidebar: #282c33;
+  --rail: #191a24;
+}

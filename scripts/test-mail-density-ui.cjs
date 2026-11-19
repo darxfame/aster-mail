@@ -39,7 +39,8 @@ app.whenReady().then(async () => {
         assert.ok(report.filterHeight <= 40, 'Filters must stay on one line');
         assert.equal(report.overflow, false);
         assert.equal(await js('document.querySelectorAll(".message-quick-actions button").length===80 && document.querySelectorAll(".mail-select").length===40'), true);
-        await js('document.querySelector(".mail-select").click()');
+        assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden])").length'), 0);
+        await js('selectMailMessage("density-0")');
         assert.equal(await js('mailSelection.has("density-0") && Boolean(document.querySelector("[data-mail-batch=move]"))'), true);
         await js('mailSelection.clear();renderMessages();void 0');
       }

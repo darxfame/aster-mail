@@ -20,7 +20,7 @@ test('rules parse real SOAP shape, retain IDs, expose flags and refuse lossy rou
   const xml = '<Envelope><ResponseCode>NoError</ResponseCode><Rule><RuleId>x</RuleId><DisplayName>Read</DisplayName><Priority>0</Priority><IsEnabled>false</IsEnabled><Conditions><FromAddresses><Address><EmailAddress>anna@example.test</EmailAddress></Address></FromAddresses></Conditions><Actions><MarkAsRead>true</MarkAsRead></Actions></Rule></Envelope>';
   f.stored = P.parseSOAP(xml).Envelope.Rule;
   assert.equal((await R.list(f.client)).items[0].editable, true);
-  for (const mutate of [r => { r.Conditions.SentToMe = 'true'; }, r => { r.Actions.StopProcessingRules = 'true'; }, r => { r.Exceptions = { ContainsSubjectStrings: { String: 'keep' } }; }, r => { r.Conditions.FromAddresses.Address = [r.Conditions.FromAddresses.Address, { EmailAddress: 'other@example.test' }]; }, r => { r.IsNotSupported = 'true'; }, r => { r.IsInError = 'true'; }, r => { r.Conditions.FromAddresses.Address.RoutingType = 'EX'; }]) {
+  for (const mutate of [r => { r.Conditions.SentToMe = 'true'; }, r => { r.Actions.Delete = 'true'; }, r => { r.Exceptions = { Categories: { String: 'keep' } }; }, r => { r.Conditions.ContainsSubjectStrings.String = ['one', 'two']; }, r => { r.IsNotSupported = 'true'; }, r => { r.IsInError = 'true'; }, r => { r.Conditions.FromAddresses.Address.RoutingType = 'EX'; }]) {
     const r = rule(); mutate(r); f.stored = r;
     assert.equal((await R.list(f.client)).items[0].editable, false);
   }
@@ -29,6 +29,27 @@ test('rules parse real SOAP shape, retain IDs, expose flags and refuse lossy rou
   assert.equal(protectedRule.editable, false);
   assert.deepEqual(protectedRule.details.conditions.map(detail => detail.key), ['FromAddresses', 'ContainsSubjectStrings']);
   assert.deepEqual(protectedRule.details.actions.at(-1), { key: 'MoveToFolder', values: ['target'] });
+});
+test('body conditions, subject exceptions, multiple senders and copy actions round-trip', async () => {
+  const f = fixture();
+  const ruleValue = rule();
+  ruleValue.Conditions.FromAddresses.Address = [ruleValue.Conditions.FromAddresses.Address, { EmailAddress: 'other@example.test' }];
+  ruleValue.Conditions.ContainsBodyStrings = { String: 'billing & finance' };
+  ruleValue.Exceptions = { ContainsSubjectStrings: { String: 'Internal' } };
+  ruleValue.Actions.CopyToFolder = { FolderId: { '@_Id': 'copy-target' } };
+  ruleValue.Actions.StopProcessingRules = 'true';
+  f.stored = ruleValue;
+  const [entry] = (await R.list(f.client)).items;
+  assert.equal(entry.editable, true);
+  assert.equal(entry.sender, 'anna@example.test, other@example.test');
+  await R.change(f.client, { id: entry.id, revision: entry.revision, action: 'update', changes: { name: 'Billing' } });
+  const xml = f.calls.at(-1).xml;
+  assert.match(xml, /ContainsBodyStrings><t:String>billing &amp; finance/);
+  assert.match(xml, /<t:Exceptions><t:ContainsSubjectStrings><t:String>Internal/);
+  assert.match(xml, /<t:CopyToFolder><t:FolderId Id="copy-target"/);
+  assert.match(xml, /<t:StopProcessingRules>true/);
+  assert.match(xml, /other@example.test/);
+  assert.doesNotMatch(R.createSOAP({ name: 'Subject only', subject: 'Invoice', markRead: true }, 0), /FromAddresses/);
 });
 test('one rule is updated or deleted, blob preserved, stale and unsupported writes blocked', async () => {
   const f = fixture(), before = (await f.client.mailRules()).items[0];
@@ -48,7 +69,7 @@ test('one rule is updated or deleted, blob preserved, stale and unsupported writ
   f.failure = true;
   await assert.rejects(f.client.changeMailRule({ action: 'delete', id: before.id, revision: before.revision }), /Lost response/);
   assert.equal(f.calls.filter(c => c.action === 'UpdateInboxRules').length, 3);
-  for (const changes of [{}, { priority: -1 }, { priority: 2147483648 }, { enabled: 'false' }, { markRead: false, folder: '' }, { sender: '' }, { name: 42 }, { folder: null }, { unknown: true }]) await assert.rejects(f.client.changeMailRule({ action: 'update', id: before.id, revision: before.revision, changes }));
+  for (const changes of [{}, { priority: -1 }, { priority: 2147483648 }, { enabled: 'false' }, { markRead: false, folder: '' }, { sender: '', subject: '' }, { name: 42 }, { folder: null }, { unknown: true }]) await assert.rejects(f.client.changeMailRule({ action: 'update', id: before.id, revision: before.revision, changes }));
   assert.equal(f.calls.filter(c => c.action === 'UpdateInboxRules').length, 3);
 });
 test('MCP lists rules and gates edits/deletion with approval, fresh revisions and session guards', async () => {

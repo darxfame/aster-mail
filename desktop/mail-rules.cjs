@@ -1,20 +1,35 @@
 const tr = require('../src/i18n.js').text;
 const P = require('./protocol.cjs');
 const { createHash } = require('node:crypto');
+const textFields = ['name', 'sender', 'subject', 'body', 'exceptSubject', 'folder', 'copyFolder'];
+const booleanFields = ['markRead', 'stopProcessing', 'enabled'];
+const allowedChanges = [...textFields, ...booleanFields, 'priority'];
+const mailboxAddress = /^[^\s<>@,;]+@[^\s<>@,;]+$/;
+const invalidRule = () => new Error(tr('Укажите название, хотя бы одно условие и действие правила.'));
 function createSOAP(data, priority, id = '') {
   const name = String(data.name || '').trim(), subject = String(data.subject || '').trim();
+  const body = String(data.body || '').trim(), exceptSubject = String(data.exceptSubject || '').trim();
   const addresses = P.emails(data.sender || '');
-  if (!name || name.length > 100 || addresses.length !== 1 || subject.length > 200 || /[\x00-\x1f]/.test(name + subject) || data.markRead !== undefined && typeof data.markRead !== 'boolean' || data.folder !== undefined && (typeof data.folder !== 'string' || !data.folder || data.folder.length > 16000 || /[\x00-\x1f]/.test(data.folder)) || !data.folder && data.markRead !== true || !Number.isSafeInteger(priority) || priority < 0) throw new Error(tr('Укажите имя правила, отправителя и действие: перенос или отметку прочитанным'));
-  const folder = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive'].includes(data.folder) ? `<t:DistinguishedFolderId Id="${data.folder}"/>` : `<t:FolderId Id="${P.escapeXML(data.folder)}"/>`;
+  if (!name || name.length > 100 || addresses.length > 20 || !addresses.length && !subject && !body ||
+    [subject, body, exceptSubject].some(value => value.length > 200) || /[\x00-\x1f]/.test(name + subject + body + exceptSubject) ||
+    booleanFields.some(key => data[key] !== undefined && typeof data[key] !== 'boolean') ||
+    ['folder', 'copyFolder'].some(key => data[key] !== undefined && (typeof data[key] !== 'string' || data[key].length > 16000 || /[\x00-\x1f]/.test(data[key]))) ||
+    !data.folder && !data.copyFolder && !data.markRead && !data.stopProcessing ||
+    !Number.isSafeInteger(priority) || priority < 0 || priority > 2147483647) throw invalidRule();
+  const folder = value => ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive'].includes(value)
+    ? `<t:DistinguishedFolderId Id="${value}"/>` : `<t:FolderId Id="${P.escapeXML(value)}"/>`;
+  const string = (tag, value) => value ? `<t:${tag}><t:String>${P.escapeXML(value)}</t:String></t:${tag}>` : '';
+  const conditions = string('ContainsBodyStrings', body) + string('ContainsSubjectStrings', subject) + (addresses.length ? `<t:FromAddresses>${addresses.map(address => `<t:Address><t:EmailAddress>${P.escapeXML(address)}</t:EmailAddress></t:Address>`).join('')}</t:FromAddresses>` : '');
+  const exceptions = exceptSubject ? `<t:Exceptions>${string('ContainsSubjectStrings', exceptSubject)}</t:Exceptions>` : '';
+  const actions = `${data.copyFolder ? `<t:CopyToFolder>${folder(data.copyFolder)}</t:CopyToFolder>` : ''}${data.markRead ? '<t:MarkAsRead>true</t:MarkAsRead>' : ''}${data.folder ? `<t:MoveToFolder>${folder(data.folder)}</t:MoveToFolder>` : ''}${data.stopProcessing ? '<t:StopProcessingRules>true</t:StopProcessingRules>' : ''}`;
   const operation = id ? 'SetRuleOperation' : 'CreateRuleOperation';
-  return updateSOAP(`<t:${operation}><t:Rule>${id ? `<t:RuleId>${P.escapeXML(id)}</t:RuleId>` : ''}<t:DisplayName>${P.escapeXML(name)}</t:DisplayName><t:Priority>${priority}</t:Priority><t:IsEnabled>${data.enabled !== false}</t:IsEnabled><t:Conditions>${subject ? `<t:ContainsSubjectStrings><t:String>${P.escapeXML(subject)}</t:String></t:ContainsSubjectStrings>` : ''}<t:FromAddresses><t:Address><t:EmailAddress>${P.escapeXML(addresses[0])}</t:EmailAddress></t:Address></t:FromAddresses></t:Conditions><t:Actions>${data.markRead ? '<t:MarkAsRead>true</t:MarkAsRead>' : ''}${data.folder ? `<t:MoveToFolder>${folder}</t:MoveToFolder>` : ''}</t:Actions></t:Rule></t:${operation}>`);
+  return updateSOAP(`<t:${operation}><t:Rule>${id ? `<t:RuleId>${P.escapeXML(id)}</t:RuleId>` : ''}<t:DisplayName>${P.escapeXML(name)}</t:DisplayName><t:Priority>${priority}</t:Priority><t:IsEnabled>${data.enabled !== false}</t:IsEnabled><t:Conditions>${conditions}</t:Conditions>${exceptions}<t:Actions>${actions}</t:Actions></t:Rule></t:${operation}>`);
 }
 function updateSOAP(operation) {
   return P.soap(`<m:UpdateInboxRules><m:RemoveOutlookRuleBlob>false</m:RemoveOutlookRuleBlob><m:Operations>${operation}</m:Operations></m:UpdateInboxRules>`);
 }
 async function createRule(client, data) {
-  const { name, sender, subject, folder, markRead } = data;
-  const input = { name, sender, subject, folder, markRead };
+  const input = Object.fromEntries(allowedChanges.filter(key => Object.hasOwn(data, key)).map(key => [key, data[key]]));
   createSOAP(input, 0); // Validate before any request.
   const configuration = await client.ews('GetInboxRules', P.soap('<m:GetInboxRules/>'));
   if (P.walk(configuration, o => String(o.OutlookRuleBlobExists).toLowerCase() === 'true').length) throw new Error(tr('Exchange хранит совместимые правила Outlook. Чтобы не удалить их, создайте новое правило в OWA.'));
@@ -43,21 +58,34 @@ function describe(value) {
   });
 }
 function normalize(rule, blocked) {
-  const conditions = rule.Conditions, actions = rule.Actions;
+  const { Conditions: conditions, Exceptions: exceptions, Actions: actions } = rule;
   const addresses = array(conditions?.FromAddresses?.Address);
-  const subjects = array(conditions?.ContainsSubjectStrings?.String);
-  const move = actions?.MoveToFolder;
-  const folder = move?.FolderId || move?.DistinguishedFolderId;
-  const data = { name: rule.DisplayName, sender: addresses[0]?.EmailAddress || '', subject: subjects[0] || '', folder: folder?.['@_Id'] || '', markRead: bool(actions?.MarkAsRead) };
+  const singleString = (object, key) => {
+    const value = object?.[key];
+    return value === undefined || only(value, ['String']) && typeof value.String === 'string' && Boolean(value.String) && value.String.trim() === value.String;
+  };
+  const folderId = value => value?.FolderId || value?.DistinguishedFolderId;
+  const validFolder = value => value === undefined || only(value, ['FolderId', 'DistinguishedFolderId']) && Object.keys(value).length === 1 && only(folderId(value), ['@_Id', '@_ChangeKey']) && Boolean(folderId(value)['@_Id']);
+  const data = {
+    name: rule.DisplayName, sender: addresses.map(address => address?.EmailAddress || '').join(', '),
+    subject: conditions?.ContainsSubjectStrings?.String || '', body: conditions?.ContainsBodyStrings?.String || '',
+    exceptSubject: exceptions?.ContainsSubjectStrings?.String || '',
+    folder: folderId(actions?.MoveToFolder)?.['@_Id'] || '', copyFolder: folderId(actions?.CopyToFolder)?.['@_Id'] || '',
+    markRead: bool(actions?.MarkAsRead), stopProcessing: bool(actions?.StopProcessingRules),
+  };
+  const validBoolean = value => value === undefined || ['true', 'false'].includes(String(value));
   let editable = !blocked && only(rule, ['RuleId', 'DisplayName', 'Priority', 'IsEnabled', 'IsNotSupported', 'IsInError', 'Conditions', 'Exceptions', 'Actions'])
-    && ['true', 'false'].includes(String(rule.IsEnabled)) && [undefined, false, 'false'].includes(rule.IsNotSupported) && [undefined, false, 'false'].includes(rule.IsInError) && empty(rule.Exceptions)
-    && only(conditions, ['FromAddresses', 'ContainsSubjectStrings']) && only(conditions.FromAddresses, ['Address']) && addresses.length === 1
-    && only(addresses[0], ['Name', 'EmailAddress', 'RoutingType', 'MailboxType']) && (!addresses[0].RoutingType || addresses[0].RoutingType === 'SMTP')
-    && (!conditions.ContainsSubjectStrings || only(conditions.ContainsSubjectStrings, ['String']) && subjects.length === 1 && typeof subjects[0] === 'string')
-    && only(actions, ['MoveToFolder', 'MarkAsRead']) && (actions.MarkAsRead === undefined || ['true', 'false'].includes(String(actions.MarkAsRead)))
-    && (!move || only(move, ['FolderId', 'DistinguishedFolderId']) && Object.keys(move).length === 1 && only(folder, ['@_Id', '@_ChangeKey']));
-  editable = editable && typeof data.name === 'string' && data.name === data.name.trim() && typeof data.subject === 'string' && data.subject === data.subject.trim() && typeof data.sender === 'string' && /^[^\s<>@,;]+@[^\s<>@,;]+$/.test(data.sender);
-  try { createSOAP({ ...data, folder: data.folder || undefined }, Number(rule.Priority)); } catch { editable = false; }
+    && typeof data.name === 'string' && data.name === data.name.trim()
+    && ['true', 'false'].includes(String(rule.IsEnabled)) && [undefined, false, 'false'].includes(rule.IsNotSupported) && [undefined, false, 'false'].includes(rule.IsInError)
+    && only(conditions, ['FromAddresses', 'ContainsSubjectStrings', 'ContainsBodyStrings'])
+    && (conditions.FromAddresses === undefined || only(conditions.FromAddresses, ['Address']) && addresses.length > 0
+      && addresses.every(address => only(address, ['Name', 'EmailAddress', 'RoutingType', 'MailboxType']) && (!address.RoutingType || address.RoutingType === 'SMTP') && typeof address.EmailAddress === 'string' && mailboxAddress.test(address.EmailAddress)))
+    && singleString(conditions, 'ContainsSubjectStrings') && singleString(conditions, 'ContainsBodyStrings')
+    && (empty(exceptions) || only(exceptions, ['ContainsSubjectStrings']) && singleString(exceptions, 'ContainsSubjectStrings'))
+    && only(actions, ['MoveToFolder', 'CopyToFolder', 'MarkAsRead', 'StopProcessingRules'])
+    && validBoolean(actions.MarkAsRead) && validBoolean(actions.StopProcessingRules)
+    && validFolder(actions.MoveToFolder) && validFolder(actions.CopyToFolder);
+  try { createSOAP(data, Number(rule.Priority)); } catch { editable = false; }
   return { id: String(rule.RuleId), revision: revision(rule), priority: Number(rule.Priority), enabled: bool(rule.IsEnabled), ...data, editable: Boolean(editable), ...(!editable ? { details: { conditions: describe(conditions), exceptions: describe(rule.Exceptions), actions: describe(actions) } } : {}) };
 }
 async function list(client) {
@@ -71,10 +99,10 @@ function validateChange(data) {
   if (data.action === 'delete' && data.changes !== undefined) throw new Error(tr('Некорректное изменение правила'));
   if (data.action === 'update') {
     if (!data.changes || typeof data.changes !== 'object' || Array.isArray(data.changes)) throw new Error(tr('Некорректное изменение правила'));
-    for (const [key, value] of Object.entries(data.changes)) {
-      if (['name', 'sender', 'subject', 'folder'].includes(key) && typeof value !== 'string' || ['markRead', 'enabled'].includes(key) && typeof value !== 'boolean') throw new Error(tr('Некорректное изменение правила'));
-    }
-    if (!data.changes || !Object.keys(data.changes).length || Object.keys(data.changes).some(key => !['name', 'sender', 'subject', 'folder', 'markRead', 'enabled', 'priority'].includes(key)) || data.changes.enabled !== undefined && typeof data.changes.enabled !== 'boolean' || data.changes.priority !== undefined && (!Number.isSafeInteger(data.changes.priority) || data.changes.priority < 0 || data.changes.priority > 2147483647)) throw new Error(tr('Некорректное изменение правила'));
+    const entries = Object.entries(data.changes);
+    if (!entries.length || entries.some(([key, value]) => !allowedChanges.includes(key) ||
+      textFields.includes(key) && typeof value !== 'string' || booleanFields.includes(key) && typeof value !== 'boolean' ||
+      key === 'priority' && (!Number.isSafeInteger(value) || value < 0 || value > 2147483647))) throw new Error(tr('Некорректное изменение правила'));
   }
 }
 async function prepareChange(client, data) {
@@ -84,10 +112,7 @@ async function prepareChange(client, data) {
   if (!rule || rule.revision !== data.revision) throw new Error(tr('Правило изменилось. Загрузите список заново.'));
   if (!rule.editable) throw new Error(tr('Это правило защищено от изменений в Aster. Используйте OWA или Outlook.'));
   const updated = data.action === 'update' ? { ...rule, ...data.changes } : rule;
-  if (data.action === 'update') {
-    if (typeof updated.sender !== 'string' || !/^[^\s<>@,;]+@[^\s<>@,;]+$/.test(updated.sender)) throw new Error(tr('Некорректное изменение правила'));
-    createSOAP({ ...updated, folder: updated.folder || undefined }, updated.priority);
-  }
+  if (data.action === 'update') createSOAP(updated, updated.priority);
   return updated;
 }
 async function changeRule(client, data) {

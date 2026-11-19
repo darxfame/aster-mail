@@ -25,16 +25,17 @@
   if (typeof module !== 'undefined') { module.exports = { styleAllowed, isTrackingImage }; return; }
   const darkSurface = [41, 42, 46];
   const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
-  function sanitize(html, { dark = false, images = false, preserveBackgrounds = false } = {}) {
+  function sanitize(html, { dark = false, images = false, preserveBackgrounds = false, preserveBodyBackground = false } = {}) {
+    const wholeDocument = preserveBackgrounds || preserveBodyBackground;
     const safe = DOMPurify.sanitize(html, {
-      WHOLE_DOCUMENT: preserveBackgrounds,
-      ALLOWED_TAGS: ['div','p','br','span','b','strong','i','em','u','s','strike','sub','sup','font','a','blockquote','pre','code','ul','ol','li','h1','h2','h3','h4','hr','table','thead','tbody','tfoot','tr','td','th', ...(images ? ['img'] : []), ...(preserveBackgrounds ? ['html', 'head', 'body'] : [])],
+      WHOLE_DOCUMENT: wholeDocument,
+      ALLOWED_TAGS: ['div','p','br','span','b','strong','i','em','u','s','strike','sub','sup','font','a','blockquote','pre','code','ul','ol','li','h1','h2','h3','h4','hr','table','thead','tbody','tfoot','tr','td','th', ...(images ? ['img'] : []), ...(wholeDocument ? ['html', 'head', 'body'] : [])],
       ALLOWED_ATTR: ['style','href','title','alt','src','width','height','colspan','rowspan','color','bgcolor','face','size','align'],
       ADD_DATA_URI_TAGS: ['img'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
     });
     const doc = new DOMParser().parseFromString(safe, 'text/html');
     let originalColor = '';
-    if (preserveBackgrounds) {
+    if (wholeDocument) {
       originalColor = doc.body.style.color || doc.body.getAttribute('color') || '';
       const background = doc.body.style.backgroundColor || doc.body.getAttribute('bgcolor') || doc.documentElement.style.backgroundColor || doc.documentElement.getAttribute('bgcolor') || '';
       for (const node of [doc.documentElement, doc.body]) {

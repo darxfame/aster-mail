@@ -21,6 +21,65 @@ app.whenReady().then(async () => {
     await js("applyLanguage('ru')");
     if (process.platform === 'darwin') await js("document.body.classList.add('desktop','mac')");
     await js('document.querySelector("[data-action=demo]").click()');
+    await js(`window.selectionButtons = () => [...document.querySelectorAll('#messages .message-open')];
+      window.selectedPositions = () => selectionButtons().map((button, position) => mailSelection.has(button.dataset.id) ? position : -1).filter(position => position !== -1);
+      window.shiftClick = position => selectionButtons()[position].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+      window.toggleClick = (position, platform) => {
+        const desktopApi = window.aster;
+        window.aster = { platform };
+        try {
+          selectionButtons()[position].dispatchEvent(new MouseEvent('click', {
+            bubbles: true, cancelable: true, metaKey: platform === 'darwin', ctrlKey: platform === 'win32'
+          }));
+        } finally {
+          window.aster = desktopApi;
+        }
+      };
+      window.selectionKey = (key, shiftKey = true) => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true })); void 0;`);
+    assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden]), .mail-selection-bar").length'), 0);
+    await js(`selectionButtons()[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true, clientX:400, clientY:300 }))`);
+    assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden])").length'), 0, 'Opening the menu alone leaves checkboxes hidden');
+    await js('document.querySelector("[data-mail-context=select]").click()');
+    assert.deepEqual(await js('selectedPositions()'), [1]);
+    assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden])").length === selectionButtons().length'), true);
+    await js('shiftClick(4)');
+    assert.deepEqual(await js('selectedPositions()'), [1, 2, 3, 4]);
+    await js('selectionKey("ArrowUp")');
+    assert.deepEqual(await js('selectedPositions()'), [1, 2, 3]);
+    await js('shiftClick(0)');
+    assert.deepEqual(await js('selectedPositions()'), [0, 1]);
+    await js('selectionKey("Escape", false); selectionButtons()[2].focus(); selectionKey("ArrowUp")');
+    assert.deepEqual(await js('selectedPositions()'), [1, 2], 'Shift navigation starts from the focused mail even outside selection mode');
+    await js('selectionKey("Escape", false); selectionButtons()[0].focus(); shiftClick(3)');
+    assert.deepEqual(await js('selectedPositions()'), [0, 1, 2, 3]);
+    assert.equal(await js('state.selected === null'), true, 'Selecting a range does not open a message');
+    await js('selectionKey("Escape", false)');
+    assert.equal(await js('mailSelection.size === 0 && document.querySelectorAll(".mail-select:not([hidden]), .mail-selection-bar").length === 0'), true);
+    async function clickWithNativeModifier(position, modifier, expected) {
+      const point = await js(`(() => {
+        const rect = selectionButtons()[${position}].getBoundingClientRect();
+        return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+      })()`);
+      for (const type of ['mouseDown', 'mouseUp']) {
+        window.webContents.sendInputEvent({ type, ...point, button: 'left', clickCount: 1, modifiers: [modifier] });
+      }
+      await waitFor(`JSON.stringify(selectedPositions()) === '${JSON.stringify(expected)}'`);
+    }
+    for (const platform of ['darwin', 'win32']) {
+      const toggle = platform === process.platform
+        ? (position, expected) => clickWithNativeModifier(position, platform === 'darwin' ? 'meta' : 'control', expected)
+        : position => js(`toggleClick(${position}, ${JSON.stringify(platform)})`);
+      await toggle(0, [0]);
+      await toggle(3, [0, 3]);
+      assert.deepEqual(await js('selectedPositions()'), [0, 3], platform);
+      assert.equal(await js('document.activeElement === selectionButtons()[3]'), true, platform);
+      await toggle(0, [3]);
+      assert.deepEqual(await js('selectedPositions()'), [3], platform);
+      await toggle(3, []);
+      assert.deepEqual(await js('selectedPositions()'), [], platform);
+      assert.equal(await js('document.querySelectorAll(".mail-select:not([hidden]), .mail-selection-bar").length'), 0, platform);
+      assert.equal(await js('state.selected'), null, platform);
+    }
     await js('openMessage(state.messages[0].id)');
     await js(`window.readerBefore=document.querySelector('#reader');window.selectedBefore=state.selected.id;window.targetId=state.messages[1].id;window.otherId=state.messages[2].id;state.messages[1].read=true;state.demo=false;state.account={sessionId:'context-fixture',server:'https://mail.example.test',username:'fictional@example.test'};window.calls=[];api=async(operation,data)=>{if(operation==='personPhoto')return null;calls.push({operation,data});if(operation!=='mailBatch')throw new Error('Unexpected operation');return {results:data.refs.map(ref=>({id:ref.id,status:'done',changeKey:'updated-key'}))}};renderMessages();mailSelection.add(otherId);renderMailBatchToolbar();void 0;`);
     const open = async () => js(`document.querySelector('[data-id="'+targetId+'"] .message-open').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:innerWidth-2,clientY:innerHeight-2}))`);
@@ -61,7 +120,7 @@ app.whenReady().then(async () => {
     assert.equal(await js('mailSelection.has(otherId)'),true);
     await new Promise(resolve=>setTimeout(resolve,80));
     assert.equal(await js('calls.length'),3,'Uncertain mutations are never retried');
-    console.log('PASS: right-click/keyboard menus, read/unread with fresh keys, preserved reader and unrelated selection, viewport placement, stale navigation and no uncertain-write retry.');
+    console.log('PASS: modifier-click and Shift selection, right-click/keyboard menus, fresh read/unread keys, preserved reader, viewport placement, stale navigation and no uncertain-write retry.');
   } finally {
     window?.destroy();
     await fs.rm(profile,{recursive:true,force:true,maxRetries:3}).catch(error=>{

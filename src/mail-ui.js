@@ -20,6 +20,37 @@ function mailThreadRows(items) {
     return [{ message, group, expanded }, ...(expanded ? group.slice(1).map(message => ({ message, member: true })) : [])];
   });
 }
+async function openMailConversation() {
+  const message = state.selected;
+  if (!message?.conversationId || $('#modal').open) return;
+  const account = state.account, generation = state.generation;
+  modal(tr('Вся беседа'), '', '<div id="mail-conversation-items" role="status"></div>');
+  const target = $('#mail-conversation-items');
+  const current = () => target.isConnected && $('#modal').open && state.account === account && state.generation === generation && state.selected === message;
+  target.textContent = tr('Загрузка…');
+  try {
+    const result = state.demo
+      ? { items: window.asterDemo.messages.filter(item => item.conversationId === message.conversationId && !item.isDraft) }
+      : await api('conversation', { id: message.conversationId });
+    if (!current()) return;
+    const items = [...result.items];
+    if (!items.some(item => item.id === message.id)) items.push(message);
+    items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const folderName = item => state.folders.find(folder => folder.id === item.parentId)?.name || systemFolders.find(([id]) => id === item.folder)?.[1] || '';
+    target.removeAttribute('role');
+    target.innerHTML = `${result.limited ? `<p class="form-note">${tr('Показано до 200 писем, полученных от Exchange.')}</p>` : ''}<div class="conversation-list">${items.map((item, index) => `<button type="button" class="secondary" data-conversation-index="${index}"><strong>${esc(item.subject)}</strong><span>${esc([item.from?.name || item.from?.email, folderName(item), dateFormat(item.date, { dateStyle: 'short', timeStyle: 'short' })].filter(Boolean).join(' · '))}</span></button>`).join('')}</div>`;
+    target.addEventListener('click', event => {
+      const button = event.target.closest('[data-conversation-index]');
+      if (!button || !current()) return;
+      const item = items[Number(button.dataset.conversationIndex)];
+      $('#modal').close();
+      void openMessage(item.id, generation, { fromConversation: item });
+    });
+  } catch (error) {
+    if (current()) target.textContent = errorText(error);
+  }
+}
+
 function toggleMailThread(id) {
   const button = [...document.querySelectorAll('[data-action="mail-thread"]')].find(button => button.dataset.id === id);
   if (!button) return;
@@ -180,7 +211,7 @@ function showMailContextMenu(row, x, y) {
   const message = state.messages.find(item => item.id === row.dataset.id); if (!message) return;
   closeMailContextMenu(); closeFolderMenu();
   const account = state.account, scope = mailSelectionKey(), generation = state.generation;
-  const actions = [['open', tr('Открыть письмо')], [message.read ? 'unread' : 'read', message.read ? tr('Пометить непрочитанным') : tr('Пометить прочитанным')], ['archive', tr('В архив')], ['trash', tr('В корзину')], ['rule', tr('Создать правило для отправителя')]];
+  const actions = [['open', tr('Открыть письмо')], ['select', tr('Выбрать письмо')], [message.read ? 'unread' : 'read', message.read ? tr('Пометить непрочитанным') : tr('Пометить прочитанным')], ['archive', tr('В архив')], ['trash', tr('В корзину')], ['rule', tr('Создать правило для отправителя')]];
   const menu = document.createElement('div'); mailContextMenu = menu; menu.opener = row.querySelector('.message-open');
   menu.className = 'folder-context-menu mail-context-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tr('Действия с письмом'));
   menu.innerHTML = actions.map(([action, label]) => `<button type="button" role="menuitem" tabindex="-1" data-mail-context="${action}" ${isDraftMessage(message) && ['read','unread'].includes(action) || !state.query && (action === 'archive' && state.folder === 'archive' || action === 'trash' && state.folder === 'deleteditems') ? 'disabled' : ''}>${esc(label)}</button>`).join('');
@@ -193,6 +224,7 @@ function showMailContextMenu(row, x, y) {
     const action = button.dataset.mailContext; closeMailContextMenu();
     if (account !== state.account || scope !== mailSelectionKey() || generation !== state.generation || mailBatchBusy || !state.messages.some(item => item.id === message.id)) return;
     if (action === 'open') void openMessage(message.id).catch(showError);
+    else if (action === 'select') selectMailMessage(message.id);
     else if (action === 'rule') ruleAfterMove(message, message.parentId || state.folder, false);
     else void runMailBatch(action, undefined, [message.id]).catch(showError);
   };
@@ -220,11 +252,13 @@ document.addEventListener('keydown', event => {
 });
 
 async function toggleMailProperty(id, field) {
-  const message = state.messages.find(item => item.id === id); if (!message) return;
+  const listed = state.messages.find(item => item.id === id);
+  const message = listed || (state.selected?.id === id ? state.selected : null);
+  if (!message) return;
   if (readingMessages.has(id)) await readingMessages.get(id);
   const key = field === 'Flag' ? 'flagged' : 'importance', value = field === 'Flag' ? !message.flagged : message.importance === 'High' ? 'Normal' : 'High';
   if (!state.demo) { const updated = await api('change', { ref: ref(message), field, value }); message.changeKey = updated.changeKey || message.changeKey; }
-  if (field === 'Flag' && message.flagged && state.filter === 'flagged') state.offset = Math.max(0, state.offset - 1);
+  if (listed && field === 'Flag' && message.flagged && state.filter === 'flagged') state.offset = Math.max(0, state.offset - 1);
   message[key] = value;
   if (state.selected?.id === id) Object.assign(state.selected, { [key]: value, changeKey: message.changeKey });
   if (state.demo) window.asterDemo.messages.find(item => item.id === id)[key] = value;
@@ -281,7 +315,7 @@ function clearMailDrag() {
 }
 document.addEventListener('pointerdown', event => {
   const row = event.target.closest('.message-row[data-id]');
-  if (!row || event.button !== 0 || event.pointerType === 'touch' || event.target.closest('.message-quick-actions,.mail-select') || $('#modal').open) return;
+  if (!row || event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.pointerType === 'touch' || event.target.closest('.message-quick-actions,.mail-select') || $('#modal').open) return;
   mailDrag = { id: row.dataset.id, row, x: event.clientX, y: event.clientY, moved: false, pointer: event.pointerId };
   (event.target.closest('.message-open') || row).setPointerCapture(event.pointerId);
 });

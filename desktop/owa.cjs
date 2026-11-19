@@ -214,6 +214,22 @@ class OWAClient {
     const updated = P.walk(json, o => o.ItemId?.Id)[0]?.ItemId;
     return updated ? { id: updated.Id, changeKey: updated.ChangeKey } : data.ref;
   }
+  async conversation({ id }) {
+    if (typeof id !== 'string' || !id || id.length > 4096 || /[\x00-\x1f]/.test(id)) throw new Error('Invalid conversation ID');
+    const limit = 200;
+    const fields = ['item:Subject', 'item:DateTimeReceived', 'item:DateTimeSent', 'item:ParentFolderId', 'message:From'];
+    const result = await this.ews('GetConversationItems', P.soap(`<m:GetConversationItems><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>${fields.map(field => `<t:FieldURI FieldURI="${field}"/>`).join('')}</t:AdditionalProperties></m:ItemShape><m:FoldersToIgnore><t:DistinguishedFolderId Id="drafts"/></m:FoldersToIgnore><m:MaxItemsToReturn>${limit}</m:MaxItemsToReturn><m:SortOrder>TreeOrderDescending</m:SortOrder><m:Conversations><t:Conversation><t:ConversationId Id="${P.escapeXML(id)}"/></t:Conversation></m:Conversations></m:GetConversationItems>`));
+    const nodes = P.walk(result, value => Object.hasOwn(value, 'ConversationNodes'))[0]?.ConversationNodes;
+    if (nodes === undefined) throw new Error(tr('Exchange не вернул письма беседы.'));
+    const entries = P.walk(nodes, item => typeof item.ItemId?.['@_Id'] === 'string');
+    const unique = new Map();
+    for (const item of entries) {
+      const key = item.ItemId['@_Id'];
+      if (!unique.has(key)) unique.set(key, P.message({ ...item, ItemId: { Id: key, ChangeKey: item.ItemId['@_ChangeKey'] },
+        ParentFolderId: { Id: item.ParentFolderId?.['@_Id'] }, ConversationId: { Id: id }, IsRead: true }));
+    }
+    return { items: [...unique.values()].slice(0, limit), limited: entries.length >= limit };
+  }
   async mailRules() { return require('./mail-rules.cjs').list(this); }
   async changeMailRule(data) { return require('./mail-rules.cjs').change(this, data); }
   async createMailRule(data) { return require('./mail-rules.cjs').create(this, data); }

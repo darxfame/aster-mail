@@ -63,7 +63,7 @@ test('selection is limited to loaded messages, never marks them read, and clears
   const handlers = {}, notes = [];
   const state = { account: { sessionId: 'account' }, view: 'mail', folder: 'inbox', filter: 'all', query: '' };
   const items = Array.from({ length: 125 }, (_, i) => ({ id: String(i), read: false }));
-  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, state, document: { addEventListener: (name, handler) => { handlers[name] = handler; } }, renderMessages() {}, filteredMessages: () => items, toast: note => notes.push(note) });
+  const context = vm.createContext({ errorText: require('../src/errors.js').message, tr: value => value, state, document: { addEventListener: (name, handler) => { handlers[name] = handler; }, querySelectorAll: () => [] }, renderMessages() {}, filteredMessages: () => items, toast: note => notes.push(note) });
   vm.runInContext(rendererSource, context);
   context.syncMailSelection(items);
   handlers.change({ target: { checked: true, hasAttribute: name => name === 'data-mail-select-all' } });
@@ -77,6 +77,12 @@ test('selection is limited to loaded messages, never marks them read, and clears
   handlers.change({ target: { checked: true, hasAttribute: name => name === 'data-mail-select-all' } });
   state.folder = 'sentitems'; context.syncMailSelection(items);
   assert.equal(vm.runInContext('mailSelection.size', context), 0);
+  const order = items.map(message => message.id);
+  context.selectMailRange('4', '1', order);
+  assert.equal(vm.runInContext('[...mailSelection].join(",")', context), '1,2,3,4');
+  context.selectMailRange('1', '104', order);
+  assert.equal(vm.runInContext('[...mailSelection].join(",")', context), '1,2,3,4', 'An oversized range keeps the existing selection');
+  assert.match(notes.at(-1), /до 100/);
 });
 
 test('partial results clear selection, show counts and cannot accidentally repeat the unconfirmed write', async () => {

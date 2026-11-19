@@ -613,7 +613,7 @@ async function installModuleBundle(bundle, guard) {
   guard();
 }
 
-const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'mailRules', 'changeMailRule', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'removeEvent', 'eventMessage', 'eventImage', 'contentImages']);
+const methods = new Set(['mailBatch', 'editDraft', 'folderOperation', 'identity', 'clearMailCache', 'folders', 'messages', 'search', 'message', 'conversation', 'change', 'move', 'send', 'draft', 'calendar', 'event', 'createEvent', 'respond', 'contacts', 'createContact', 'signature', 'personPhoto', 'mailRules', 'changeMailRule', 'createMailRule', 'availability', 'eventDetails', 'eventConflicts', 'updateEvent', 'removeEvent', 'eventMessage', 'eventImage', 'contentImages']);
 const serverWrites = new Set(['send', 'draft', 'editDraft', 'mailBatch', 'folderOperation', 'change', 'move', 'createEvent', 'updateEvent', 'removeEvent', 'respond', 'createContact', 'createMailRule', 'changeMailRule', 'saveAutoReplies']);
 function validate(operation, data) {
   if (!data || typeof data !== 'object' || JSON.stringify(data).length > 30_000_000) throw new Error('Invalid request');

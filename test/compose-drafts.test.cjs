@@ -60,13 +60,13 @@ test('draft editor retains only inert CID images and never mounts remote or data
   const removed = [];
   const images = ['cid:logo@example.com', 'https://tracker.example.com/pixel', 'data:image/svg+xml,unsafe', 'file:///secret', 'cid:invalid content'];
   const context = vm.createContext({ window: { asterRecipients: { commit: () => true } }, errorText: require('../src/errors.js').message, isComposeWindow: false, modalBusy: false, waitForComposeSend: async () => true, setModalDirty() {}, tr: value => value,
-    preserveCidImages: true,
+    preserveCidImages: true, defaultColorSelector: 'placeholder', editor: { querySelector: () => null },
     root: { asterRichContent: { sanitize(_value, options) {
       assert.equal(options.images, true);
       return { body: { innerHTML: 'sanitized' }, querySelectorAll: () => images.map(src => ({ getAttribute: () => src, remove: () => removed.push(src) })) };
     } } },
   });
-  vm.runInContext(editorSource.slice(editorSource.indexOf('    function clean('), editorSource.indexOf('    if (html !== undefined)')), context);
+  vm.runInContext(editorSource.slice(editorSource.indexOf('    function clean('), editorSource.indexOf('    if (html !== undefined) editor.innerHTML')), context);
   assert.equal(context.clean('untrusted'), 'sanitized');
   assert.deepEqual(removed, images.slice(1));
 });

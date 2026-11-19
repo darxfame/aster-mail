@@ -75,6 +75,17 @@ app.whenReady().then(async () => {
     await js('document.querySelector("#auto-replies-load").click()');
     await waitFor('!document.querySelector("#auto-replies-fields").disabled');
     assert.equal(await js('document.querySelector("[name=oofInternal]").value'), '  Я в отпуске до 13 ноября.\n\nПо срочным вопросам  обратитесь к коллеге.');
+
+    await js(`(() => {
+      const reply = document.querySelector('[data-oof-reply=oofExternal]');
+      reply.querySelector('[data-oof-format]').click();
+      const area = reply.querySelector('[contenteditable]'), range = document.createRange();
+      range.selectNodeContents(area); getSelection().removeAllRanges(); getSelection().addRange(range);
+      reply.querySelector('[data-oof-command=bold]').click();
+      document.querySelector('#auto-replies-save').click();
+    })()`);
+    await waitFor('!modalBusy && !modalDirty');
+    assert.match(await js('demoAutoReplies.external'), /<b>Спасибо за письмо/);
     await js(`setModalDirty(false);document.querySelector('#modal').close();applyLanguage('en');state.theme='dark';document.body.classList.add('dark');settingsModal()`);
     await js('document.querySelector("#settings-tab-auto-replies").click();document.querySelector("#auto-replies-load").click()');
     await waitFor('!document.querySelector("#auto-replies-fields").disabled');

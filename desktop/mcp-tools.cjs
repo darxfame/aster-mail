@@ -119,11 +119,12 @@ function createTools({ current, confirm, writing = () => {}, changed = () => {},
       if (['update_rule', 'delete_rule'].includes(name)) {
         const data = { ...input, action: name === 'update_rule' ? 'update' : 'delete' };
         const rule = await require('./mail-rules.cjs').prepareChange(client, data); guard();
-        if (name === 'update_rule' && rule.folder) {
+        const destinations = [rule.folder, rule.copyFolder].filter(Boolean);
+        if (name === 'update_rule' && destinations.length) {
           const folders = await client.folders(); guard();
-          if (!folders.some(folder => folder.id === rule.folder || folder.wellKnown === rule.folder)) throw new Error('Destination folder not found');
+          if (!destinations.every(id => folders.some(folder => folder.id === id || folder.wellKnown === id))) throw new Error('Destination folder not found');
         }
-        extra = { prompt: { message: name === 'delete_rule' ? require('../src/i18n.js').text('MCP: удалить правило?') : require('../src/i18n.js').text('MCP: изменить правило?'), detail: JSON.stringify({ id: rule.id, name: rule.name, sender: rule.sender, subject: rule.subject, folder: rule.folder, markRead: rule.markRead, enabled: rule.enabled, priority: rule.priority }, null, 2) }, perform: () => client.changeMailRule(data) };
+        extra = { prompt: { message: name === 'delete_rule' ? require('../src/i18n.js').text('MCP: удалить правило?') : require('../src/i18n.js').text('MCP: изменить правило?'), detail: JSON.stringify({ id: rule.id, name: rule.name, sender: rule.sender, subject: rule.subject, body: rule.body, exceptSubject: rule.exceptSubject, folder: rule.folder, copyFolder: rule.copyFolder, markRead: rule.markRead, stopProcessing: rule.stopProcessing, enabled: rule.enabled, priority: rule.priority }, null, 2) }, perform: () => client.changeMailRule(data) };
       }
       // Validate rule conditions and the entire batch before asking for approval.
       if (name === 'create_rule') {

@@ -74,9 +74,12 @@ app.whenReady().then(async () => {
     assert.equal(await js('rulesCalls.filter(c => c.operation === "changeMailRule").length'), 2);
     await js('document.querySelector("[data-rules-load]").click()');
     await waitFor('!document.querySelector("[data-rules-load]").disabled');
-    await js(`failWrite=false;document.querySelector('[data-rules-new]').click();document.querySelector('#settings-form').elements.ruleName.value='New rule';document.querySelector('#settings-form').elements.ruleSender.value='anna@example.test';document.querySelector('[data-rule-save]').click()`);
+    await js(`failWrite=false;document.querySelector('[data-rules-new]').click();document.querySelector('#settings-form').elements.ruleName.value='New rule';document.querySelector('#settings-form').elements.ruleSender.value='anna@example.test, other@example.test';document.querySelector('#settings-form').elements.ruleBody.value='invoice';document.querySelector('#settings-form').elements.ruleCopyFolder.value='target';document.querySelector('[data-rule-save]').click()`);
     await waitFor('!modalBusy');
     assert.equal(await js('rulesCalls.filter(c => c.operation === "createMailRule").length'), 1);
+    assert.equal(await js('rulesCalls.find(c => c.operation === "createMailRule").data.copyFolder'), 'target');
+    assert.equal(await js('rulesCalls.find(c => c.operation === "createMailRule").data.body'), 'invoice');
+
     assert.equal(await js('document.querySelectorAll("[data-rule-index] strong")[2].textContent'), 'New rule');
     await openRule(0);
     await js('document.querySelector("[data-rule-delete]").click()');

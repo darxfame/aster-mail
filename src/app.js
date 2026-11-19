@@ -268,9 +268,9 @@ function resumeConnectionReads() {
   if (state.recoverView === state.generation) {
     state.recoverView = null; state.recoverMessage = null; void loadView();
   } else if (state.recoverMessage?.generation === state.generation && state.selected?.id === state.recoverMessage.id) {
-    const { id, generation } = state.recoverMessage; state.recoverMessage = null;
+    const { id, generation, fromConversation } = state.recoverMessage; state.recoverMessage = null;
     // Recover the read only; never repeat a possibly accepted mark-read mutation.
-    void openMessage(id, generation, { markRead: false });
+    void openMessage(id, generation, { markRead: false, ...(fromConversation ? { fromConversation } : {}) });
   }
 }
 function receiveConnection(snapshot) {
@@ -288,7 +288,7 @@ function modal(title, description, body) {
   $('#modal').classList.remove('compose-file-drop');
   delete $('#modal').dataset.eventId;
   delete $('#modal').dataset.meetingCard;
-  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog', 'compose-dialog', 'compose-expanded', 'settings-dialog');
+  $('#modal').classList.remove('meeting-dialog', 'meeting-edit-dialog', 'compose-dialog', 'compose-expanded', 'settings-dialog', 'meeting-create-dialog', 'mail-search-dialog');
   $('#modal').style.width = ''; $('#modal').style.height = '';
   $('#modal-content').innerHTML = `<div class="modal-header"><div><h2>${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button type="button" class="icon-button" data-action="close" aria-label="${tr("Закрыть")}">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
   if (!$('#modal').open) $('#modal').showModal();
@@ -319,8 +319,8 @@ function renderSidebar() {
   document.body.classList.toggle('sidebar-collapsed', hidden);
   const toggle = $('#sidebar-toggle');
   toggle.setAttribute('aria-expanded', String(!hidden));
-  toggle.setAttribute('aria-label', hidden ? tr('Раскрыть меню папок') : tr('Свернуть меню папок'));
-  toggle.title = hidden ? tr('Раскрыть меню папок') : tr('Свернуть меню папок');
+  toggle.title = hidden ? tr('Развернуть боковую панель') : tr('Свернуть боковую панель');
+  toggle.setAttribute('aria-label', toggle.title);
   $('#sidebar-resize').setAttribute('aria-valuenow', hidden ? '0' : '1');
   const create = $('#quick-create');
   create.dataset.action = { mail: 'compose', calendar: 'new-event', contacts: 'new-contact' }[state.view];
@@ -393,7 +393,7 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected || state.dayOverviewOpen));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions"><button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button><span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" aria-pressed="${state.filter === id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list ${state.query ? 'search-results-list' : ''}"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions">${state.query ? `<button type="button" class="icon-button" data-action="clear-search-filters" title="${tr('Сбросить поиск')}" aria-label="${tr('Сбросить поиск')}">${icon('close')}</button>` : `<button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button>`}<span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" aria-pressed="${state.filter === id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
   applyMailListWidth();
   renderMessages();
   if (state.selected) renderReader();
@@ -410,13 +410,14 @@ function renderMessages() {
     if (state.searchObjects[element.dataset.searchKind]) state.searchObjects[element.dataset.searchKind].expanded = element.open;
   });
   const related = renderSearchObjects();
-  $('#messages').innerHTML = related + (state.query ? tr('<h3 class="search-mail-heading">Письма</h3>') : '') + (mailThreadRows(items).map(({ message: m, group, expanded, member }, i) => {
+  const searchSummary = state.query ? mailSearchSummary() : '';
+  $('#messages').innerHTML = searchSummary + related + (related ? tr('<h3 class="search-mail-heading">Письма</h3>') : '') + (mailThreadRows(items).map(({ message: m, group, expanded, member }, i) => {
     const key = dayKey(m.date), label = key === dayKey(new Date()) ? tr('Сегодня') : dateFormat(m.date, { day: 'numeric', month: 'long' });
     const heading = !member && key !== previousDay ? `<div class="day-label">${esc(label)}</div>` : '';
     if (!member) previousDay = key;
     const thread = group ? `<button type="button" class="mail-thread-toggle" data-action="mail-thread" data-id="${esc(m.conversationId)}" aria-expanded="${expanded}">${icon('chevron')}${tr('Беседа')} · ${group.length}${group.some(item => !item.read) ? ' <i class="live-dot"></i>' : ''}</button>` : '';
 
-    return `${heading}${thread}<div class="message-row ${member ? 'mail-thread-member' : ''} ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${!m.read ? tr('<span class="unread-badge">Новое</span>') : ''}${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
+    return `${heading}${thread}<div class="message-row ${member ? 'mail-thread-member' : ''} ${!m.read ? 'unread' : ''} ${state.selected?.id === m.id ? 'selected' : ''}" data-id="${esc(m.id)}"><input class="mail-select" type="checkbox" data-mail-select="${esc(m.id)}" ${mailSelection.size ? '' : 'hidden'} aria-label="${tr("Выбрать письмо:")} ${esc(m.subject)}" ${mailSelection.has(m.id) ? 'checked' : ''} ${mailBatchBusy ? 'disabled' : ''}><button draggable="false" class="message-open" title="${tr('Открыть соседнее письмо · ↑/↓')}" data-action="message" data-id="${esc(m.id)}" aria-label="${esc(`${m.read ? tr('Прочитано') : tr('Непрочитано')}. ${m.from.name || m.from.email}: ${m.subject}`)}">${!m.read ? '<i class="unread-dot"></i>' : ''}${avatar(m.from.name || m.from.email, i, m.from.email)}<div class="message-copy"><div class="row-top"><span class="sender">${esc(m.from.name || m.from.email || tr('Неизвестный отправитель'))}</span><time class="date">${esc(time(m.date))}</time></div><div class="subject">${esc(m.subject)}</div><div class="preview">${esc(m.preview || m.text || '')}</div>${m.hasAttachments || m.flagged || m.meeting ? `<div class="message-meta">${m.hasAttachments ? icon('clip') : ''}${m.flagged ? `<span class="starred">${icon('star')}</span>` : ''}${m.meeting ? tr('<span class="tag">Приглашение</span>') : ''}</div>` : ''}</div></button><div class="message-quick-actions"><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="mail-star" data-id="${esc(m.id)}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-pressed="${Boolean(m.flagged)}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="mail-important" data-id="${esc(m.id)}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-pressed="${m.importance === 'High'}">${icon('important')}</button></div></div>`;
   }).join('') || `<div class="empty"><p>${state.filter === 'unread' ? tr('Непрочитанных писем нет') : state.filter === 'flagged' ? tr('Избранных писем нет') : state.query ? tr('Совпадений нет') : tr('Здесь пока нет писем')}</p></div>`);
   restoreFocus();
   renderMailBatchToolbar();
@@ -471,12 +472,12 @@ function returnToMailList() {
     (opener || $('.list-filters [aria-pressed="true"]'))?.focus();
   }
 }
-async function openMessage(id, generation = state.generation, { markRead = true, focusBack = false } = {}) {
-  const summary = state.messages.find(m => m.id === id);
+async function openMessage(id, generation = state.generation, { markRead = true, focusBack = false, fromConversation } = {}) {
+  const summary = state.messages.find(m => m.id === id) || fromConversation;
   if (!summary) return;
   state.dayOverviewOpen = false;
   closeMailAttachmentPreview();
-  const sequence = ++messageOpenSequence, folderKey = state.query ? null : state.folder;
+  const sequence = ++messageOpenSequence, folderKey = state.query || fromConversation && !state.messages.some(message => message.id === id) ? null : state.folder;
   state.selected = summary;
   if (summary.conversationId && mailThreadsEnabled()) {
     const first = filteredMessages().find(message => message.conversationId === summary.conversationId);
@@ -513,7 +514,7 @@ async function openMessage(id, generation = state.generation, { markRead = true,
   } catch (error) {
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     showError(error);
-    if (error.connectionError) { state.recoverMessage = { id, generation }; setReaderMarkup(readerNotice(`<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`)); return; }
+    if (error.connectionError) { state.recoverMessage = { id, generation, ...(fromConversation ? { fromConversation } : {}) }; setReaderMarkup(readerNotice(`<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`)); return; }
     setReaderMarkup(readerNotice(`<div class="empty-state"><h2>${tr("Не удалось открыть письмо")}</h2><p>${esc(errorText(error))}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">${tr("Повторить загрузку")}</button></div>`));
   }
 }
@@ -549,7 +550,7 @@ function renderReader() {
   const m = state.selected;
   if (!m || state.view !== 'mail' || !$('#reader')) return;
   closeMailAttachmentPreview();
-  setReaderMarkup(`<div class="reader-toolbar"><span class="privacy-note" role="img" aria-label="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}" title="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}">${icon('shield')}</span><button class="icon-button back-to-list" data-action="back-to-list" title="${tr("К письмам")}" aria-label="${tr("К письмам")}">${icon('reply')}</button><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button><details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button>${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="return-later" title="${tr("Пометить непрочитанным и закрыть письмо")}" aria-label="${tr("Пометить непрочитанным и закрыть письмо")}">${icon('mail')}</button><button type="button" class="icon-button" data-action="mail-to-meeting" title="${tr("Создать встречу из письма")}" aria-label="${tr("Создать встречу из письма")}">${icon('calendar')}</button>` : ''}${isSentMessage(m) ? `<button type="button" class="icon-button" data-action="wait-for-reply" title="${tr('Жду ответа')}" aria-label="${tr('Жду ответа')}${state.waitingRepliesCount ? ` · ${state.waitingRepliesCount}` : ''}">${icon('clock')}</button>` : ''}${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="mail-reminder" title="${tr('Напомнить позже')}" aria-label="${tr('Напомнить позже')}">${icon('bell')}</button>` : ''}</div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? `<button class="icon-button" data-action="edit-draft" title="${tr("Продолжить черновик")}" aria-label="${tr("Продолжить черновик")}">${icon('file')}</button>` : `<button class="icon-button" data-action="reply" title="${tr("Ответить")}" aria-label="${tr("Ответить")}">${icon('reply')}</button><button class="icon-button" data-action="reply-all" title="${tr("Ответить всем")}" aria-label="${tr("Ответить всем")}">${icon('reply-all')}</button><button class="icon-button" data-action="forward" title="${tr("Переслать")}" aria-label="${tr("Переслать")}">${icon('send')}</button>`}</div><span class="reader-position">${state.messages.findIndex(v => v.id === m.id) + 1} ${tr("из")} ${state.messages.length}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${Number.isFinite(Date.parse(m.meeting.start)) && Number.isFinite(Date.parse(m.meeting.end)) ? `${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}` : tr('Время встречи недоступно')}</p>${meetingConflictMarkup(m.meeting.id ? m.meeting.conflicts : { kind: 'unknown', complete: false })}${m.meeting.invitationUpdated ? `<p class="form-note">${tr("Приглашение обновлено. Показано актуальное время.")}</p>` : ''}${m.meeting.id ? rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError) : ''}</div>` : ''}${mailAttachments(m)}<div id="message-body"></div></div></div>`);
+  setReaderMarkup(`<div class="reader-toolbar"><span class="privacy-note" role="img" aria-label="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}" title="${tr("Картинки: встроенные и внешние · активное содержимое отключено")}">${icon('shield')}</span><button class="icon-button back-to-list" data-action="back-to-list" title="${tr("К письмам")}" aria-label="${tr("К письмам")}">${icon('reply')}</button><button type="button" class="icon-button" data-mail-find aria-label="${tr("Найти в письме")}" title="${tr("Найти в письме · Cmd/Ctrl+F")}">${icon('search')}</button>${m.conversationId && !isDraftMessage(m) && mailThreadsEnabled() ? `<button type="button" class="icon-button" data-action="mail-conversation" title="${tr('Вся беседа')}" aria-label="${tr('Вся беседа')}">${icon('mail')}</button>` : ''}<details class="reader-more-actions" open><summary aria-label="${tr('Дополнительные действия')}" title="${tr('Дополнительные действия')}">⋯</summary><div class="reader-mail-actions"><button class="icon-button" data-mail-move aria-label="${tr("Переместить в папку")}" title="${tr("Переместить в папку")}">${icon('folder')}</button><button class="icon-button" data-action="archive" title="${tr("В архив")}" aria-label="${tr("В архив")}">${icon('archive')}</button><button class="icon-button" data-action="delete" title="${tr("В корзину")}" aria-label="${tr("В корзину")}">${icon('trash')}</button><span class="toolbar-divider"></span><button class="icon-button ${m.flagged ? 'starred' : ''}" data-action="flag" title="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}" aria-label="${m.flagged ? tr('Убрать из избранного') : tr('В избранное')}">${icon('star')}</button><button class="icon-button ${m.importance === 'High' ? 'important' : ''}" data-action="important" title="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}" aria-label="${m.importance === 'High' ? tr('Обычная важность') : tr('Пометить важным')}">${icon('important')}</button>${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="return-later" title="${tr("Пометить непрочитанным и закрыть письмо")}" aria-label="${tr("Пометить непрочитанным и закрыть письмо")}">${icon('mail')}</button><button type="button" class="icon-button" data-action="mail-to-meeting" title="${tr("Создать встречу из письма")}" aria-label="${tr("Создать встречу из письма")}">${icon('calendar')}</button>` : ''}${isSentMessage(m) ? `<button type="button" class="icon-button" data-action="wait-for-reply" title="${tr('Жду ответа')}" aria-label="${tr('Жду ответа')}${state.waitingRepliesCount ? ` · ${state.waitingRepliesCount}` : ''}">${icon('clock')}</button>` : ''}${!isDraftMessage(m) ? `<button type="button" class="icon-button" data-action="mail-reminder" title="${tr('Напомнить позже')}" aria-label="${tr('Напомнить позже')}">${icon('bell')}</button>` : ''}</div></details><div class="reader-replies" aria-label="${tr("Действия с письмом")}">${isDraftMessage(m) ? `<button class="icon-button" data-action="edit-draft" title="${tr("Продолжить черновик")}" aria-label="${tr("Продолжить черновик")}">${icon('file')}</button>` : `<button class="icon-button" data-action="reply" title="${tr("Ответить")}" aria-label="${tr("Ответить")}">${icon('reply')}</button><button class="icon-button" data-action="reply-all" title="${tr("Ответить всем")}" aria-label="${tr("Ответить всем")}">${icon('reply-all')}</button><button class="icon-button" data-action="forward" title="${tr("Переслать")}" aria-label="${tr("Переслать")}">${icon('send')}</button>`}</div><span class="reader-position">${state.messages.some(item => item.id === m.id) ? `${state.messages.findIndex(item => item.id === m.id) + 1} ${tr("из")} ${state.messages.length}` : tr('Беседа')}</span></div><div class="reader-scroll"><div class="reader-content">${m.meeting ? `<div class="eyebrow">${icon('calendar')}${tr("Приглашение на встречу")}</div>` : ''}<h2>${esc(m.subject)}</h2><div class="sender-detail">${avatar(m.from.name || m.from.email, 0, m.from.email)}<div><strong><button type="button" class="sender-person" data-action="open-mail-person" data-group="from" aria-label="${tr("Открыть контакт:")} ${esc(m.from.name || m.from.email)}">${esc(m.from.name || m.from.email)}</button></strong><small>${esc(m.from.email)}</small></div><time class="date">${esc(dateFormat(m.date, { day: 'numeric', month: 'long' }))}<br>${esc(time(m.date))}</time></div>${mailRecipientDetails(m)}${m.meeting ? `<div class="meeting-banner"><strong>${esc(m.meeting.location || tr('Встреча'))}</strong><p>${Number.isFinite(Date.parse(m.meeting.start)) && Number.isFinite(Date.parse(m.meeting.end)) ? `${esc(dateFormat(m.meeting.start, { day: 'numeric', month: 'long' }))} · ${esc(time(m.meeting.start))}–${esc(time(m.meeting.end))}` : tr('Время встречи недоступно')}</p>${meetingConflictMarkup(m.meeting.id ? m.meeting.conflicts : { kind: 'unknown', complete: false })}${m.meeting.invitationUpdated ? `<p class="form-note">${tr("Приглашение обновлено. Показано актуальное время.")}</p>` : ''}${m.meeting.id ? rsvpButtons(m.meeting.id, m.meeting.changeKey, m.meeting.cancelled, m.meeting.response, m.meeting.isOrganizer, m.meeting.statusError) : ''}</div>` : ''}${mailAttachments(m)}<div id="message-body"></div></div></div>`);
   applyReaderDensity();
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
@@ -734,7 +735,7 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
   if (options.message) composeData.sourceMessage = m;
   if (snapshot) { composeData = { ...snapshot.data, attachments: snapshot.files.map(file => new File([Uint8Array.from(atob(file.content), c => c.charCodeAt(0))], file.name, { type: file.type })) }; recipients = snapshot.fields; }
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
-  modal(draftMode ? tr('Продолжить черновик') : mode === 'forward' ? tr('Переслать письмо') : mode.startsWith('reply') ? tr('Ответить') : tr('Новое письмо'), state.demo ? tr('Деморежим: письмо не будет отправлено на сервер.') : `${tr("Отправка через корпоративный Exchange по")} ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form">${field('to', tr('Кому · адреса через запятую'), recipients.to)}${field('cc', tr('Копия'), recipients.cc)}${field('bcc', tr('Скрытая копия'), recipients.bcc || '')}${field('subject', tr('Тема'), draftMode ? m.subject : mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}<div class="compose-message-area"><div class="compose-editor-field" id="compose-editor-field"></div>${!draftMode && mode !== 'new' && m ? `<details class="compose-history" open><summary>${tr("Предыдущая переписка ·")} ${esc(m.from.name || m.from.email)}</summary><button type="button" class="secondary" id="edit-history">${tr("Редактировать")}</button><p class="form-note">${tr("При редактировании сохраняются текст и форматирование; изображения из цитаты не переносятся.")}</p><div id="compose-history-body"></div></details>` : ''}</div>${useServer ? tr('<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>') : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="${tr("Прикрепить файлы")}"><span>${tr("Или перетащите файлы в окно письма")}</span></label><div id="picked-files" class="picked-files"></div><p class="form-note">${tr("Вложения до 20 МБ суммарно. Предыдущая переписка будет включена в письмо; пересылка сохраняет исходные вложения.")}</p>${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">${tr("Сохранить черновик")}</button><button class="primary" type="submit">${icon('send')}${tr("Отправить")}</button></div></form>`);
+  modal(draftMode ? tr('Продолжить черновик') : mode === 'forward' ? tr('Переслать письмо') : mode.startsWith('reply') ? tr('Ответить') : tr('Новое письмо'), state.demo ? tr('Деморежим: письмо не будет отправлено на сервер.') : `${tr("Отправка через корпоративный Exchange по")} ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form"><div class="compose-fields">${field('to', tr('Кому · адреса через запятую'), recipients.to)}${field('cc', tr('Копия'), recipients.cc)}${field('bcc', tr('Скрытая копия'), recipients.bcc || '')}${field('subject', tr('Тема'), draftMode ? m.subject : mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}<div class="compose-message-area"><div class="compose-editor-field" id="compose-editor-field"></div>${!draftMode && mode !== 'new' && m ? `<details class="compose-history"><summary>${tr("Предыдущая переписка ·")} ${esc(m.from.name || m.from.email)}</summary><button type="button" class="secondary" id="edit-history">${tr("Редактировать")}</button><p class="form-note">${tr("При редактировании сохраняются текст и форматирование; изображения из цитаты не переносятся.")}</p><div id="compose-history-body"></div></details>` : ''}</div>${useServer ? tr('<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>') : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="${tr("Прикрепить файлы")}"><span>${tr("Или перетащите файлы в окно письма")}</span></label><div id="picked-files" class="picked-files"></div><p class="form-note">${tr("Вложения до 20 МБ суммарно. Предыдущая переписка будет включена в письмо; пересылка сохраняет исходные вложения.")}</p></div><div class="compose-footer">${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">${tr("Сохранить черновик")}</button><button class="primary" type="submit">${icon('send')}${tr("Отправить")}</button></div></div></form>`);
   $('#modal').classList.add('compose-dialog');
 
   const expand = document.createElement('button');
@@ -793,6 +794,7 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
     for (const name of ['to', 'cc', 'bcc', 'subject']) $('#compose-form').elements[name].value = snapshot.fields[name] || '';
     composeData.editor = window.asterMailEditor.mount($('#compose-editor-field'), '', { html: snapshot.body.bodyHtml, preserveCidImages: draftMode });
     if (snapshot.history && $('#edit-history')) {
+      $('#edit-history').closest('details').open = true;
       $('#edit-history').click();
       composeData.historyEditor = window.asterMailEditor.mount($('#compose-history-body'), '', { id: 'compose-history-editor', label: tr('Предыдущая переписка'), html: snapshot.history.bodyHtml });
     }
@@ -801,6 +803,7 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
   // File drops inside the script-free preview frame do not bubble to the dialog.
   window.asterRecipients.decorate($('#compose-form'), [...(snapshot?.recipientPeople || []), contact, m?.from, ...(m?.to || []), ...(m?.cc || []), ...(m?.bcc || [])]);
   if (mode === 'new' && !snapshot && !recipients.to) $('#participant-add-to')?.focus({ preventScroll: true });
+  else if (mode.startsWith('reply') && !snapshot) $('#compose-body')?.focus();
   mountQuickReplies($('#compose-form'), composeData);
   if (options.text) markModalDirty();
   for (const frame of $('#compose-form').querySelectorAll('iframe')) {
@@ -814,7 +817,9 @@ function localDate(value) { return T.wall(value, timeZone).slice(0, 16); }
 function eventModal(requestedStart) {
   if (!ready()) return connectModal();
   const start = requestedStart instanceof Date ? requestedStart : new Date(Math.ceil(Date.now() / 1800000) * 1800000), end = new Date(+start + 1800000);
-  modal(tr('Новая встреча'), tr('Участники получат приглашения от вашего аккаунта Exchange.'), `<form id="event-form">${field('title', tr('Название встречи'), '', 'text', true)}<div class="form-row">${field('start', tr('Начало'), localDate(start), 'datetime-local', true)}${field('end', tr('Окончание'), localDate(end), 'datetime-local', true)}</div>${field('location', tr('Место или ссылка на встречу'))}${moduleMeetingControls()}${field('attendees', tr('Участники · email через запятую'))}${textField('body', tr('Описание и повестка'))}<section class="planner"><h3>${icon('clock')}${tr("Помощник планирования")}</h3>${colleagues().length ? `<details><summary>${tr("Добавить избранных коллег")}</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}${tr("Проверить занятость и найти время")}</button><div id="planner-results" aria-live="polite"></div></section><p class="form-note">${tr("Часовой пояс:")} ${esc(T.zone(timeZone))}${tr(". Без участников событие сохранится только в вашем календаре.")}</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}${tr("Создать и отправить приглашения")}</button></div></form>`);
+  modal(tr('Новая встреча'), tr('Участники получат приглашения от вашего аккаунта Exchange.'), `<form id="event-form">${field('title', tr('Название встречи'), '', 'text', true)}<div class="form-row">${field('start', tr('Начало'), localDate(start), 'datetime-local', true)}${field('end', tr('Окончание'), localDate(end), 'datetime-local', true)}</div>${field('attendees', tr('Участники · email через запятую'))}<section class="planner"><h3>${icon('clock')}${tr("Помощник планирования")}</h3>${colleagues().length ? `<details><summary>${tr("Добавить избранных коллег")}</summary><div class="planner-favorites">${colleagues().map(c => `<label class="checkbox"><input type="checkbox" name="planner-person" value="${esc(c.email)}">${esc(c.name)}</label>`).join('')}</div></details>` : ''}<button type="button" class="secondary" data-action="planner-check">${icon('calendar')}${tr("Проверить занятость и найти время")}</button><div id="planner-results" aria-live="polite"></div></section>${field('location', tr('Место или ссылка на встречу'))}${moduleMeetingControls()}${textField('body', tr('Описание и повестка'))}<p class="form-note">${tr("Часовой пояс:")} ${esc(T.zone(timeZone))}${tr(". Без участников событие сохранится только в вашем календаре.")}</p>${formError()}<div class="modal-footer"><button class="primary" type="submit">${icon('calendar')}${tr("Создать и отправить приглашения")}</button></div></form>`);
+  $('#modal').classList.add('meeting-create-dialog');
+  $('#event-form [name=title]').focus();
   renderModuleContributions();
 }
 function contactModal() {
@@ -864,6 +869,10 @@ async function openMcpSettings() {
 }
 function selectSettingsTab(selected) {
   const form = selected.closest('form');
+  const picker = form.querySelector('.settings-section-picker');
+  if (picker) picker.value = selected.id;
+  const panels = form.querySelector('.settings-panels');
+  if (panels) panels.scrollTop = 0;
   const autoRepliesSave = form.querySelector('#auto-replies-save');
   const settingsSave = form.querySelector('.settings-footer [type="submit"]');
   if (autoRepliesSave) autoRepliesSave.hidden = selected.id !== 'settings-tab-auto-replies';
@@ -883,9 +892,11 @@ async function settingsModal() {
   const zones = [...new Set([T.zone(), T.zone(timeZone), 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
   const p = notificationPreferences, work = window.asterWorkSchedule.normalize(p.workSchedule);
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
-  modal(tr('Настройки Aster'), tr('Спокойное пространство, настроенное под вас.'), `<form id="settings-form">
+  const sections = [['general', tr('Общие')], ['mcp', tr('MCP · Агенты')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['rules', tr('Правила')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]];
+  modal(tr('Настройки Aster'), '', `<form id="settings-form">
+    <select class="settings-section-picker" aria-label="${tr("Разделы настроек")}">${sections.map(([id, label]) => `<option value="settings-tab-${id}">${label}</option>`).join('')}</select>
     <div class="settings-tabs" role="tablist" aria-label="${tr("Разделы настроек")}">
-      ${[['general', tr('Общие')], ['mcp', tr('MCP · Агенты')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['rules', tr('Правила')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]].map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
+      ${sections.map(([id, label], index) => `<button type="button" id="settings-tab-${id}" role="tab" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-action="settings-tab">${label}</button>`).join('')}
     </div>
     <div class="settings-panels">
     <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
@@ -986,6 +997,7 @@ async function settingsModal() {
     </div>
     <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
+  $('.settings-section-picker').addEventListener('change', event => selectSettingsTab(document.getElementById(event.target.value)));
   receivePresentation(p);
   $('#settings-form').elements.dayNote.maxLength = 1000;
   setupAutoReplies($('#settings-panel-auto-replies'));
@@ -1027,13 +1039,9 @@ async function sendCompose(save) {
   if (!window.asterRecipients.commit(form)) return;
   if (!save && !form.reportValidity()) return;
   await submitForm(form, async data => {
-    Object.assign(data, composeData.editor.read());
-    const draft = composeData.draftOriginal;
-    if (draft && data.bodyHtml === composeData.draftInitial) {
-      data.bodyHtml = draft.html || ''; data.body = draft.text || '';
-    }
     if (!save && ![data.to, data.cc, data.bcc].some(value => value?.trim())) throw new Error(tr('Укажите получателя.'));
     const inline = [];
+    let extraHtml = '', extraText = '';
     if (composeData.signature) {
       const signature = composeData.signature;
       if (Object.keys(signature.errors || {}).length) throw new Error(tr('Не удалось загрузить картинки подписи. Обновите подпись в настройках или отключите синхронизацию перед отправкой.'));
@@ -1046,17 +1054,27 @@ async function sendCompose(save) {
           inline.push({ name: `signature-${index}.${match[1].split('/')[1]}`, type: match[1], content: match[2], inline: true, contentId });
           img.setAttribute('src', `cid:${contentId}`);
         });
-        data.bodyHtml += doc.body.innerHTML;
+        extraHtml += doc.body.innerHTML;
       }
-      if (!signature.html) data.bodyHtml += `<div style="white-space:pre-wrap">${esc(signature.text)}</div>`;
-      data.body += `\n\n${signature.text}`;
+      if (!signature.html) extraHtml += `<div style="white-space:pre-wrap">${esc(signature.text)}</div>`;
+      extraText += `\n\n${signature.text}`;
     }
     if (composeData.historyEditor) {
       const history = composeData.historyEditor.read();
-      data.body += `\n\n${history.body}`;
-      data.bodyHtml += `<blockquote>${history.bodyHtml}</blockquote>`;
+      extraText += `\n\n${history.body}`;
+      extraHtml += `<blockquote>${history.bodyHtml}</blockquote>`;
       data.replaceBody = true;
     }
+    if (demo && composeData.reference && !composeData.historyEditor && state.selected) {
+      const original = state.selected.html || `<div style="white-space:pre-wrap">${esc(state.selected.text || '')}</div>`;
+      extraHtml += `<blockquote>${window.asterRichContent.sanitize(original).body.innerHTML}</blockquote>`;
+    }
+    Object.assign(data, composeData.editor.read(extraHtml));
+    const draft = composeData.draftOriginal;
+    if (draft && data.bodyHtml === composeData.draftInitial) {
+      data.bodyHtml = draft.html || ''; data.body = draft.text || '';
+    }
+    data.body += extraText;
     const files = composeData.attachments;
     if (files.reduce((n, f) => n + f.size, 0) + (draft?.attachments || []).reduce((n, file) => n + file.size, 0) > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
     const attachments = inline.concat(await Promise.all(files.map(async file => ({ name: file.name, type: file.type || 'application/octet-stream', content: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }) }))));
@@ -1072,7 +1090,7 @@ async function sendCompose(save) {
         from: { name: tr('Вы'), email: 'you@example.com' }, to: addresses(data.to), cc: addresses(data.cc), bcc: addresses(data.bcc),
         date: new Date().toISOString(), preview: data.body.slice(0, 130), text: data.body,
         contentImages: { images: { ...(draft?.contentImages?.images || {}), ...Object.fromEntries(inline.map(a => [`cid:${a.contentId}`, `data:${a.type};base64,${a.content}`])) }, errors: {} },
-        html: data.bodyHtml + (composeData.reference && !composeData.historyEditor && state.selected ? `<blockquote>${window.asterRichContent.sanitize(state.selected.html || `<div style="white-space:pre-wrap">${esc(state.selected.text || '')}</div>`).body.innerHTML}</blockquote>` : ''),
+        html: data.bodyHtml,
         read: true, isDraft: save, flagged: false, attachments: storedAttachments, hasAttachments: !!storedAttachments.length, folder: save ? 'drafts' : 'sentitems',
       });
     } else {
@@ -1095,6 +1113,7 @@ async function handleAction(button) {
   const { action } = button.dataset;
   if (action.startsWith('mini-') || action === 'folder-branch') return handleSidebarAction(button);
   if (action.startsWith('meeting-')) return handleMeetingAction(button);
+  if (action === 'mail-conversation') return openMailConversation();
   if (action === 'mail-thread') return toggleMailThread(button.dataset.id);
   if (action === 'back-to-list') return returnToMailList();
   if (action === 'return-later') return returnToMessageLater(button);
@@ -1131,7 +1150,7 @@ async function handleAction(button) {
       if (await api('resetLocalData')) { loginHint = null; connectModal(); toast(tr('Локальные настройки сброшены. Подключитесь заново.')); }
     });
   }
-  if (action === 'retry-message') return openMessage(button.dataset.id, state.generation, { focusBack: true });
+  if (action === 'retry-message') return openMessage(button.dataset.id, state.generation, { focusBack: true, fromConversation: state.selected });
   if (action === 'edit-draft') return compose('draft');
   if (action === 'demo') {
     if (state.account) throw new Error(tr('Сначала выйдите из аккаунта в настройках, чтобы открыть демо.'));

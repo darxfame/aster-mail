@@ -92,6 +92,14 @@ app.whenReady().then(async () => {
     assert.equal(await js("getComputedStyle(document.querySelector('.modal-header button')).webkitAppRegion"), 'no-drag');
     assert.equal(await js("(()=>{const h=document.querySelector('.modal-header'),r=h.getBoundingClientRect();return [...h.children].every(el=>el.getBoundingClientRect().right<=r.right-parseFloat(getComputedStyle(h).paddingRight)+1);})()"), true, 'Detached composer actions clear the native buttons');
     await fs.writeFile(path.join(output, 'windows-compose.png'), (await window.webContents.capturePage()).toPNG());
+    window.setSize(760, 530);
+    await waitFor('innerHeight <= 530');
+    assert.ok(await js(`(() => {
+      const fields = document.querySelector('.compose-fields');
+      const spacer = document.createElement('div'); spacer.style.height = '640px'; fields.append(spacer);
+      fields.scrollTop = fields.scrollHeight;
+      return fields.scrollTop;
+    })()`), 'Composer fields have scrolled');
     const close = await js(`(() => {
       const button = document.querySelector('.modal-header [data-action=close]');
       const bounds = button.getBoundingClientRect();

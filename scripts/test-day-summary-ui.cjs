@@ -118,12 +118,30 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelectorAll(".day-stats,.day-columns,.day-rhythm,.day-footer").length'), 0);
     assert.equal(await js('document.querySelector(".day-personal-note").textContent'), '<priority>');
     assert.equal(await js('daySummary===null && undoSendSeconds()===5 && mailThreadsEnabled()'), true);
+    await js(`localPreferences.setItem('aster-day-sections', 'shortcuts'); renderDaySummary()`);
+    assert.equal(await js('document.querySelectorAll(".day-shortcuts button").length'), 4);
+    assert.equal(await js('document.querySelector(".day-columns")'), null);
+
     await js(`state.messages.slice(0, 2).forEach(message => { message.conversationId = 'fictional-thread'; }); renderMessages()`);
     assert.equal(await js('document.querySelector("[data-action=mail-thread]").getAttribute("aria-expanded")'), 'false');
     await js('document.querySelector("[data-action=mail-thread]").click()');
     assert.equal(await js('document.querySelectorAll(".mail-thread-member").length'), 1);
     await js('document.querySelector(".mail-thread-member .message-open").click()');
     await waitFor('Boolean(state.selected && document.querySelector("#message-body"))');
+
+    await js(`(() => {
+      const received = state.selected;
+      window.asterDemo.messages.push({ ...received, id: 'thread-sent-fixture', folder: 'sentitems', subject: 'Reply from Sent', read: true });
+      document.querySelector('[data-action=mail-conversation]').click();
+    })()`);
+    assert.match(await js('document.querySelector("[data-conversation-index]").textContent'), /Reply from Sent/);
+    await js('document.querySelector("[data-conversation-index]").click()');
+    await waitFor('state.selected?.id === "thread-sent-fixture" && Boolean(document.querySelector("#message-body"))');
+    assert.equal(await js('state.folder === "inbox" && !state.messages.some(message => message.id === "thread-sent-fixture")'), true);
+    await js('document.querySelector("[data-action=important]").click()');
+    await waitFor('state.selected?.importance === "High"');
+    assert.equal(await js('window.asterDemo.messages.find(message => message.id === "thread-sent-fixture").importance'), 'High');
+
     await js('localPreferences.setItem("aster-mail-grouping","messages");renderMessages()');
     assert.equal(await js('document.querySelector("[data-action=mail-thread]")'), null);
 

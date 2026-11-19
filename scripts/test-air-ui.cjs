@@ -53,7 +53,7 @@ app.whenReady().then(async () => {
           assert.equal(await js("getComputedStyle(document.querySelector('.sidebar')).backgroundColor"), 'rgba(0, 0, 0, 0)', 'No rounded panel underneath native controls');
           assert.equal(await js("getComputedStyle(document.querySelector('.sidebar')).borderTopColor"), 'rgba(0, 0, 0, 0)', 'No oval border through the controls');
           assert.equal(await js(`document.querySelector('.wordmark').getBoundingClientRect().top>${controlsBottom}`), true, 'Brand stays below native controls at every scale');
-          assert.equal(await js(`document.querySelector('#quick-create').getBoundingClientRect().left>${(window.getWindowButtonPosition().x + 54) / zoom}`), true, 'Toolbar stays clear of the three native 14px controls and their 6px gaps');
+          assert.equal(await js(`document.querySelector('#sidebar-toggle').getBoundingClientRect().left>${(window.getWindowButtonPosition().x + 54) / zoom}`), true, 'Toolbar stays clear of the three native 14px controls and their 6px gaps');
           assert.equal(await js("getComputedStyle(document.querySelector('.topbar')).webkitAppRegion"), 'drag');
           assert.equal(await js("document.querySelector('.topbar').parentElement.tagName"), 'MAIN', 'Toolbar remains inside the workspace');
           assert.equal(await js("document.querySelector('.topbar').getBoundingClientRect().left>=document.querySelector('.sidebar').getBoundingClientRect().right"), true, 'Toolbar does not consume the sidebar width');
@@ -65,6 +65,31 @@ app.whenReady().then(async () => {
       window.setWindowButtonPosition({ x: 22, y: 12 });
       await js('renderSidebar()');
     }
+    window.setContentSize(800, 600);
+    await waitFor('Math.abs(innerWidth - 800) < 2');
+    await js('renderSidebar()');
+    assert.equal(await js('document.querySelector("#sidebar-toggle").getAttribute("aria-expanded")'), 'false');
+    const togglePoint = await js(`(() => {
+      const button = document.querySelector('.topbar #sidebar-toggle'), bounds = button.getBoundingClientRect();
+      return { x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2),
+        label: button.getAttribute('aria-label'), drag: getComputedStyle(button).webkitAppRegion };
+    })()`);
+    assert.equal(togglePoint.drag, 'no-drag');
+    window.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', x: togglePoint.x, y: togglePoint.y, clickCount: 1 });
+    window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', x: togglePoint.x, y: togglePoint.y, clickCount: 1 });
+    await waitFor('document.querySelector("#sidebar-toggle").getAttribute("aria-expanded") === "true"');
+    assert.notEqual(await js('document.querySelector("#sidebar-toggle").getAttribute("aria-label")'), togglePoint.label);
+    await screenshot('sidebar-toggle-expanded-800x600');
+    await js('document.querySelector("#sidebar-toggle").focus()');
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Space' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
+    await waitFor('document.activeElement.id === "sidebar-toggle" && document.activeElement.getAttribute("aria-expanded") === "false"');
+    assert.equal(await js('document.querySelector("#sidebar-resize").getAttribute("aria-valuenow")'), '0');
+    await screenshot('sidebar-toggle-800x600');
+    await js('document.activeElement.blur(); sidebarCollapsed=false; compactSidebarExpanded=false; localPreferences.setItem("aster-sidebar-collapsed", "false")');
+    window.setContentSize(1920, 940);
+    await waitFor('Math.abs(innerWidth - 1920) < 2');
+    await js('renderSidebar()');
     await js(`window.fixtureMessages=structuredClone(state.messages).map(m=>({...m,read:true})); window.fixtureApi=api;void 0;`);
     await js('openMessage(state.messages[0].id)');
     assert.equal(await js(`Math.abs(document.querySelector('.reader-content').getBoundingClientRect().width-document.querySelector('.reader-scroll').clientWidth)<1`), true, 'Mail content must use the full reader width on a wide window');
@@ -144,13 +169,29 @@ app.whenReady().then(async () => {
     await js('setModalDirty(false);document.querySelector("#modal").close()');
     // Respect reduced motion in the actual Chromium runtime.
     await window.webContents.debugger.attach('1.3');
+    await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'no-preference' }] });
+    await js('settingsModal()');
+    assert.equal(await js('getComputedStyle(document.querySelector("#modal"), "::backdrop").backdropFilter.includes("12px")'), true);
+    assert.equal(await js('getComputedStyle(document.querySelector("#modal")).backgroundColor.includes(" / 0.9")'), true);
+    await screenshot('settings-glass-light');
+    await js('document.querySelector("#modal").close();state.theme="dark";applyTheme();renderReader();settingsModal()');
+    assert.equal(await js('getComputedStyle(document.querySelector("#modal")).backgroundColor.includes(" / 0.86")'), true);
+    await screenshot('settings-glass-dark');
     await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     assert.equal(await js(`(()=>{const holder=document.createElement('div');holder.innerHTML=window.asterLoading.markup('reader','Loading');document.body.append(holder);const animation=getComputedStyle(holder.querySelector('.skeleton-bar'),'::after').animationName;holder.remove();return animation})()`), 'none');
     await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
     assert.equal(await js('getComputedStyle(document.querySelector(".topbar")).backdropFilter'), 'none');
+    assert.equal(await js('getComputedStyle(document.querySelector("#modal"), "::backdrop").backdropFilter'), 'none');
+    assert.equal(await js('getComputedStyle(document.querySelector("#modal")).backgroundColor.includes(" / ")'), false);
+    await js('document.querySelector("#modal").close()');
     await window.webContents.debugger.detach();
     for (const theme of ['light', 'dark']) {
       await js(`state.theme=${JSON.stringify(theme)};document.body.classList.toggle('dark',state.theme==='dark');`);
+      const palette = await js(`['--bg', '--surface', '--text', '--muted', '--accent'].map(token =>
+        getComputedStyle(document.body).getPropertyValue(token).trim())`);
+      assert.deepEqual(palette, theme === 'dark'
+        ? ['#202124', '#292a2e', '#eceef2', '#a3acbb', '#ab92ee']
+        : ['#f5f6f8', '#fff', '#242933', '#626a7c', '#7760d6']);
       const colors = await js(`(()=>{const node=document.createElement('div');document.body.append(node);const result={};for(const kind of ['pending','accepted','organized','declined']){node.className='event-card event-'+kind;const s=getComputedStyle(node);result[kind]=[s.backgroundColor,s.borderLeftColor,s.color];}node.remove();return result;})()`);
       const originalColors = await js(`(()=>{const sheet=document.querySelector('link[href="air.css"]').sheet;sheet.disabled=true;try{const node=document.createElement('div');document.body.append(node);const result={};for(const kind of ['pending','accepted','organized','declined']){node.className='event-card event-'+kind;const s=getComputedStyle(node);result[kind]=[s.backgroundColor,s.borderLeftColor,s.color];}node.remove();return result;}finally{sheet.disabled=false;}})()`);
       assert.deepEqual(colors, originalColors, `${theme} event fills, rails and text must match the original styles`);

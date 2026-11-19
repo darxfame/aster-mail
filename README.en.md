@@ -116,5 +116,6 @@ Adapted-code attribution: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Under **Settings → General**, you can switch to conversations, set an undo-send
 delay, and choose which sections appear on Your Day. Conversation view groups
-loaded messages in the current list using the Exchange conversation ID. During the
-send delay, you can return the message to editing.
+loaded messages in the current list using the Exchange conversation ID. Open a message
+to see conversation items across folders, up to 200 Exchange results excluding drafts.
+During the send delay, you can return the message to editing.

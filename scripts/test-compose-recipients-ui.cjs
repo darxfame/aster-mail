@@ -38,12 +38,43 @@ app.whenReady().then(async () => {
     })()`);
     assert.equal(await js('document.querySelectorAll("#compose-body-highlights:popover-open .highlight-swatches button").length'), 5);
     assert.equal(await js('Boolean(document.querySelector("#compose-body-highlights:popover-open input[type=color]"))'), true);
-    await js(`document.querySelector('.highlight-swatches button').click()`);
+    await js(`document.querySelector('#compose-body-highlights .highlight-swatches button').click()`);
     assert.match(await js('composeData.editor.read().bodyHtml'), /background-color:/);
     await js(`document.querySelector('[popovertarget=compose-body-highlights]').click();document.querySelector('[data-value=transparent]').click()`);
     assert.equal(await js('document.querySelector("#compose-body-highlights").matches(":popover-open")'), false);
     assert.match(await js('composeData.editor.read().bodyHtml'), /<b>alpha beta<\/b>/);
     assert.doesNotMatch(await js('composeData.editor.read().bodyHtml'), /background-color:/);
+    await js(`window.pickComposeColor = (palette, value) => {
+      const id = 'compose-body-' + palette;
+      document.querySelector('[popovertarget=' + id + ']').click();
+      const control = document.getElementById(id);
+      if (value === 'custom') {
+        const input = control.querySelector('input[type=color]');
+        input.value = '#345678';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      } else [...control.querySelectorAll('button')].find(button => button.dataset.value === value).click();
+    }; window.selectComposeWord = (offset = 0, length = 5) => {
+      const editor = document.getElementById('compose-body'), range = document.createRange();
+      const text = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT).nextNode();
+      range.setStart(text, offset); range.setEnd(text, offset + length);
+      editor.focus(); getSelection().removeAllRanges(); getSelection().addRange(range);
+      editor.dispatchEvent(new MouseEvent('mouseup'));
+    }; selectComposeWord();pickComposeColor('text-colors','#bf242b');`);
+    assert.match(await js('composeData.editor.read().bodyHtml'), /color: rgb\(191, 36, 43\)/);
+    await js("pickComposeColor('text-colors','custom')");
+    assert.match(await js('composeData.editor.read().bodyHtml'), /color: rgb\(52, 86, 120\)/);
+    await js("pickComposeColor('text-colors','default')");
+    assert.doesNotMatch(await js('composeData.editor.read().bodyHtml'), /color:/);
+    assert.match(await js('composeData.editor.read().bodyHtml'), /<b[^>]*>.*alpha.*beta.*<\/b>/);
+    await js("pickComposeColor('highlights','#fff0a6');pickComposeColor('background-colors','#cce5ff')");
+    assert.equal(await js('getComputedStyle(document.querySelector("#compose-body")).backgroundColor'), 'rgb(204, 229, 255)');
+    assert.match(await js('composeData.editor.read().bodyHtml'), /^<div style="background-color: rgb\(204, 229, 255\);/);
+    await js("pickComposeColor('background-colors','')");
+    assert.equal(await js('document.querySelector("#compose-body").style.backgroundColor'), '');
+    assert.match(await js('composeData.editor.read().bodyHtml'), /background-color: rgb\(255, 240, 166\)/);
+    await js("pickComposeColor('background-colors','custom')");
+    assert.equal(await js('document.querySelector("#compose-body").style.backgroundColor'), 'rgb(52, 86, 120)');
+
 
     const entry = (name, value) => js(`(()=>{const input=document.querySelector('[data-participant-target=' + ${javascriptLiteral(name)} + ']');input.focus();input.value=${javascriptLiteral(value)};input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await entry('to', 'first@example.test; second@example.test');
@@ -89,7 +120,15 @@ app.whenReady().then(async () => {
     assert.equal(await js('window.asterDemo.messages[0].to.some(person=>person.email==="pending@example.test")'), true);
     assert.equal(await js('window.asterDemo.messages[0].cc[1].email'), 'copy@example.test');
     assert.equal(await js('window.asterDemo.messages[0].bcc[0].email'), 'blind@example.test');
+    assert.match(await js('window.asterDemo.messages[0].html'), /^<div style="background-color: rgb\(52, 86, 120\);/);
+
     await js('state.selected=window.asterDemo.messages[0];compose("draft")');
+    assert.equal(await js('document.querySelector("#compose-body").style.backgroundColor'), 'rgb(52, 86, 120)');
+    await js("pickComposeColor('background-colors','')");
+    assert.doesNotMatch(await js('composeData.editor.read().bodyHtml'), /rgb\(52, 86, 120\)/);
+    assert.match(await js('composeData.editor.read().bodyHtml'), /background-color: rgb\(255, 240, 166\)/);
+    await js("pickComposeColor('background-colors','custom')");
+
     assert.equal(await js('document.querySelector("#recipient-field-cc").hidden && document.querySelector("#recipient-field-bcc").hidden'), true);
     await entry('to', 'алекс');
     await js(`(() => { const input = document.querySelector('[data-participant-target=to]');
@@ -101,8 +140,12 @@ app.whenReady().then(async () => {
     await entry('to', 'transfer@example.test');
     await js(`window.aster={};window.originalApi=api;api=async(operation,data)=>{if(operation==='detachCompose'){window.savedSnapshot=data.snapshot;return true;}return [];};detachCompose('draft')`);
     assert.equal(await js('savedSnapshot.fields.to.includes("transfer@example.test")'), true);
+    assert.match(await js('savedSnapshot.body.bodyHtml'), /^<div style="background-color: rgb\(52, 86, 120\);/);
+
     assert.equal(await js('savedSnapshot.recipientPeople.some(person => person.name === "Алексей Морозов" && person.email === "alex@example.com")'), true);
     await js('compose("draft",null,savedSnapshot)');
+    assert.equal(await js('document.querySelector("#compose-body").style.backgroundColor'), 'rgb(52, 86, 120)');
+
     assert.equal(await js('document.querySelector("#compose-form").elements.bcc.value'), 'blind@example.test');
     assert.equal(await js('Boolean([...document.querySelectorAll(".participant-card")].find(card=>card.dataset.email==="transfer@example.test"))'), true);
     assert.equal(await js('document.querySelector(\'.participant-card[data-email="alex@example.com"] strong\').textContent'), 'Алексей Морозов');
@@ -161,6 +204,31 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("[data-participant-target=to]").getClientRects().length > 0'), true);
     await js('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     await fs.writeFile(path.join(output, 'new-address-lines.png'), (await window.webContents.capturePage()).toPNG());
+
+    await js(`(() => {
+      const testMount = document.createElement('div');
+      document.body.append(testMount);
+      const editor = asterMailEditor.mount(testMount, '', {html:'<body bgcolor="#fff0a6"><p><b>Imported</b></p></body>'});
+      if (!editor.read().bodyHtml.includes('background-color: rgb(255, 240, 166)')) throw new Error('Imported body background was lost');
+      testMount.remove();
+      state.demo = false;
+      state.account = { server: 'https://mail.example.test', username: 'fictional', sessionId: 'fictional' };
+      api = async (operation, data) => { if (operation === 'send') window.sentColors = data; return []; };
+      const composer = document.getElementById('compose-body');
+      composer.textContent = 'alpha beta';
+      selectComposeWord();
+      pickComposeColor('text-colors', '#bf242b');
+      pickComposeColor('background-colors', '#cce5ff');
+      composeData.signature = { html: '<p>Fictional signature</p>', text: 'Fictional signature' };
+    })()`);
+    await entry('to', 'fictional@example.test');
+    await js('sendCompose(false)');
+    const sentColors = await js('window.sentColors');
+    assert.match(sentColors.bodyHtml, /^<div style="background-color: rgb\(204, 229, 255\);/);
+    assert.match(sentColors.bodyHtml, /color: rgb\(191, 36, 43\)/);
+    assert.match(sentColors.bodyHtml, /<p>Fictional signature<\/p><\/div>$/);
+    assert.match(require('../desktop/protocol.cjs').sendSOAP(sentColors), /<t:Body BodyType="HTML">&lt;div style=&quot;background-color: rgb\(204, 229, 255\);/);
+    console.log('PASS: editor color menus, presets, custom colors, default text color, separate body background, draft and outgoing HTML.');
     console.log('PASS: recipient cards, removal/editing, multi-address paste, directory selection, dirty state, drafts, pending validation, snapshot restore/failure, reply/forward and responsive light/dark layout.');
   } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

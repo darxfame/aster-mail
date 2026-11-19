@@ -28,6 +28,14 @@ function setupMailRules(panel) {
   const render = () => {
     list.innerHTML = items.length ? items.map((rule, index) => `<button type="button" class="secondary" data-rule-index="${index}" aria-pressed="${rule.id === selected?.id}"><strong>${esc(rule.name)}</strong><span>${rule.enabled ? tr('Включено') : tr('Выключено')}${rule.editable ? '' : ` · ${tr('Только просмотр')}`}</span></button>`).join('') : `<p class="form-note">${tr('Правил пока нет')}</p>`;
   };
+  const folderPicker = (name, label, value) => {
+    const options = folders.map(folder => {
+      const id = value && folder.wellKnown === value ? folder.wellKnown : folder.id;
+      return `<option value="${esc(id)}" ${value === id ? 'selected' : ''}>${esc(folder.name)}</option>`;
+    });
+    if (value && !folders.some(folder => folder.id === value || folder.wellKnown === value)) options.push(`<option value="${esc(value)}" selected>${esc(value)}</option>`);
+    return `<label class="field"><span>${tr(label)}</span><select name="${name}"><option value="">${tr('Выберите папку · необязательно')}</option>${options.join('')}</select></label>`;
+  };
   const edit = rule => {
     selected = rule; dirty(false); editor.hidden = !rule; editor.disabled = !rule?.editable;
     for (const button of list.querySelectorAll('[data-rule-index]')) button.setAttribute('aria-pressed', String(Boolean(rule?.id && items[Number(button.dataset.ruleIndex)]?.id === rule.id)));
@@ -37,9 +45,16 @@ function setupMailRules(panel) {
       editor.innerHTML = heading + `<p class="form-note">${tr('Это правило защищено от изменений в Aster. Используйте OWA или Outlook.')}</p>${describeMailRule(rule, folders)}`;
       return;
     }
-    editor.innerHTML = heading + `${field('ruleName', tr('Название правила'), rule.name)}<div class="form-row">${field('ruleSender', tr('Отправитель'), rule.sender)}${field('ruleSubject', tr('Тема содержит · необязательно'), rule.subject)}</div><label class="field"><span>${tr('Перемещать в папку')}</span><select name="ruleFolder"><option value="">${tr('Не перемещать')}</option>${folders.map(folder => `<option value="${esc(folder.id === rule.folder || folder.wellKnown !== rule.folder ? folder.id : folder.wellKnown)}" ${rule.folder && [folder.id, folder.wellKnown].includes(rule.folder) ? 'selected' : ''}>${esc(folder.name)}</option>`).join('')}${rule.folder && !folders.some(folder => [folder.id, folder.wellKnown].includes(rule.folder)) ? `<option value="${esc(rule.folder)}" selected>${esc(rule.folder)}</option>` : ''}</select></label><label class="checkbox"><input type="checkbox" name="ruleRead" ${rule.markRead ? 'checked' : ''}>${tr('Отмечать как прочитанное')}</label>${rule.id ? `<div class="form-row"><label class="checkbox"><input type="checkbox" name="ruleEnabled" ${rule.enabled ? 'checked' : ''}>${tr('Включено')}</label>${field('rulePriority', tr('Приоритет правила'), rule.priority, 'number')}</div>` : ''}<div class="rules-actions"><button type="button" class="primary" data-rule-save>${tr('Сохранить правило в Exchange')}</button><button type="button" class="secondary" data-rule-cancel>${tr('Отмена')}</button>${rule.id ? `<button type="button" class="secondary danger" data-rule-delete>${tr('Удалить правило')}</button>` : ''}</div>`;
+    editor.innerHTML = heading + `${field('ruleName', tr('Название правила'), rule.name)}
+      <h4>${tr('Условия')}</h4>${field('ruleSender', tr('Отправители · адреса через запятую'), rule.sender)}<div class="form-row">${field('ruleSubject', tr('Тема содержит'), rule.subject)}${field('ruleBody', tr('Текст содержит'), rule.body)}</div>
+      <h4>${tr('Исключения')}</h4>${field('ruleExceptSubject', tr('Не применять, если тема содержит'), rule.exceptSubject)}
+      <h4>${tr('Действия')}</h4><div class="form-row">${folderPicker('ruleFolder', 'Перемещать в папку', rule.folder)}${folderPicker('ruleCopyFolder', 'Копировать в папку', rule.copyFolder)}</div>
+      <label class="checkbox"><input type="checkbox" name="ruleRead" ${rule.markRead ? 'checked' : ''}>${tr('Отмечать как прочитанное')}</label><label class="checkbox"><input type="checkbox" name="ruleStop" ${rule.stopProcessing ? 'checked' : ''}>${tr('Остановить обработку правил')}</label>
+      ${rule.id ? `<div class="form-row"><label class="checkbox"><input type="checkbox" name="ruleEnabled" ${rule.enabled ? 'checked' : ''}>${tr('Включено')}</label>${field('rulePriority', tr('Приоритет правила'), rule.priority, 'number')}</div>` : ''}
+      <div class="rules-actions"><button type="button" class="primary" data-rule-save>${tr('Сохранить правило в Exchange')}</button><button type="button" class="secondary" data-rule-cancel>${tr('Отмена')}</button>${rule.id ? `<button type="button" class="secondary danger" data-rule-delete>${tr('Удалить правило')}</button>` : ''}</div>`;
     form.elements.ruleName.maxLength = 100;
-    form.elements.ruleSubject.maxLength = 200;
+    for (const name of ['ruleSubject', 'ruleBody', 'ruleExceptSubject']) form.elements[name].maxLength = 200;
+
   };
   const fetchRules = async () => {
     const configuration = demo ? { items: demoRules.map(rule => ({ ...rule, name: rule.name ?? tr('Демо: письма от коллеги') })).sort((a, b) => a.priority - b.priority) } : await api('mailRules');
@@ -88,9 +103,19 @@ function setupMailRules(panel) {
     if ((!save && !remove) || !selected?.editable || editor.disabled) return;
     if (remove && !confirm(`${tr('Удалить правило?')}\n${selected.name}`)) return;
     const fields = form.elements;
-    const changes = { name: fields.ruleName.value.trim(), sender: fields.ruleSender.value.trim(), subject: fields.ruleSubject.value.trim(), folder: fields.ruleFolder.value, markRead: fields.ruleRead.checked, ...(selected.id ? { enabled: fields.ruleEnabled.checked, priority: fields.rulePriority.valueAsNumber } : {}) };
-    if (save && (!changes.name || !/^[^\s<>@,;]+@[^\s<>@,;]+$/.test(changes.sender) || !changes.folder && !changes.markRead || changes.name.length > 100 || changes.subject.length > 200 || selected.id && (!Number.isSafeInteger(changes.priority) || changes.priority < 0 || changes.priority > 2147483647))) {
-      errorBox.textContent = tr('Укажите имя правила, отправителя и действие: перенос или отметку прочитанным'); return;
+    const changes = {
+      name: fields.ruleName.value.trim(), sender: fields.ruleSender.value.trim(), subject: fields.ruleSubject.value.trim(),
+      body: fields.ruleBody.value.trim(), exceptSubject: fields.ruleExceptSubject.value.trim(),
+      folder: fields.ruleFolder.value, copyFolder: fields.ruleCopyFolder.value,
+      markRead: fields.ruleRead.checked, stopProcessing: fields.ruleStop.checked,
+      ...(selected.id ? { enabled: fields.ruleEnabled.checked, priority: fields.rulePriority.valueAsNumber } : {}),
+    };
+    const addresses = changes.sender.split(/[,;\n]/).map(value => value.trim()).filter(Boolean);
+    if (save && (!changes.name || changes.name.length > 100 || addresses.length > 20 || addresses.some(value => !/^[^\s<>@,;]+@[^\s<>@,;]+$/.test(value)) ||
+      !addresses.length && !changes.subject && !changes.body || [changes.subject, changes.body, changes.exceptSubject].some(value => value.length > 200) ||
+      !changes.folder && !changes.copyFolder && !changes.markRead && !changes.stopProcessing ||
+      selected.id && (!Number.isSafeInteger(changes.priority) || changes.priority < 0 || changes.priority > 2147483647))) {
+      errorBox.textContent = tr('Укажите название, хотя бы одно условие и действие правила.'); return;
     }
     const snapshot = selected;
     pending = true;

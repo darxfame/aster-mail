@@ -494,6 +494,7 @@
     "PDF открыт в отдельном окне предпросмотра.": "PDF opened in a separate preview window.",
     "Выберите масштаб от 80% до 200%": "Choose a scale from 80% to 200%",
     "Свернуть уведомления": "Collapse notifications",
+    "Ещё": "More",
     "Ещё уведомлений:": "More notifications:",
     "Приглашение обновлено. Показано актуальное время.": "The invitation was updated. The current time is shown.",
     "Короткий текст письма в карточках трея": "Short message preview in tray cards",
@@ -631,8 +632,8 @@
     "Демоаккаунт": "Demo account",
     "Ваш аккаунт": "Your account",
     "Настройки аккаунта": "Account settings",
-    "Раскрыть меню папок": "Expand folder menu",
-    "Свернуть меню папок": "Collapse folder menu",
+    "Развернуть боковую панель": "Expand sidebar",
+    "Свернуть боковую панель": "Collapse sidebar",
     "Написать": "Compose",
     "Встреча": "Meeting",
     "Контакт": "Contact",
@@ -680,6 +681,7 @@
     "В избранное": "Star",
     "Обычная важность": "Normal importance",
     "Пометить важным": "Mark as important",
+    "Выбрать письмо": "Select message",
     "Выбрать письмо:": "Select message:",
     "Непрочитанных писем нет": "No unread messages",
     "Избранных писем нет": "No starred messages",
@@ -1080,6 +1082,7 @@
     "· Повторяется": "· Recurring",
     "Поиск не завершён:": "Search incomplete:",
     "Совпадений нет": "No matches",
+    "Ещё": "More",
     "Ещё:": "More:",
     "Организатор": "Organizer",
     "Нет ответа": "No response",
@@ -1503,6 +1506,16 @@
   english["Поиск в справочнике недоступен:"] = "Directory search unavailable:";
   english["Занято"] = "Busy";
   english["Рабочий день завершён"] = "Your working day has ended";
+  english["Чёрный"] = "Black";
+  english["Белый"] = "White";
+  english["Красный"] = "Red";
+  english["Синий"] = "Blue";
+  english["Фиолетовый"] = "Purple";
+  english["Цвет текста по умолчанию"] = "Default text color";
+  english["Свой цвет текста"] = "Custom text color";
+  english["Цвет фона письма"] = "Message background color";
+  english["Свой цвет фона письма"] = "Custom message background color";
+  english["Без фона"] = "No background";
   english["Жёлтый"] = "Yellow";
   english["Зелёный"] = "Green";
   english["Голубой"] = "Blue";
@@ -1540,6 +1553,16 @@
   english["Не удалось обновить список правил."] = "Could not refresh the rules list.";
   english["Изменение правил уже выполняется."] = "A rules change is already in progress.";
   english["При редактировании сохраняются пробелы и переносы строк. Исходное оформление сохраняется, пока текст ответа не изменён."] = "Editing preserves spaces and line breaks. The original styling is kept while the reply text is unchanged.";
+  english["Вся беседа"] = "Entire conversation";
+  english["Exchange не вернул письма беседы."] = "Exchange returned no conversation items.";
+  english["Показано до 200 писем, полученных от Exchange."] = "Showing up to 200 messages returned by Exchange.";
+  english["Быстрые действия"] = "Quick actions";
+  english["Форматировать ответ"] = "Format reply";
+  english["Форматирование автоответа"] = "Automatic reply formatting";
+  english["Укажите название, хотя бы одно условие и действие правила."] = "Enter a name, at least one condition, and at least one action.";
+  english["Выберите папку · необязательно"] = "Choose a folder · optional";
+  english["Отправители · адреса через запятую"] = "Senders · comma-separated addresses";
+  english["Не применять, если тема содержит"] = "Skip when subject contains";
   english["Ваш день"] = "Your day";
   english["Почта и встречи — одним взглядом"] = "Mail and meetings at a glance";
   english["Новых писем"] = "New messages";

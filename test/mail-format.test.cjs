@@ -8,10 +8,10 @@ test('HTML editing and outgoing serialization collapse source indentation while 
   const noop = { addEventListener() {} };
   const toolbar = { ...noop, querySelectorAll: () => [] };
   const linkForm = { querySelector: () => noop };
-  const root = { asterRichContent: { sanitize: value => ({ body: { innerHTML: value }, querySelectorAll: () => [] }) } };
+  const root = { asterRichContent: { sanitize: value => ({ body: { innerHTML: value, style: {} }, querySelectorAll: () => [] }) } };
   vm.runInNewContext(fs.readFileSync(require.resolve('../src/mail-editor.js'), 'utf8'), { window: root, tr: value => value });
   for (const html of [undefined, '<p>First</p>\n    <p><b>Second</b> line</p>']) {
-    const editor = { ...noop, style: {}, classList: { toggle() {} }, innerText: 'First\nSecond line' };
+    const editor = { ...noop, style: {}, querySelector: () => null, classList: { toggle() {} }, querySelector: () => null, innerText: 'First\nSecond line' };
     const target = { querySelector: selector => selector === '.compose-editor' ? editor : selector === '.format-toolbar' ? toolbar : linkForm };
     const mounted = root.asterMailEditor.mount(target, '  plain text\n    indented', { html });
     assert.equal(editor.style.whiteSpace, html ? 'normal' : 'pre-wrap');

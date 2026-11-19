@@ -69,19 +69,20 @@ app.whenReady().then(async () => {
     window.setSize(1280,850);window.webContents.setZoomFactor(1);
     await new Promise(resolve => setTimeout(resolve, 100));
     await fs.writeFile(path.join(output,'reader.png'),(await window.webContents.capturePage()).toPNG());
-    window.setContentSize(760, 540);
+    window.setContentSize(800, 600);
     window.webContents.setZoomFactor(2);
-    await waitFor('innerWidth === 380 && innerHeight === 270 && document.body.classList.contains("mail-compact")');
-    await js("document.body.classList.add('desktop', 'mac'); returnToMailList()");
+    await waitFor('innerWidth === 400 && innerHeight === 300 && document.body.classList.contains("mail-compact")');
+    await js("document.body.classList.add('desktop', 'mac'); document.documentElement.style.setProperty('--interface-scale','2'); returnToMailList()");
     for (const [language, theme] of [['en', 'light'], ['ru', 'dark']]) {
       await js(`applyLanguage('${language}'); state.theme='${theme}'; document.body.classList.toggle('dark', state.theme==='dark'); renderSidebar(); renderMail()`);
+      await js("document.querySelector('#search').focus()");
       const layout = await js(`(() => {
         const bounds = selector => document.querySelector(selector).getBoundingClientRect();
         const settings = bounds('.dock-settings'), list = bounds('#messages'), first = bounds('.message-row');
         return { search: bounds('#search').width, settings: settings.bottom, first: first.bottom, list: list.bottom };
       })()`);
-      assert.ok(layout.search >= 80 && layout.settings <= 270 && layout.first <= layout.list + 1,
-        `At 760×540 and 200%, search, settings and one full mail row fit (${language}): ${JSON.stringify(layout)}`);
+      assert.ok(layout.search >= 80 && layout.settings <= 300 && layout.first <= layout.list + 1,
+        `At 800×600 and 200%, search, settings and one full mail row fit (${language}): ${JSON.stringify(layout)}`);
       const filterState = () => js(`[...document.querySelectorAll('.list-filters button')].map(button => button.getAttribute('aria-pressed'))`);
       assert.deepEqual(await filterState(), ['true', 'false', 'false']);
       await js(`(() => { const filter = document.querySelector('[data-filter="unread"]'); filter.focus(); filter.click(); })()`);
@@ -99,9 +100,47 @@ app.whenReady().then(async () => {
       await js('document.querySelector(".back-to-list").focus()');
       await js('document.activeElement.click()');
       assert.equal(await js('document.activeElement.dataset.id === fixtureOpenedId'), true, 'Returning to the list restores focus to the opened message');
-      await fs.writeFile(path.join(output, `mail-760x540-200-${language}.png`), (await window.webContents.capturePage()).toPNG());
+      await fs.writeFile(path.join(output, `mail-800x600-200-${language}.png`), (await window.webContents.capturePage()).toPNG());
+      await js('document.activeElement.click()');
+      await waitFor('Boolean(document.querySelector("#reader [data-action=reply]"))');
+      await js('document.querySelector("#reader [data-action=reply]").click()');
+      await waitFor('document.activeElement.id === "compose-body"');
+      assert.equal(await js(`(() => {
+        const bounds = selector => document.querySelector(selector).getBoundingClientRect();
+        const editor = bounds('#compose-body'), fields = bounds('.compose-fields'), actions = bounds('.compose-footer');
+        const send = bounds('#compose-form [type="submit"]');
+        return Math.min(editor.bottom, fields.bottom) - Math.max(editor.top, fields.top) >= 64 &&
+          send.top >= fields.bottom && send.bottom <= actions.bottom;
+      })()`), true, 'Reply text and Send are visible together at 200%');
+      assert.equal(await js(`(() => {
+        const dialog = document.querySelector('#modal');
+        return matchMedia('(prefers-reduced-transparency: no-preference) and (forced-colors: none)').matches
+          ? getComputedStyle(dialog, '::backdrop').backdropFilter.includes('12px')
+          : !getComputedStyle(dialog, '::backdrop').backdropFilter.includes('12px');
+      })()`), true, 'Compose backdrop respects the system transparency preference');
+      if (theme === 'dark') {
+        const debuggerSession = window.webContents.debugger;
+        debuggerSession.attach('1.3');
+        try {
+          await debuggerSession.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
+          assert.equal(await js('getComputedStyle(document.querySelector("#modal"), "::backdrop").backdropFilter'), 'none');
+          await debuggerSession.sendCommand('Emulation.setEmulatedMedia', { features: [] });
+        } finally { debuggerSession.detach(); }
+      }
+      await js('document.querySelector("#modal").close(); settingsModal()');
+      const settings = await js(`(() => {
+        const picker = document.querySelector('.settings-section-picker');
+        const select = document.querySelector('#settings-panel-general select[name="language"]').getBoundingClientRect();
+        const panel = document.querySelector('.settings-panels').getBoundingClientRect();
+        picker.value = 'settings-tab-notifications';
+        picker.dispatchEvent(new Event('change', { bubbles: true }));
+        return { picker: picker.getClientRects().length > 0, firstFieldFits: select.bottom <= panel.bottom + 1,
+          notifications: !document.querySelector('#settings-panel-notifications').hidden };
+      })()`);
+      assert.deepEqual(settings, { picker: true, firstFieldFits: true, notifications: true });
+      await js('document.querySelector("#modal").close(); returnToMailList()');
     }
-    console.log('PASS: search and settings fit, a complete mail row is visible, filters expose their pressed state and reader focus returns at 760×540/200% in light EN and dark RU.');
+    console.log('PASS: search and settings fit, a complete mail row is visible, filters expose their pressed state and reader focus returns at 800×600/200% in light EN and dark RU.');
     console.log('PASS: long mail, compact recipients, image/text previews, return with preserved scroll/frame, stale preview cancellation and 100%/200%/narrow layouts.');
   } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

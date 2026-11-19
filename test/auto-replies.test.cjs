@@ -49,6 +49,16 @@ test('edited OOF text is escaped HTML, including literal markup and newlines', a
   const settings = parsed.Envelope.Body.SetUserOofSettingsRequest.UserOofSettings;
   assert.equal(settings.InternalReply.Message, '<html><body><div style="white-space:pre-wrap">  &lt;script&gt;alert(1)&lt;/script&gt;<br><br>A  &amp; B</div></body></html>');
 });
+test('formatted replies allow emphasis and lists, without arbitrary tags or attributes', async () => {
+  const { client, calls } = fixture();
+  const value = await R.read(client);
+  for (const html of ['<img src="https://example.test">', '<b onclick="alert(1)">Text</b>', '<a href="https://example.test">link</a>']) {
+    await assert.rejects(R.save(client, { ...value, internal: { html } }));
+  }
+  assert.equal(calls.length, 1);
+  await R.save(client, { ...value, internal: { html: '<b>Back Monday</b><ul><li>Contact support</li></ul>' } });
+  assert.ok(calls.at(-1).options.body.includes('&lt;b&gt;Back Monday&lt;/b&gt;&lt;ul&gt;'));
+});
 test('OOF rejects invalid values and server policy violations before any write', async () => {
   const { client, calls } = fixture(); client.response = response('', 'Disabled', 'Known');
   const value = await R.read(client);

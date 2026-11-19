@@ -23,10 +23,23 @@ function renderMailSearchControls() {
   controls.innerHTML = `<label>${tr('Где искать')} <select id="mail-search-scope"><option value="">${tr('Весь почтовый ящик')}</option>${choices.join('')}</select></label><label>${tr('Искать по')} <select id="mail-search-mode"><option value="text">${tr('Текст письма')}</option><option value="from">${tr('От кого')}</option></select></label><div id="mail-search-chips"></div>${state.query ? `<button type="button" class="secondary" data-action="clear-search-filters">${tr('Сбросить поиск')}</button>` : ''}`;
   $('#mail-search-scope').value = value.folder || '';
   $('#mail-search-mode').value = state.mailSearch?.query === state.query ? state.mailSearch.mode || 'text' : 'text';
-  const labels = { from: tr('От кого'), to: tr('Кому'), start: tr('Получено с'), end: tr('Получено по · включительно'), attachments: tr('Вложения') };
-  $('#mail-search-chips').innerHTML = Object.entries(labels).filter(([key]) => value[key] && value[key] !== 'any').map(([key, label]) => `<button type="button" class="secondary" data-remove-search="${key}" aria-label="${esc(`${tr('Удалить условие')}: ${label}`)}">${esc(label)}: ${esc(key === 'attachments' ? value[key] === 'yes' ? tr('Только с вложениями') : tr('Без вложений') : value[key])} ×</button>`).join('');
+  $('#mail-search-chips').innerHTML = mailSearchChips(value);
   if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
 }
+function mailSearchChips(value) {
+  const labels = { from: tr('От кого'), to: tr('Кому'), start: tr('Получено с'), end: tr('Получено по · включительно'), attachments: tr('Вложения') };
+  return Object.entries(labels).filter(([key]) => value[key] && value[key] !== 'any').map(([key, label]) => `<button type="button" class="secondary" data-remove-search="${key}" aria-label="${esc(`${tr('Удалить условие')}: ${label}`)}">${esc(label)}: ${esc(key === 'attachments' ? value[key] === 'yes' ? tr('Только с вложениями') : tr('Без вложений') : value[key])} ×</button>`).join('');
+}
+function mailSearchSummary() {
+  const chips = mailSearchChips(activeMailSearch());
+  return chips ? `<div class="search-result-criteria">${chips}</div>` : '';
+}
+document.addEventListener('keydown', event => {
+  if (event.defaultPrevented || event.isComposing || event.altKey || event.shiftKey ||
+      (!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== 'k' || $('#modal').open) return;
+  event.preventDefault();
+  $('#search').focus();
+});
 document.addEventListener('change', event => {
   if (event.target.id === 'mail-search-scope') {
     try { const mode = $('#mail-search-mode').value; applyMailSearch({ ...activeMailSearch(), [mode]: $('#search').value.trim(), folder: event.target.value }, mode); void loadView(); }
@@ -71,5 +84,6 @@ function mailSearchFilters() {
     <p class="form-note">${tr('При выборе папки поиск выполняется только в ней, без подпапок.')}</p>
     <label class="field"><span>${tr('Вложения')}</span><select name="attachments">${[['any', tr('Любые письма')], ['yes', tr('Только с вложениями')], ['no', tr('Без вложений')]].map(([id, label]) => `<option value="${id}" ${id === value.attachments ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
     ${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="clear-search-filters">${tr('Сбросить поиск')}</button><button type="submit" class="primary">${tr('Найти письма')}</button></div></form>`);
+  $('#modal').classList.add('mail-search-dialog');
   $('#mail-search-form [name="text"]').focus();
 }

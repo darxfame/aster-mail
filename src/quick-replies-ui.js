@@ -11,7 +11,7 @@ function mountQuickReplies(form, draft) {
     <label class="field"><span>${tr('Текст шаблона')}</span><textarea maxlength="8000" data-quick-body></textarea></label>
     <div class="quick-reply-actions"><button type="button" class="secondary" data-quick-save>${tr('Сохранить шаблон')}</button><button type="button" class="secondary danger" data-quick-delete>${tr('Удалить шаблон')}</button></div></details></fieldset>
     <p class="form-note" role="status"></p><p class="quick-reply-error" role="alert"></p>`;
-  form.querySelector('.compose-message-area').before(panel);
+  form.querySelector('.compose-message-area').after(panel);
   const fields = panel.querySelector('fieldset'), list = panel.querySelector('[data-quick-list]'), search = panel.querySelector('[data-quick-search]');
   const title = panel.querySelector('[data-quick-title]'), body = panel.querySelector('[data-quick-body]');
   const status = panel.querySelector('[role="status"]'), errorBox = panel.querySelector('[role="alert"]');

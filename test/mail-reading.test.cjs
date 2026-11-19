@@ -159,3 +159,22 @@ test('failed or duplicate revisit actions preserve the reader and do not retry t
   assert.equal(calls.length, 1); assert.equal(r.state.selected.id, 'a'); assert.equal(r.state.selected.read, true);
   assert.equal(r.state.folders[0].unread, count);
 });
+
+test('conversation summaries use the EWS conversation ID and retain cross-folder item references', async () => {
+  const { OWAClient } = require('../desktop/owa.cjs');
+  const client = new OWAClient({ server: 'https://mail.example.test' }, () => assert.fail('Unexpected network'));
+  client.ews = async (operation, request) => {
+    assert.equal(operation, 'GetConversationItems');
+    assert.match(request, /<t:ConversationId Id="thread&amp;id"/);
+    return { response: { ConversationNodes: { ConversationNode: { Items: { Message: [
+      { ItemId: { '@_Id': 'one', '@_ChangeKey': 'key' }, ParentFolderId: { '@_Id': 'sent' }, Subject: 'Sent message', From: { Mailbox: { EmailAddress: 'example@example.test' } } },
+      { ItemId: { '@_Id': 'one' } },
+    ] } } } } };
+  };
+  const result = await client.conversation({ id: 'thread&id' });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].parentId, 'sent');
+  assert.equal(result.items[0].changeKey, 'key');
+  assert.equal(result.items[0].conversationId, 'thread&id');
+  await assert.rejects(client.conversation({ id: '' }));
+});
