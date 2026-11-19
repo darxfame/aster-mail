@@ -100,6 +100,9 @@ select:focus-visible,[role="separator"]:focus-visible{outline:2px solid var(--ac
 .settings-footer{flex-shrink:0;padding-bottom:22px}
 .settings-footer .modal-footer{margin-top:0}
 .settings-footer>.form-error:empty{display:none}
+.theme-actions{display:flex;flex-wrap:wrap;gap:8px}
+.theme-actions button:disabled{cursor:default}
+[data-theme-status]:empty{display:none}
 .settings-footer>.form-error:not(:empty){margin:0;padding:10px 0;max-height:90px;overflow:auto}
 .settings-dialog .sound-tests{flex-wrap:wrap}
 @media(max-width:480px){.settings-dialog .modal-header{padding:20px 16px 12px}.settings-dialog .modal-body{padding:8px 16px 0}.settings-tabs{gap:0}.settings-tabs [role="tab"]{font-size:10px;padding:12px 5px}.settings-dialog .form-note{overflow-wrap:anywhere}}

@@ -54,7 +54,7 @@ async function detachCompose(mode) {
       reader.readAsDataURL(file);
     })));
     if (generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
-    await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true, undoSendSeconds: undoSendSeconds() }, snapshot: {
+    await api('detachCompose', { demo: state.demo, preferences: { theme: effectiveTheme(), palette: activeTheme(), timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true, undoSendSeconds: undoSendSeconds() }, snapshot: {
       mode, fields: Object.fromEntries(new FormData(form)), data, files, body: editor.read(), history: historyEditor?.read(),
       selected: composeMessageSnapshot(sourceMessage || state.selected), recipientPeople: window.asterRecipients.composePeople(form), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
     } });
@@ -72,6 +72,7 @@ async function bootComposeWindow() {
   notificationPreferences.debugErrors = preferences.debugErrors === true;
   localValues['aster-undo-send-seconds'] = String(preferences.undoSendSeconds || 0);
   state.theme = preferences.theme || 'light'; timeZone = preferences.timeZone || 'system';
+  if (preferences.palette) themePreferences = { themes: [preferences.palette], selected: preferences.palette.id };
   applyTheme();
   document.body.classList.add('compose-window');
   await compose(snapshot.mode, null, snapshot);

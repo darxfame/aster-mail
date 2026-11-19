@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Aster Mail Theme SDK v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "themeVersion",
+    "id",
+    "name",
+    "base",
+    "colors"
+  ],
+  "properties": {
+    "themeVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]{0,63}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "base": {
+      "enum": [
+        "light",
+        "dark"
+      ]
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "background",
+        "surface",
+        "surfaceAlt",
+        "sidebar",
+        "text",
+        "mutedText",
+        "border",
+        "accent",
+        "accentSurface",
+        "onAccent"
+      ],
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/color"
+        },
+        "surface": {
+          "$ref": "#/$defs/color"
+        },
+        "surfaceAlt": {
+          "$ref": "#/$defs/color"
+        },
+        "sidebar": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "mutedText": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "accentSurface": {
+          "$ref": "#/$defs/color"
+        },
+        "onAccent": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    }
+  }
+}

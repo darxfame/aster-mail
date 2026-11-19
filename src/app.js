@@ -193,8 +193,53 @@ function playSound(kind) {
   audio.play().catch(() => toast(tr('Звук заблокирован системой. Проверьте настройки звука и уведомлений.')));
 }
 function applyTheme() {
-  document.body.classList.toggle('dark', state.theme === 'dark');
-  if (window.aster?.platform === 'win32') void api('setWindowTheme', { theme: state.theme }).catch(showError);
+  const palette = activeTheme(), base = palette?.base || state.theme;
+  document.body.classList.toggle('dark', base === 'dark');
+  if (window.asterThemeSdk) {
+    document.body.classList.toggle('custom-theme', Boolean(palette));
+    for (const [role, token] of Object.entries(window.asterThemeSdk.tokens)) {
+      if (palette) document.body.style.setProperty(token, palette.colors[role]);
+      else document.body.style.removeProperty(token);
+    }
+  }
+  if (window.aster?.platform === 'win32') void api('setWindowTheme', { theme: base }).catch(showError);
+}
+let themePreferences = { themes: [], selected: null };
+function activeTheme() { return themePreferences.themes.find(theme => theme.id === themePreferences.selected); }
+function effectiveTheme() { return activeTheme()?.base || state.theme; }
+async function selectCustomTheme(id) {
+  if (themePreferences.selected !== id) themePreferences = await api('themePreferences', { action: 'select', id });
+}
+function themeOptions(value) {
+  const themes = [['light', tr('Светлое')], ['dark', tr('Тёмное')], ...themePreferences.themes.map(theme => [`custom:${theme.id}`, theme.name])];
+  return themes.map(([id, name]) => `<option value="${esc(id)}" ${id === value ? 'selected' : ''}>${esc(name)}</option>`).join('');
+}
+async function manageTheme(button, action) {
+  const form = button.form, select = form.elements.theme, message = form.querySelector('[data-theme-status]');
+  const id = select.value.startsWith('custom:') ? select.value.slice(7) : null;
+  if (action === 'remove' && !id) return;
+  const buttons = [...form.querySelectorAll('[data-action="theme-import"],[data-action="theme-remove"]')];
+  for (const control of buttons) control.disabled = true;
+  message.textContent = '';
+  try {
+    const preferences = await api('themePreferences', { action, id });
+    if (!preferences) return;
+    const previous = effectiveTheme();
+    themePreferences = preferences;
+    if (action === 'remove') {
+      applyTheme();
+      if (previous !== effectiveTheme() && state.selected) renderReader();
+    }
+    if (!form.isConnected || !$('#modal').open) return;
+    const value = action === 'import' ? `custom:${preferences.themes.at(-1).id}` : activeTheme() ? `custom:${activeTheme().id}` : state.theme;
+    select.innerHTML = themeOptions(value);
+    message.textContent = action === 'import' ? tr('Тема импортирована. Сохраните настройки, чтобы применить её.') : tr('Тема удалена.');
+  } catch (error) { message.textContent = errorText(error); }
+  finally {
+    buttons[0].disabled = false;
+    buttons[1].disabled = !select.value.startsWith('custom:');
+    if (form.isConnected && $('#modal').open && button.disabled) select.focus({ preventScroll: true });
+  }
 }
 let connectionState = { status: 'disconnected' };
 let mailWrites = 0, mailWriteEpoch = 0;
@@ -554,7 +599,7 @@ function renderReader() {
   applyReaderDensity();
   if (m.html) {
     window.asterRichContent.render($('#message-body'), m.html, {
-      dark: state.theme === 'dark', title: tr('Содержимое письма'),
+      dark: effectiveTheme() === 'dark', title: tr('Содержимое письма'),
       loadImages: () => m.contentImages ||= state.demo ? demoContentImages(m.html) : api('contentImages', { ref: ref(m), kind: 'message' }),
       openLink: url => window.aster ? api('openLink', { url }).catch(showError) : toast(`${tr("Демо: ссылка")} ${url}`),
     });
@@ -779,7 +824,7 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
   if (useServer) renderSignaturePreview($('#compose-signature-preview'), source);
   if (!draftMode && mode !== 'new' && m) {
     const target = $('#compose-history-body');
-    if (m.html) window.asterRichContent.render(target, m.html, { dark: state.theme === 'dark', title: tr('Предыдущая переписка'), loadImages: () => m.contentImages ||= state.demo ? demoContentImages(m.html) : api('contentImages', { ref: ref(m), kind: 'message' }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : toast(`${tr("Демо: ссылка")} ${url}`) });
+    if (m.html) window.asterRichContent.render(target, m.html, { dark: effectiveTheme() === 'dark', title: tr('Предыдущая переписка'), loadImages: () => m.contentImages ||= state.demo ? demoContentImages(m.html) : api('contentImages', { ref: ref(m), kind: 'message' }), openLink: url => window.aster ? api('openLink', { url }).catch(showError) : toast(`${tr("Демо: ссылка")} ${url}`) });
     else target.textContent = m.text || m.preview || '';
     $('#edit-history').addEventListener('click', event => {
       markModalDirty();
@@ -891,6 +936,7 @@ async function settingsModal() {
   if (window.aster) notificationPreferences = await api('notificationSettings');
   const zones = [...new Set([T.zone(), T.zone(timeZone), 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
   const p = notificationPreferences, work = window.asterWorkSchedule.normalize(p.workSchedule);
+  const themeSelection = activeTheme() ? `custom:${activeTheme().id}` : state.theme;
   const checkbox = (name, text, value) => `<label class="checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}>${text}</label>`;
   const sections = [['general', tr('Общие')], ['mcp', tr('MCP · Агенты')], ['modules', tr('Модули')], ['signature', tr('Подпись')], ['auto-replies', tr('Автоответы')], ['rules', tr('Правила')], ['notifications', tr('Уведомления')], ['account', tr('Аккаунт')]];
   modal(tr('Настройки Aster'), '', `<form id="settings-form">
@@ -902,7 +948,11 @@ async function settingsModal() {
     <section id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
     <h3 class="settings-section-title">${tr("Оформление и навигация")}</h3>
     <label class="field"><span>${tr('Язык интерфейса')}</span><select name="language"><option value="ru" ${window.asterI18n.language === 'ru' ? 'selected' : ''}>Русский</option><option value="en" ${window.asterI18n.language === 'en' ? 'selected' : ''}>English</option></select></label>
-    <label class="field"><span>${tr("Оформление")}</span><select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>${tr("Светлое")}</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${tr("Тёмное")}</option></select></label>
+    <label class="field"><span>${tr("Оформление")}</span><select name="theme">${themeOptions(themeSelection)}</select></label>
+    ${window.aster ? `<div class="theme-actions">
+      <button type="button" class="secondary" data-action="theme-import">${tr('Импортировать тему')}</button>
+      <button type="button" class="secondary" data-action="theme-remove" ${activeTheme() ? '' : 'disabled'}>${tr('Удалить тему')}</button>
+    </div><p class="form-note" data-theme-status role="status"></p>` : ''}
     <label class="field"><span>${tr('Масштаб интерфейса и текста')}</span><select name="interfaceScale">${[0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2].map(scale => `<option value="${scale}" ${interfaceScale === scale ? 'selected' : ''}>${Math.round(scale * 100)}%</option>`).join('')}</select></label>
     <p class="form-note">${tr('Масштаб увеличивает текст и элементы интерфейса. В узком окне письмо открывается отдельно от списка.')}</p>
     <h3 class="settings-heading">${tr('Письма')}</h3>
@@ -998,6 +1048,11 @@ async function settingsModal() {
     <div class="settings-footer">${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close">${tr("Отмена")}</button><button type="button" class="primary" id="auto-replies-save" disabled hidden>${tr('Сохранить автоответы в Exchange')}</button><button class="primary" type="submit">${tr("Сохранить")}</button></div></div></form>`);
   $('#modal').classList.add('settings-dialog');
   $('.settings-section-picker').addEventListener('change', event => selectSettingsTab(document.getElementById(event.target.value)));
+  const themePicker = $('#settings-form').elements.theme;
+  themePicker.addEventListener('change', () => {
+    const remove = $('#settings-form [data-action="theme-remove"]');
+    if (remove) remove.disabled = !themePicker.value.startsWith('custom:');
+  });
   receivePresentation(p);
   $('#settings-form').elements.dayNote.maxLength = 1000;
   setupAutoReplies($('#settings-panel-auto-replies'));
@@ -1147,7 +1202,10 @@ async function handleAction(button) {
   if (action === 'reset-local-data') {
     if (modalBusy || state.account) return;
     return submitForm($('#connect-form'), async () => {
-      if (await api('resetLocalData')) { loginHint = null; connectModal(); toast(tr('Локальные настройки сброшены. Подключитесь заново.')); }
+      if (await api('resetLocalData')) {
+        themePreferences = { themes: [], selected: null }; applyTheme();
+        loginHint = null; connectModal(); toast(tr('Локальные настройки сброшены. Подключитесь заново.'));
+      }
     });
   }
   if (action === 'retry-message') return openMessage(button.dataset.id, state.generation, { focusBack: true, fromConversation: state.selected });
@@ -1158,6 +1216,7 @@ async function handleAction(button) {
   }
   if (action === 'updates') return updatesModal();
   if (action === 'settings') return settingsModal();
+  if (action === 'theme-import' || action === 'theme-remove') return manageTheme(button, action.slice(6));
   if (action === 'mcp-toggle') {
     button.disabled = true;
     try { await api('setMcpEnabled', { enabled: button.dataset.enabled !== 'true' }); }
@@ -1177,7 +1236,9 @@ async function handleAction(button) {
     return;
   }
   if (action === 'theme') {
-    state.theme = state.theme === 'dark' ? 'light' : 'dark'; localPreferences.setItem('aster-theme', state.theme); applyTheme();
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    await selectCustomTheme(null);
+    state.theme = next; localPreferences.setItem('aster-theme', state.theme); applyTheme();
     if (state.selected) renderReader();
     if (activeMeeting && $('#modal').open && $('#modal').dataset.meetingCard === 'true') renderMeetingBody(activeMeeting);
     if (window.aster) notificationPreferences = await api('saveNotifications', { ...notificationPreferences, theme: state.theme });
@@ -1456,7 +1517,9 @@ document.addEventListener('submit', event => {
     submitForm(form, async data => {
       if (form.querySelector('#settings-panel-rules').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните правило или загрузите список заново.'));
       if (form.querySelector('#settings-panel-auto-replies').dataset.dirty === 'true') throw new Error(tr('Сначала сохраните автоответы отдельной кнопкой или загрузите их заново.'));
-      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), privacyApps: [...form.querySelectorAll('[name="privacyApp"]:checked')].map(input => input.value), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: data.theme, language: data.language };
+      const themeId = data.theme.startsWith('custom:') ? data.theme.slice(7) : null;
+      const palette = themePreferences.themes.find(theme => theme.id === themeId);
+      const next = { meetingMinutes: data.useMeetingMinutes ? [...form.querySelectorAll('[name="meetingMinute"]:checked')].map(input => Number(input.value)) : null, mail: Boolean(data.notifyMail), meetings: Boolean(data.notifyMeetings), sounds: Boolean(data.notifySounds), preview: Boolean(data.notifyPreview), autoPrivacy: Boolean(data.autoPrivacy), privacyApps: [...form.querySelectorAll('[name="privacyApp"]:checked')].map(input => input.value), mailTextPreview: Boolean(data.mailTextPreview), interfaceScale: Number(data.interfaceScale), debugErrors: Boolean(data.debugErrors), minutes: Number(data.minutes), timeZone: data.timeZone, theme: palette?.base || data.theme, language: data.language };
       next.workSchedule = window.asterWorkSchedule.normalize({ days: [...form.querySelectorAll('[name="workDay"]:checked')].map(input => Number(input.value)), start: data.workStart, end: data.workEnd }, true);
       T.zone(next.timeZone);
       const nextPlacement = data.navigationPlacement === 'bottom' ? 'bottom' : 'sidebar';
@@ -1466,8 +1529,9 @@ document.addEventListener('submit', event => {
       const sections = daySummarySections.filter(([key]) => data[`day-${key}`]).map(([key]) => key);
       const note = String(data.dayNote || '').slice(0, 1000);
       const dayChanged = workChanged || note !== daySummaryNote() || daySummarySections.some(([key]) => showDaySection(key) !== sections.includes(key));
-      const repaint = state.view === 'calendar' && workChanged || next.timeZone !== timeZone || next.theme !== state.theme || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
+      const repaint = state.view === 'calendar' && workChanged || next.timeZone !== timeZone || next.theme !== effectiveTheme() || next.language !== window.asterI18n.language || nextPlacement !== navigationPlacement;
       notificationPreferences = window.aster ? await api('saveNotifications', next) : { ...next, meetingReminders: notificationPreferences.meetingReminders || [] };
+      await selectCustomTheme(themeId);
       clearError();
       applyLanguage(next.language);
       navigationPlacement = nextPlacement;
@@ -1484,7 +1548,7 @@ document.addEventListener('submit', event => {
       miniMonthCursor = null;
       syncSignature = Boolean(data.syncSignature); localPreferences.setItem('aster-signature-sync', String(syncSignature));
       if (!syncSignature) state.signature = data.signature;
-      state.theme = data.theme;
+      state.theme = next.theme;
       renderSidebar();
       localPreferences.setItem('aster-signature', state.signature); localPreferences.setItem('aster-theme', state.theme);
       await localSave;
@@ -1575,6 +1639,8 @@ async function boot() {
     window.aster.onUpdate(receiveUpdate);
     receiveUpdate(await api('updateState'));
     window.aster.onPrivacy?.(receivePresentation);
+    try { themePreferences = await api('themePreferences'); applyTheme(); }
+    catch (error) { showError(error); }
     const savedSettings = await api('notificationSettings');
     receivePresentation(savedSettings);
     timeZone = savedSettings.timeZone || 'system';

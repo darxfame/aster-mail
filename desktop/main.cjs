@@ -19,6 +19,7 @@ let updates, macUpdates, windowsUpdates, localEncryption, activeServerWrites = 0
 const { OWAClient } = require('./owa.cjs');
 const { createTransport } = require('./transport.cjs');
 const { LocalStore } = require('./local-store.cjs');
+const { ThemeStore, readTheme } = require('./theme-store.cjs');
 const { WaitingReplies } = require('./waiting-replies.cjs');
 const { MailReminders, subjects: reminderSubjects } = require('./mail-reminders.cjs');
 const { fetchContentImage, fetchImageResponse } = require('./content-images.cjs');
@@ -245,6 +246,7 @@ const { httpsURL, meetingLink, upcomingMeetings, nearestMeetings, countdown, pol
 let widgetWindow, widgetEvents = [], widgetDetail = null;
 let window, client, account, tray, createWindow, quitting = false;
 let unsavedChanges = false, resettingLocalData = false;
+let themeStore;
 let notificationSettings = preferences(), tracker = new NotificationTracker(), polling = false, mailPolling = false;
 let lastPoll = null, lastPollError = '', lastMailPoll = null, lastMailError = '';
 const activeNotifications = new Set();
@@ -375,7 +377,7 @@ async function resetLocalData() {
     const answer = await dialog.showMessageBox(window, { type: 'warning', message: tr('Сбросить локальные данные?'), detail: tr('Сохранённый пароль, подпись, коллеги и настройки будут удалены с этого компьютера. Письма и календарь в Exchange сохранятся.'), buttons: [tr('Отмена'), tr('Сбросить')], defaultId: 0, cancelId: 0 });
     if (answer.response !== 1) return false;
     ++accountEpoch;
-    const results = await Promise.allSettled([localStore.clear(), attachmentFiles.clear(), moduleProfile.clear()]);
+    const results = await Promise.allSettled([localStore.clear(), attachmentFiles.clear(), moduleProfile.clear(), themeStore.change('clear')]);
     const failure = results.find(result => result.status === 'rejected');
     if (failure) throw failure.reason;
     attachmentCleanupError = ''; return true;
@@ -703,6 +705,7 @@ app.whenReady().then(async () => {
   }
   await updates.initialize();
   localStore = new LocalStore(app.getPath('userData'), localEncryption);
+  themeStore = new ThemeStore(path.join(app.getPath('userData'), 'themes.json'));
   await fs.rm(settingsFile(), { force: true }); // Remove legacy plaintext notification settings.
   const restoreMcp = process.argv.includes('--mcp') || await loadMcpEnabled();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -759,7 +762,33 @@ app.whenReady().then(async () => {
       if (operation === 'detachCompose') {
         if (!data.snapshot || !['new', 'reply', 'reply-all', 'forward', 'draft'].includes(data.snapshot.mode) || !data.snapshot.data || !Array.isArray(data.snapshot.files)) throw new Error('Invalid compose context');
         if (!data.demo && (!client || data.sessionId !== client.syncId)) throw new Error(tr('Сессия аккаунта завершена'));
-        return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences: data.preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
+        const palette = data.preferences?.palette ? require('../src/theme-sdk.js').normalize(data.preferences.palette) : null;
+        const preferences = { ...data.preferences, palette, theme: palette?.base || data.preferences?.theme };
+        return { ok: true, value: await composeWindows.create({ snapshot: data.snapshot, demo: data.demo === true, account: data.demo ? null : { server: account.server, username: account.username, sessionId: client.syncId }, preferences, language: i18n.language }, window.webContents.getZoomFactor()) };
+      }
+      if (operation === 'themePreferences') {
+        const { action } = data;
+        if (!action) return { ok: true, value: await themeStore.read() };
+        if (resettingLocalData || !['import', 'select', 'remove'].includes(action)) throw new Error('Invalid theme operation');
+        let value = data.id;
+        try {
+          if (action === 'import') {
+            const epoch = accountEpoch;
+            const choice = await dialog.showOpenDialog(window, { title: tr('Импортировать тему'), properties: ['openFile'],
+              filters: [{ name: 'Aster Theme (JSON)', extensions: ['json'] }] });
+            if (choice.canceled) return { ok: true, value: null };
+            value = await readTheme(choice.filePaths[0]);
+            if (resettingLocalData || epoch !== accountEpoch || quitting) return { ok: true, value: null };
+          }
+          return { ok: true, value: await themeStore.change(action, value) };
+        } catch (error) {
+          const message = error.message === 'contrast' ? tr('В палитре недостаточный контраст текста или акцента.') :
+            error.message === 'duplicate' ? tr('Тема с этим идентификатором уже импортирована.') :
+            error.message === 'limit' ? tr('Можно хранить до 64 тем. Удалите одну из импортированных тем.') :
+            error.message === 'format' || error instanceof SyntaxError ? tr('Файл не соответствует формату темы Aster (JSON до 8 КБ).') :
+            tr('Не удалось прочитать или сохранить тему.');
+          throw Object.assign(new Error(message), { userFacing: true });
+        }
       }
       if (operation === 'setWindowTheme') {
         if (!['light', 'dark'].includes(data.theme)) throw new Error('Invalid window theme');

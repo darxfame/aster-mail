@@ -1,6 +1,15 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Импортировать тему": "Import theme",
+    "Удалить тему": "Remove theme",
+    "Тема импортирована. Сохраните настройки, чтобы применить её.": "Theme imported. Save settings to apply it.",
+    "Тема удалена.": "Theme removed.",
+    "В палитре недостаточный контраст текста или акцента.": "The palette has insufficient text or accent contrast.",
+    "Тема с этим идентификатором уже импортирована.": "A theme with this ID is already imported.",
+    "Можно хранить до 64 тем. Удалите одну из импортированных тем.": "You can keep up to 64 themes. Remove an imported theme to free a slot.",
+    "Файл не соответствует формату темы Aster (JSON до 8 КБ).": "The file does not match the Aster theme format (JSON up to 8 KB).",
+    "Не удалось прочитать или сохранить тему.": "Could not read or save the theme.",
     "Включено": "Enabled",
     "Выключено": "Disabled",
     "Правила": "Rules",

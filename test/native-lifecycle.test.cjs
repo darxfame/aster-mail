@@ -57,15 +57,19 @@ test('normal and update quits block active writes and preserve detached editors 
   context.retireForQuit(); assert.equal(destroyed, 1); assert.equal(context.quitting, true);
 });
 test('pre-login recovery never clears without confirmation and blocks concurrent authentication', async () => {
-  let cleared = 0, answer = 0, finish;
-  const context = guards({ dialog: { showMessageBox: async () => ({ response: answer }) }, localStore: { clear: async () => { cleared++; await new Promise(resolve => { finish = resolve; }); } } });
+  let cleared = 0, themesCleared = 0, answer = 0, finish;
+  const context = guards({ dialog: { showMessageBox: async () => ({ response: answer }) },
+    themeStore: { change: async action => { assert.equal(action, 'clear'); themesCleared++; } },
+    localStore: { clear: async () => { cleared++; await new Promise(resolve => { finish = resolve; }); } } });
   assert.equal(await context.resetLocalData(), false); assert.equal(cleared, 0); assert.equal(context.resettingLocalData, false);
+  assert.equal(themesCleared, 0);
   answer = 1; const resetting = context.resetLocalData(); await Promise.resolve(); await Promise.resolve();
   assert.equal(context.resettingLocalData, true);
   await assert.rejects(context.resetLocalData(), /завершите подключение/);
   vm.runInContext(source.slice(source.indexOf('async function connect('), source.indexOf('\nconst methods =')), context);
   await assert.rejects(context.connect({}, false), /сброса локальных данных/);
   finish(); assert.equal(await resetting, true); assert.equal(cleared, 1); assert.equal(context.accountEpoch, 1); assert.equal(context.resettingLocalData, false);
+  assert.equal(themesCleared, 1);
   context.connection = {}; await assert.rejects(context.resetLocalData(), /завершите подключение/); assert.equal(cleared, 1);
 });
 for (const platform of ['darwin', 'win32']) test(`window fits the display and uses platform-appropriate chrome on ${platform}`, () => {

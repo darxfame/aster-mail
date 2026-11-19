@@ -110,7 +110,7 @@ function renderMeetingBody(e) {
   const target = $('#meeting-body'); if (!target) return;
   if (!e.html) { target.innerHTML = `<div class="plain-body">${esc(e.body || e.preview || tr('Нет описания'))}</div>`; return; }
   window.asterRichContent.render(target, e.html, {
-    dark: state.theme === 'dark', title: tr('Описание встречи'),
+    dark: effectiveTheme() === 'dark', title: tr('Описание встречи'),
     loadImages: () => e.contentImages ||= state.demo ? demoContentImages(e.html) : api('contentImages', { ref: ref(e), kind: 'event' }),
     openLink: url => window.aster ? api('openLink', { url }).catch(showError) : toast(`${tr("Демо: ссылка")} ${url}`),
   });

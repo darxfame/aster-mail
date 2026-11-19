@@ -18,9 +18,17 @@ body.dark {
   --skeleton-shine: #ffffff16;
   --air-unread: #302d3a;
 }
+body.custom-theme {
+  --air-glass: color-mix(in srgb, var(--surface) 78%, transparent);
+  --air-glass-edge: var(--line);
+  --air-sidebar: color-mix(in srgb, var(--sidebar) 78%, transparent);
+  --air-unread: color-mix(in srgb, var(--accent-bg) 55%, var(--surface));
+  --air-glow: color-mix(in srgb, var(--accent) 13%, transparent);
+  --air-glow-alt: color-mix(in srgb, var(--accent) 8%, transparent);
+}
 .app-shell {
-  background: radial-gradient(ellipse at 0 0, #a58adf20, transparent 60%),
-    radial-gradient(ellipse at 100% 0, #9bbfd51a, transparent 55%), var(--bg);
+  background: radial-gradient(ellipse at 0 0, var(--air-glow, #a58adf20), transparent 60%),
+    radial-gradient(ellipse at 100% 0, var(--air-glow-alt, #9bbfd51a), transparent 55%), var(--bg);
 }
 .sidebar, .sidebar-collapsed .sidebar, body.dark .sidebar {
   margin: 10px 0 10px 10px;
@@ -112,6 +120,10 @@ body.dark {
 .mail-list .unread .sender, .mail-list .unread .subject { font-weight: 600; }
 .mail-list .message-row.unread:not(.selected) { background: var(--air-unread); }
 .mail-list .message-row.selected, body.dark .mail-list .message-row.selected { background: var(--accent-bg); }
+body.custom-theme .mail-list .message-row.selected { border-left-color: var(--accent); }
+body.custom-theme .sidebar .folder.active .count { background: transparent; }
+body.custom-theme :is(.preview, .day-label) { color: var(--muted); }
+body.custom-theme :is(.search-box input, .field input)::placeholder { color: var(--muted); }
 .mail-list .message-copy .preview { grid-column: 1; grid-row: 3; min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.5; overflow-wrap: normal; }
 .mail-list .message-meta { grid-column: 2; grid-row: 3; align-self: center; gap: 4px; margin: 0; }
 .mail-list .message-meta .tag { font-size: 9px; line-height: 1.4; padding: 1px 4px; }
