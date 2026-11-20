@@ -47,6 +47,27 @@ test('folder removal moves to trash, including content, and never calls permanen
   assert.match(calls[1].body,/<t:DistinguishedFolderId Id="deleteditems"\/>/);
   assert.doesNotMatch(calls[1].body,/DeleteFolder|HardDelete|SoftDelete/);
 });
+test('empty trash sends one soft delete to the distinguished folder and preserves cached images', async () => {
+  const { client, calls } = fixture();
+  client.folders = async () => { throw new Error('Emptying Trash does not require folder discovery'); };
+  for (const folder of ['inbox', 'trash-id', 'custom&id']) {
+    await assert.rejects(client.folderOperation({ action: 'empty', folder }), /только системную корзину/);
+  }
+  assert.equal(calls.length, 0);
+  await client.mailCache.get('counts', async () => 2);
+  await client.mailCache.get('image:fixture', async () => 'image');
+  await client.folderOperation({ action: 'empty', folder: 'deleteditems' });
+  assert.deepEqual(calls.map(({ action }) => action), ['EmptyFolder']);
+  assert.match(calls[0].body, /<m:EmptyFolder DeleteType="SoftDelete" DeleteSubFolders="true"><m:FolderIds><t:DistinguishedFolderId Id="deleteditems"\/>/);
+  assert.deepEqual([...client.mailCache.entries.keys()], ['image:fixture']);
+});
+test('an uncertain empty-trash response clears stale reads and never replays the write', async () => {
+  const { client, calls } = fixture('EmptyFolder');
+  await client.mailCache.get('counts', async () => 2);
+  await assert.rejects(client.folderOperation({ action: 'empty', folder: 'deleteditems' }), /Операция не повторялась/);
+  assert.deepEqual(calls.map(({ action }) => action), ['EmptyFolder']);
+  assert.equal(client.mailCache.entries.size, 0);
+});
 test('system folders are protected for aliases and raw IDs; invalid names never write', async () => {
   const {client,calls}=fixture();
   for (const folder of ['inbox','inbox-id','trash-id']) for (const action of ['rename','trash']) await assert.rejects(client.folderOperation({action,folder,name:'New'}),/Системную/);

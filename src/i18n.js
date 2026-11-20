@@ -1,6 +1,23 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Очистить корзину": "Empty trash",
+    "Очистить корзину…": "Empty trash…",
+    "Очистить корзину?": "Empty trash?",
+    "Очистить можно только системную корзину": "Only the system Trash folder can be emptied",
+    "Все письма и подпапки будут удалены из корзины. Возможность восстановления зависит от настроек Exchange.": "All messages and subfolders will be removed from Trash. Recovery depends on your Exchange settings.",
+    "Корзина очищена": "Trash emptied",
+    "Новая команда": "New team",
+    "Без команды": "No team",
+    "Изменить команду": "Edit team",
+    "Изменить": "Edit",
+    "Название команды": "Team name",
+    "Участники команды": "Team members",
+    "Удалить команду": "Remove team",
+    "Список коллег изменился. Откройте команду заново.": "The colleague list changed. Reopen the team.",
+    "Укажите название команды от 1 до 80 символов.": "Enter a team name of 1 to 80 characters.",
+    "Выберите хотя бы одного коллегу.": "Choose at least one colleague.",
+    "Команда с таким названием уже есть.": "A team with this name already exists.",
     "Светлая палитра": "Light palette",
     "Тёмная палитра": "Dark palette",
     "Стандартная палитра": "Standard palette",

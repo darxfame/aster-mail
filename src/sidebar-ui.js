@@ -30,6 +30,11 @@ async function handleSidebarAction(button) {
 
 let folderMenu, folderEdit, folderTask = false;
 function closeFolderMenu(restoreFocus = false) { const opener = folderMenu?.opener; folderMenu?.remove(); folderMenu = null; if (restoreFocus === true) opener?.focus(); }
+function emptyTrashModal() {
+  if (folderTask || $('#modal').open) return;
+  folderEdit = { folder: { key: 'deleteditems' }, action: 'empty', account: state.account, demo: state.demo };
+  modal(tr('Очистить корзину?'), '', `<form id="folder-operation-form"><p class="form-note">${tr('Все письма и подпапки будут удалены из корзины. Возможность восстановления зависит от настроек Exchange.')}</p>${formError()}<div class="modal-footer"><button class="secondary" type="button" data-action="close" autofocus>${tr('Отмена')}</button><button class="secondary danger" type="submit">${tr('Очистить корзину')}</button></div></form>`);
+}
 function showFolderMenu(button, x, y) {
   if ($('#modal').open) return;
   closeFolderMenu();
@@ -38,6 +43,7 @@ function showFolderMenu(button, x, y) {
   const folder = { ...item, key, id: item?.id || key, name: item?.name || button.title, wellKnown: item?.wellKnown || (systemFolders.some(([id]) => id === key) ? key : '') };
   const account = state.account, demo = state.demo;
   const entries = [['read', tr('Прочитать всё')], ['create', tr('Создать подпапку…')], ['root', tr('Новая папка в корне…')], ['rename', tr('Переименовать…')], ['trash', tr('Переместить в корзину…')], ['refresh', tr('Обновить папки')]];
+  if (key === 'deleteditems') entries.splice(1, 0, ['empty', tr('Очистить корзину…')]);
   folderMenu = document.createElement('div'); folderMenu.opener = button; folderMenu.className = 'folder-context-menu'; folderMenu.setAttribute('role', 'menu'); folderMenu.setAttribute('aria-label', `${tr("Папка:")} ${folder.name}`);
   const protectedReason = folder.wellKnown ? tr('Системная папка') : !demo && folder.systemIdentityKnown !== true ? tr('Не удалось определить системные папки. Обновите список перед изменением папки.') : '';
   folderMenu.innerHTML = entries.map(([action, text]) => `<button type="button" role="menuitem" tabindex="-1" data-folder-operation="${action}" ${protectedReason && ['rename', 'trash'].includes(action) ? `disabled title="${esc(protectedReason)}"` : ''}>${esc(text)}</button>`).join('');
@@ -49,6 +55,7 @@ function showFolderMenu(button, x, y) {
     const item = event.target.closest('[data-folder-operation]'); if (!item || item.disabled) return;
     const action = item.dataset.folderOperation; closeFolderMenu();
     if (state.account !== account || state.demo !== demo || folderTask) return;
+    if (action === 'empty') { emptyTrashModal(); return; }
     if (action === 'read' || action === 'refresh') { void performFolderAction({ folder, action, account, demo }).catch(showError); return; }
     folderEdit = { folder, action: action === 'root' ? 'create' : action, parent: action === 'root' ? 'msgfolderroot' : key, account, demo };
     const trash = action === 'trash';
@@ -69,6 +76,32 @@ async function performFolderAction(edit, name) {
   folderTask = true;
   try {
     const key = edit.folder.key;
+    if (edit.action === 'empty') {
+      if (key !== 'deleteditems') throw new Error(tr('Очистить можно только системную корзину'));
+      const current = () => state.account === edit.account && state.demo === edit.demo;
+      const folders = state.demo ? window.asterDemo.folders : state.folders;
+      const trash = window.asterFolders.tree(folders, systemFolders).find(folder => folder.key === key);
+      const removed = new Set();
+      function collect(folder) {
+        removed.add(folder.key);
+        if (folder.id) removed.add(folder.id);
+        folder.children.forEach(collect);
+      }
+      trash.children.forEach(collect);
+      if (state.demo) {
+        const demo = window.asterDemo;
+        demo.messages = demo.messages.filter(message => message.folder !== key && message.folder !== trash.id && !removed.has(message.folder));
+        demo.folders = demo.folders.filter(folder => !removed.has(folder.id));
+      } else await api('folderOperation', { action: 'empty', folder: key });
+      if (!current()) return;
+      $('#modal').close();
+      toast(tr('Корзина очищена'));
+      if (state.view === 'mail' && removed.has(state.folder)) state.folder = key;
+      if (state.view === 'mail' && (state.folder === key || state.query)) await loadView();
+      else if (!state.demo) await refreshMailFolders(state.generation);
+      else renderSidebar();
+      return;
+    }
     if (state.demo) {
       const folder = window.asterDemo.folders.find(item => item.id === edit.folder.id);
       if (edit.action === 'read') for (const message of window.asterDemo.messages.filter(message => message.folder === key)) message.read = true;

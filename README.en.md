@@ -18,6 +18,8 @@ without an Aster cloud or application telemetry.
 
 - **Mail:** folders, search, filters, right-click actions, rich text, attachments,
   server drafts and detached editors.
+  Emptying Trash removes messages and subfolders through EWS. Recovery depends on Exchange settings.
+- **Colleagues:** manually group pinned colleagues into teams in the account's encrypted local profile.
 - **Calendar:** invitations, day/week/quarter views, colleague availability and common slots.
 - **Workflows:** quick replies, Exchange automatic replies, reply tracking and local mail reminders.
 - **macOS widget:** ongoing meetings, countdowns and the day schedule.

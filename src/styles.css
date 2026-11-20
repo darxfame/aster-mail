@@ -235,3 +235,15 @@ body.custom-theme .toast { background: var(--surface); color: var(--text); }
 .day-personal-note { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); margin: 0 0 14px; line-height: 1.55; }
 .day-settings-options { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .day-settings-options .checkbox { margin: 6px 0; }
+
+.colleague-team + .colleague-team{border-top:1px solid var(--line)}
+.colleague-team>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 17px;background:var(--surface)}
+.colleague-team h3{font-size:13px;margin:0;overflow-wrap:anywhere;min-width:0}
+.colleague-team-members{border:1px solid var(--line);border-radius:9px;margin:0;min-width:0;padding:0 12px;max-height:40vh;overflow:auto}
+.colleague-team-members legend{padding:0 5px;font-size:12px}
+.colleague-team-members .checkbox{align-items:flex-start;overflow-wrap:anywhere}
+.colleague-team-members small{display:block;color:var(--muted)}
+@media(max-width:700px){
+  .colleagues-panel>header{column-gap:4px}
+  .colleagues-panel [data-action="new-colleague-team"]{padding-inline:9px}
+}

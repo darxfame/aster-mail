@@ -59,7 +59,7 @@ window.asterMcpUI = async request => {
     if (input.name === 'set_signature') {
       state.signature = input.signature; syncSignature = input.sync;
       localPreferences.setItem('aster-signature', input.signature); localPreferences.setItem('aster-signature-sync', String(input.sync));
-    } else if (input.name === 'get_colleagues') return colleagues();
+    } else if (input.name === 'get_colleagues') return colleagues().map(({ name, email, company }) => ({ name, email, company }));
     else if (input.name === 'set_colleagues') await saveColleagues(input.people);
     else throw new Error('Unknown local MCP action');
     await localSave; guard();
@@ -437,7 +437,7 @@ function renderMail() {
   if (state.view !== 'mail') return;
   document.body.classList.toggle('reader-open', Boolean(state.selected || state.dayOverviewOpen));
   const title = state.query ? `${tr("Результаты поиска")}` : systemFolders.find(f => f[0] === state.folder)?.[1] || (state.demo ? window.asterDemo.folders : state.folders).find(f => f.id === state.folder)?.name || tr('Письма');
-  $('#workspace').innerHTML = `<div class="mail-list ${state.query ? 'search-results-list' : ''}"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions">${state.query ? `<button type="button" class="icon-button" data-action="clear-search-filters" title="${tr('Сбросить поиск')}" aria-label="${tr('Сбросить поиск')}">${icon('close')}</button>` : `<button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button>`}<span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" aria-pressed="${state.filter === id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
+  $('#workspace').innerHTML = `<div class="mail-list ${state.query ? 'search-results-list' : ''}"><div class="list-heading"><div><h1 title="${esc(title)}">${esc(title)}</h1>${state.query ? `<small>${esc(`«${$('#search').value || activeMailSearch().from || activeMailSearch().to || tr('Фильтры поиска писем')}» · ${mailSearchScope()}`)}</small>` : ''}</div><div class="day-list-actions">${!state.query && state.folder === 'deleteditems' ? `<button type="button" class="icon-button" data-action="empty-trash" title="${tr('Очистить корзину')}" aria-label="${tr('Очистить корзину')}">${icon('trash')}</button>` : ''}${state.query ? `<button type="button" class="icon-button" data-action="clear-search-filters" title="${tr('Сбросить поиск')}" aria-label="${tr('Сбросить поиск')}">${icon('close')}</button>` : `<button type="button" class="icon-button" data-action="day-overview" title="${tr('Ваш день')}" aria-label="${tr('Ваш день')}">${icon('calendar')}</button>`}<span class="muted" id="mail-count">${filteredMessages().length}${state.more ? '+' : ''}</span></div></div><div class="list-filters">${[['all', state.query ? tr('Все объекты') : tr('Все')], ['unread', tr('Непрочитанные')], ['flagged', tr('Избранное')]].map(([id, text]) => `<button class="${state.filter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" aria-pressed="${state.filter === id}" title="${text}">${text}</button>`).join('')}</div><div id="mail-batch-toolbar"></div><div class="messages" id="messages"></div>${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div><div class="mail-list-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="${tr('Ширина списка писем')}" aria-valuemin="260" aria-valuemax="720" aria-valuenow="340"></div><article class="reader" id="reader"></article>`;
   applyMailListWidth();
   renderMessages();
   if (state.selected) renderReader();
@@ -641,7 +641,19 @@ function colleagues() {
 }
 let colleagueData = [], colleagueScope = '', colleagueUpdated = null, colleagueError = '', colleagueRequest = 0;
 let directoryResults = [], directoryRequest = 0;
-async function saveColleagues(list) { localPreferences.setItem(colleaguesKey(), JSON.stringify(list.map(c => ({ name: c.name, email: c.email, company: c.company || '' })))); await localSave; }
+async function saveColleagues(list, teams = new Map(colleagues().map(c => [c.email.toLowerCase(), c.team]))) {
+  const key = colleaguesKey(), values = localValues, previous = values[key];
+  const next = JSON.stringify(list.map(({ name, email, company }) => ({ name, email, company: company || '', team: teams.get(email.toLowerCase()) || undefined })));
+  localPreferences.setItem(key, next);
+  try { await localSave; }
+  catch (error) {
+    if (localValues === values && values[key] === next) {
+      if (previous === undefined) delete values[key];
+      else values[key] = previous;
+    }
+    throw error;
+  }
+}
 async function fetchAvailability(emails, start, end) {
   if (!state.demo) return api('availability', { emails: emails.join(','), start: start.toISOString(), end: end.toISOString() });
   return emails.map((email, i) => {
@@ -675,7 +687,12 @@ function renderColleagues() {
   if (colleagueScope !== colleaguesKey()) { colleagueData = []; colleagueUpdated = null; colleagueError = ''; }
   const rows = list.map(c => { const p = colleagueData.find(p => p.email.toLowerCase() === c.email.toLowerCase()); return { ...c, status: availabilityLabel(p) }; });
   $('#colleagues-count').textContent = `${rows.filter(c => c.status.kind === 'free').length} ${tr("из")} ${list.length} ${tr("свободны")}`;
-  $('#colleagues-list').innerHTML = rows.map(c => `<div class="colleague-row"><button type="button" class="colleague-open" data-action="open-colleague" data-email="${esc(c.email)}">${avatar(c.name, 0, c.email)}<span class="colleague-name"><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></span></button><span class="availability ${c.status.kind}" title="${esc(c.status.text)}"><i></i>${esc(c.status.text)}</span><button class="icon-button" data-action="plan-colleague" data-email="${esc(c.email)}" aria-label="${tr("Запланировать встречу:")} ${esc(c.name)}" title="${tr("Запланировать встречу")}">${icon('calendar')}</button><button class="icon-button" data-action="remove-colleague" data-email="${esc(c.email)}" aria-label="${tr("Убрать:")} ${esc(c.name)}" title="${tr("Убрать из коллег")}">${icon('close')}</button></div>`).join('') || tr('<p class="form-note">Добавьте людей из общего каталога Exchange кнопкой «+».</p>');
+  const restoreFocus = preserveListFocus($('#colleagues-list'));
+  const rowHTML = c => `<div class="colleague-row"><button type="button" class="colleague-open" data-action="open-colleague" data-email="${esc(c.email)}">${avatar(c.name, 0, c.email)}<span class="colleague-name"><strong>${esc(c.name)}</strong><small>${esc(c.email)}</small></span></button><span class="availability ${c.status.kind}" title="${esc(c.status.text)}"><i></i>${esc(c.status.text)}</span><button class="icon-button" data-action="plan-colleague" data-email="${esc(c.email)}" aria-label="${tr("Запланировать встречу:")} ${esc(c.name)}" title="${tr("Запланировать встречу")}">${icon('calendar')}</button><button class="icon-button" data-action="remove-colleague" data-email="${esc(c.email)}" aria-label="${tr("Убрать:")} ${esc(c.name)}" title="${tr("Убрать из коллег")}">${icon('close')}</button></div>`;
+  $('#colleagues-list').innerHTML = colleagueTeamsHTML(rows, rowHTML) || tr('<p class="form-note">Добавьте людей из общего каталога Exchange кнопкой «+».</p>');
+  const createTeam = $('[data-action="new-colleague-team"]');
+  if (createTeam) createTeam.disabled = !list.length;
+  restoreFocus();
   $('#colleagues-updated').textContent = colleagueError ? `${tr("Не удалось обновить:")} ${colleagueError}` : `${state.demo ? tr('Вымышленные статусы · ') : ''}${colleagueUpdated ? `${tr("Обновлено")} ${time(colleagueUpdated)} ${tr("· проверка раз в минуту")}` : list.length ? tr('Проверяем занятость…') : tr('Избранные коллеги хранятся на этом компьютере.')}`;
 }
 async function refreshColleagues() {
@@ -735,7 +752,7 @@ async function runPlanner(button) {
 
 function renderContacts() {
   if (state.view !== 'contacts') return;
-  $('#workspace').innerHTML = `<div class="contacts-view"><div class="page-header"><div><h1>${state.query ? tr('Люди в Exchange') : tr('Ваши контакты')}</h1><p>${state.query ? `${tr("Результаты для «")}${esc(state.query)}»` : tr('Люди, с которыми вы создаёте важное.')}</p></div><div class="contact-actions"><button class="secondary" data-action="directory">${icon('people')}${tr("Общий каталог")}</button><button class="primary" data-action="new-contact">${icon('plus')}${tr("Новый контакт")}</button></div></div><section class="colleagues-panel"><header><h2>${icon('people')}${tr("Коллеги")}</h2><span id="colleagues-count"></span><button class="icon-button" data-action="refresh-colleagues" aria-label="${tr("Обновить занятость")}" title="${tr("Обновить занятость")}">${icon('refresh')}</button><button class="icon-button" data-action="directory" aria-label="${tr("Добавить коллег")}" title="${tr("Добавить коллег")}">${icon('plus')}</button><button class="icon-button" data-action="toggle-colleagues" aria-label="${tr("Свернуть список коллег")}" aria-expanded="true">${icon('chevron')}</button></header><div id="colleagues-list"></div><p id="colleagues-updated" class="form-note"></p></section><div class="contacts-grid">${state.contacts.map((c, i) => `<button class="contact-card" data-action="contact" data-id="${esc(c.id)}">${avatar(c.name, i, c.email)}<strong>${esc(c.name)}</strong><p>${esc(c.company || tr('Контакт Exchange'))}</p><small>${esc(c.email || tr('Email не указан'))}</small></button>`).join('')}</div>${!state.contacts.length ? tr('<p class="form-note">Добавьте личный контакт или найдите коллегу в общем каталоге Exchange.</p>') : ''}${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div>`;
+  $('#workspace').innerHTML = `<div class="contacts-view"><div class="page-header"><div><h1>${state.query ? tr('Люди в Exchange') : tr('Ваши контакты')}</h1><p>${state.query ? `${tr("Результаты для «")}${esc(state.query)}»` : tr('Люди, с которыми вы создаёте важное.')}</p></div><div class="contact-actions"><button class="secondary" data-action="directory">${icon('people')}${tr("Общий каталог")}</button><button class="primary" data-action="new-contact">${icon('plus')}${tr("Новый контакт")}</button></div></div><section class="colleagues-panel"><header><h2>${icon('people')}${tr("Коллеги")}</h2><span id="colleagues-count"></span><button class="secondary" type="button" data-action="new-colleague-team">${icon('plus')}${tr('Новая команда')}</button><button class="icon-button" data-action="refresh-colleagues" aria-label="${tr("Обновить занятость")}" title="${tr("Обновить занятость")}">${icon('refresh')}</button><button class="icon-button" data-action="directory" aria-label="${tr("Добавить коллег")}" title="${tr("Добавить коллег")}">${icon('plus')}</button><button class="icon-button" data-action="toggle-colleagues" aria-label="${tr("Свернуть список коллег")}" aria-expanded="true">${icon('chevron')}</button></header><div id="colleagues-list"></div><p id="colleagues-updated" class="form-note"></p></section><div class="contacts-grid">${state.contacts.map((c, i) => `<button class="contact-card" data-action="contact" data-id="${esc(c.id)}">${avatar(c.name, i, c.email)}<strong>${esc(c.name)}</strong><p>${esc(c.company || tr('Контакт Exchange'))}</p><small>${esc(c.email || tr('Email не указан'))}</small></button>`).join('')}</div>${!state.contacts.length ? tr('<p class="form-note">Добавьте личный контакт или найдите коллегу в общем каталоге Exchange.</p>') : ''}${state.more ? tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>') : ''}</div>`;
   renderColleagues();
 }
 function connectModal() {
@@ -1284,6 +1301,8 @@ async function handleAction(button) {
     button.disabled = true; toast(tr('Коллега добавлен')); renderColleagues(); void refreshColleagues(); return;
   }
   if (action === 'remove-colleague') { await saveColleagues(colleagues().filter(c => c.email !== button.dataset.email)); renderColleagues(); return; }
+  if (action === 'new-colleague-team' || action === 'edit-colleague-team') return colleagueTeamModal(button.dataset.team || '');
+  if (action === 'empty-trash') return emptyTrashModal();
   if (action === 'refresh-colleagues') return refreshColleagues();
   if (action === 'toggle-colleagues') { const list = $('#colleagues-list'); list.hidden = !list.hidden; button.setAttribute('aria-expanded', String(!list.hidden)); button.setAttribute('aria-label', list.hidden ? tr('Развернуть список коллег') : tr('Свернуть список коллег')); return; }
   if (action === 'open-colleague') {

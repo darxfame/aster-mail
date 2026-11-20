@@ -49,6 +49,38 @@ app.whenReady().then(async () => {
     await waitFor('colleagues().length===colleagueCount-1');
     assert.equal(await js('Boolean(currentContactCard())'), false, 'Removing a colleague does not open their card');
     assert.equal(await js('colleagues().some(person=>person.email===otherColleague)'), false);
+    const openTeam = (selector, name) => js(`$(${JSON.stringify(selector)}).click();$('#colleague-team-form').elements.name.value=${JSON.stringify(name)}`);
+    const saveTeam = () => js('$("#colleague-team-form").requestSubmit()');
+    await openTeam('[data-action=new-colleague-team]', 'Дизайн <UI>');
+    await saveTeam();
+    await waitFor('$("#colleague-team-form .form-error").textContent.includes("Выберите")');
+    await js('document.querySelectorAll("#colleague-team-form [name=member]").forEach((input, index) => { input.checked = index < 2; })');
+    await saveTeam(); await waitFor('!$("#modal").open');
+    assert.deepEqual(await js('[...document.querySelectorAll(".colleague-team h3")].map(h=>h.textContent)'), ['Дизайн <UI>', 'Без команды']);
+    await openTeam('[data-action=new-colleague-team]', 'ДИЗАЙН <UI>');
+    await js('$("#colleague-team-form [name=member]").checked=true');
+    await saveTeam();
+    await waitFor('$("#colleague-team-form .form-error").textContent.includes("уже есть")');
+    await js('$("#colleague-team-form").elements.name.value="Разработка"');
+    await saveTeam(); await waitFor('!$("#modal").open');
+    assert.deepEqual(await js('colleagues().map(person=>person.team || "")'), ['Разработка', 'Дизайн <UI>', '']);
+    await openTeam('[data-team="Разработка"]', 'Платформа');
+    assert.equal(await js('$("#colleague-team-form [name=member]").checked'), true);
+    await saveTeam(); await waitFor('!$("#modal").open');
+    await js('saveColleagues(colleagues().map(({name,email,company})=>({name,email,company}))).then(()=>loadView())');
+    assert.equal(await js('colleagues()[0].team'), 'Платформа');
+    for (const width of [1280, 640]) {
+      window.setSize(width, 850); await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(await js('$(".colleagues-panel").scrollWidth<=$(".colleagues-panel").clientWidth+1'), true);
+      await fs.writeFile(path.join(output, `colleague-teams-${width}.jpg`), (await window.webContents.capturePage()).toJPEG(85));
+    }
+    window.setSize(1280, 850);
+    await openTeam('[data-team="Платформа"]', 'Платформа');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await fs.writeFile(path.join(output, 'colleague-team-editor.jpg'), (await window.webContents.capturePage()).toJPEG(85));
+    await js('$("#colleague-team-form [value=remove]").click()');
+    await waitFor('!$("#modal").open');
+    assert.equal(await js('colleagues().length === colleagueCount-1 && !colleagues()[0].team'), true);
     await js(`state.view='mail';loadView()`);
     await js(`window.fixtureId=state.messages[0].id;openMessage(fixtureId)`);
     await js(`window.originalReader=document.querySelector('#reader');for(let i=0;i<54;i++)window.asterDemo.messages.push({id:'history-'+i,subject:'History '+i,folder:'inbox',date:new Date(Date.now()-i*60000).toISOString(),from:{name:'Anna',email:'anna@example.com'},to:[],cc:[],read:false,text:'Fictional mail',attachments:[]});window.asterDemo.messages.push({id:'wrong-address',subject:'anna@example.com',folder:'inbox',date:new Date().toISOString(),from:{name:'Anna',email:'anna@example.com.other'},to:[],cc:[],bcc:[{email:'anna@example.com'}],read:false});document.querySelector('[data-action=open-mail-person][data-group=from]').click()`);
@@ -91,6 +123,6 @@ app.whenReady().then(async () => {
     await js(`document.querySelector('#modal').close();state.demo=true;state.account=null;applyLanguage('en');document.body.classList.add('dark');openContactCard({name:'Anna',email:'anna@example.com'})`);
     await waitFor('Boolean(document.querySelector(".contact-history-message"))');
     assert.match(await js('document.querySelector(".contact-history").textContent'), /Correspondence history/);
-    console.log('PASS: clickable pinned colleagues, details/history refresh, compose and separate plan/remove actions, exact contact history, paging, original/unread preservation, missing SMTP, stale cards, failed pages, safe text, independent directory/history, RU/EN and 100%/200%/narrow layouts.');
+    console.log('PASS: team creation, transfer, rename, removal and saved membership; colleague cards, compose, scheduling and correspondence history; RU/EN and 100%/200%/narrow layouts.');
   } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });

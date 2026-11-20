@@ -1,3 +1,53 @@
+function colleagueTeamsHTML(rows, renderRow) {
+  const teams = new Map();
+  for (const person of rows) {
+    const name = typeof person.team === 'string' ? person.team : '';
+    if (!teams.has(name)) teams.set(name, []);
+    teams.get(name).push(person);
+  }
+  if (!teams.size || (teams.size === 1 && teams.has(''))) return rows.map(renderRow).join('');
+  const names = [...teams.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  if (teams.has('')) names.push('');
+  return names.map(name => `<section class="colleague-team"><header><h3>${esc(name || tr('Без команды'))}</h3>${name ? `<button type="button" class="secondary" data-action="edit-colleague-team" data-team="${esc(name)}" aria-label="${esc(`${tr('Изменить команду')} · ${name}`)}">${tr('Изменить')}</button>` : ''}</header>${teams.get(name).map(renderRow).join('')}</section>`).join('');
+}
+
+function colleagueTeamModal(team) {
+  const people = colleagues();
+  if (!people.length) return;
+  const account = state.account, key = colleaguesKey(), saved = localPreferences.getItem(key);
+  modal(team ? tr('Изменить команду') : tr('Новая команда'), '', `<form id="colleague-team-form">
+    <label class="field"><span>${tr('Название команды')}</span><input name="name" value="${esc(team)}" maxlength="80" required autofocus></label>
+    <fieldset class="colleague-team-members"><legend>${tr('Участники команды')}</legend>${people.map(person => `<label class="checkbox"><input type="checkbox" name="member" value="${esc(person.email.toLowerCase())}" ${team && person.team === team ? 'checked' : ''}><span>${esc(person.name || person.email)}<small>${esc(person.email)}${person.team && person.team !== team ? ` · ${esc(person.team)}` : ''}</small></span></label>`).join('')}</fieldset>
+    ${formError()}<div class="modal-footer"><button class="primary" type="submit">${tr('Сохранить')}</button>${team ? `<button class="secondary danger" type="submit" value="remove" formnovalidate>${tr('Удалить команду')}</button>` : ''}</div>
+  </form>`);
+  const form = $('#colleague-team-form');
+  form?.addEventListener('submit', event => {
+    event.preventDefault();
+    const removing = event.submitter?.value === 'remove';
+    const selected = new Set(new FormData(form).getAll('member'));
+    void submitForm(form, async data => {
+      if (account !== state.account || key !== colleaguesKey()) throw new Error(tr('Сессия аккаунта завершена'));
+      if (saved !== localPreferences.getItem(key)) throw new Error(tr('Список коллег изменился. Откройте команду заново.'));
+      const name = data.name.trim();
+      if (!removing) {
+        if (!name || name.length > 80) throw new Error(tr('Укажите название команды от 1 до 80 символов.'));
+        if (!selected.size) throw new Error(tr('Выберите хотя бы одного коллегу.'));
+        if (people.some(person => person.team && person.team !== team && person.team.toLowerCase() === name.toLowerCase())) throw new Error(tr('Команда с таким названием уже есть.'));
+      }
+      const teams = new Map();
+      for (const person of people) {
+        const email = person.email.toLowerCase();
+        if (!removing && selected.has(email)) teams.set(email, name);
+        else if (person.team !== team) teams.set(email, person.team);
+      }
+      await saveColleagues(people, teams);
+      if (account !== state.account || key !== colleaguesKey() || !form.isConnected) return;
+      $('#modal').close();
+      renderColleagues();
+    });
+  });
+}
+
 // Directory suggestions use the same Exchange GAL lookup as participant inputs.
 document.addEventListener('DOMContentLoaded', () => {
   const input = $('#search'), form = $('#search-form'), box = document.createElement('div');

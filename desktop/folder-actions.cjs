@@ -3,16 +3,18 @@ const P = require('./protocol.cjs');
 const known = new Set(['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail', 'msgfolderroot', ...P.synchronizationFolders]);
 const reference = id => known.has(id) ? `<t:DistinguishedFolderId Id="${id}"/>` : `<t:FolderId Id="${P.escapeXML(id)}"/>`;
 async function run(client, data) {
-  if (!['read', 'create', 'rename', 'trash'].includes(data.action) || typeof data.folder !== 'string' || !data.folder || data.folder.length > 16000 || /[\x00-\x1f]/.test(data.folder)) throw new Error(tr('Некорректная операция с папкой'));
+  if (!['read', 'create', 'rename', 'trash', 'empty'].includes(data.action) || typeof data.folder !== 'string' || !data.folder || data.folder.length > 16000 || /[\x00-\x1f]/.test(data.folder)) throw new Error(tr('Некорректная операция с папкой'));
+  if (data.action === 'empty' && data.folder !== 'deleteditems') throw new Error(tr('Очистить можно только системную корзину'));
   const name = typeof data.name === 'string' ? data.name.trim() : '';
   if (['create', 'rename'].includes(data.action) && (!name || name.length > 255 || /[\x00-\x1f]/.test(name))) throw new Error(tr('Укажите название папки от 1 до 255 символов'));
-  const folders = await client.folders();
-  const folder = folders.find(folder => folder.id === data.folder || folder.wellKnown === data.folder);
-  if (!folder && !(data.action === 'create' && data.folder === 'msgfolderroot')) throw new Error(tr('Папка не найдена. Обновите список папок.'));
+  const folder = data.action === 'empty' ? null : (await client.folders()).find(folder => folder.id === data.folder || folder.wellKnown === data.folder);
+  if (!folder && data.action !== 'empty' && !(data.action === 'create' && data.folder === 'msgfolderroot')) throw new Error(tr('Папка не найдена. Обновите список папок.'));
   if (['rename', 'trash'].includes(data.action) && (known.has(data.folder) || folder.wellKnown)) throw new Error(tr('Системную папку нельзя переименовать или переместить в корзину'));
   if (['rename', 'trash'].includes(data.action) && folder.systemIdentityKnown !== true) throw new Error(tr('Не удалось определить системные папки. Обновите список перед изменением папки.'));
   try {
-    if (data.action === 'read') {
+    if (data.action === 'empty') {
+      await client.ews('EmptyFolder', P.soap(`<m:EmptyFolder DeleteType="SoftDelete" DeleteSubFolders="true"><m:FolderIds>${reference('deleteditems')}</m:FolderIds></m:EmptyFolder>`));
+    } else if (data.action === 'read') {
       await client.ews('MarkAllItemsAsRead', P.soap(`<m:MarkAllItemsAsRead><m:ReadFlag>true</m:ReadFlag><m:SuppressReadReceipts>true</m:SuppressReadReceipts><m:FolderIds>${reference(data.folder)}</m:FolderIds></m:MarkAllItemsAsRead>`));
     } else if (data.action === 'create') {
       await client.ews('CreateFolder', P.soap(`<m:CreateFolder><m:ParentFolderId>${reference(data.folder)}</m:ParentFolderId><m:Folders><t:Folder><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>${P.escapeXML(name)}</t:DisplayName></t:Folder></m:Folders></m:CreateFolder>`));
@@ -30,6 +32,6 @@ async function run(client, data) {
     }
     return true;
   } catch (error) { throw new Error(`${error.message}${tr("\nОперация не повторялась. Обновите список папок перед новой попыткой.")}`); }
-  finally { client.mailCache.clear(); }
+  finally { client.mailCache.clear({ preserveImages: true }); }
 }
 module.exports = { run };

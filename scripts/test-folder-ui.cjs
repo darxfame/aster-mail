@@ -40,6 +40,31 @@ app.whenReady().then(async () => {
     await js('showFolderMenu(document.querySelector("[data-folder=sync]"),500,240)');
     await new Promise(resolve => setTimeout(resolve, 100));
     await fs.writeFile(path.join(output, 'protected-sync-folder.png'), (await window.webContents.capturePage()).toPNG());
-    console.log('PASS: synchronization tree, disabled rename/trash, direct-call protection, unresolved identity and same-named custom folders; zero writes.');
+    assert.equal(await js('Boolean($("[data-folder-operation=empty]"))'), false);
+    await js(`closeFolderMenu();state.demo=true;state.account=null;state.view='mail';state.folder='deleteditems';
+      const message=window.asterDemo.messages[0];
+      window.asterDemo.messages.push({...message,id:'trashed',folder:'deleteditems'},{...message,id:'trashed-child',folder:'trash-child'});
+      window.asterDemo.folders.push({id:'trash-child',parentId:'folder-deleteditems',name:'Child'},{id:'trash-grandchild',parentId:'trash-child',name:'Grandchild'});
+      loadView()`);
+    assert.equal(await js('state.messages.length'), 1);
+    await js('showFolderMenu($("[data-folder=deleteditems]"),500,240);$("[data-folder-operation=empty]").click()');
+    assert.equal(await js('$("#modal").open && document.activeElement.dataset.action === "close"'), true);
+    await js('$("#folder-operation-form [data-action=close]").click()');
+    assert.equal(await js('state.messages.length'), 1, 'Cancel leaves Trash intact');
+    await js('$("[data-action=empty-trash]").click()');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await fs.writeFile(path.join(output, 'empty-trash-confirmation.png'), (await window.webContents.capturePage()).toPNG());
+    await js('$("#folder-operation-form button[type=submit]").click()');
+    assert.deepEqual(await js('[state.messages.length, window.asterDemo.messages.some(m=>m.id==="trashed-child"), window.asterDemo.folders.some(f=>f.id.startsWith("trash-")), window.asterDemo.messages.some(m=>m.folder==="inbox"), $("#modal").open]'), [0, false, false, true, false]);
+    const failure = await js(`(async () => {
+      state.demo=false;state.account={sessionId:'fictional'};
+      api=async (...args)=>{fixtureCalls.push(args);throw Object.assign(new Error('Lost response'), {userFacing:true});};
+      $("[data-action=empty-trash]").click();
+      $("#folder-operation-form").requestSubmit();$("#folder-operation-form").requestSubmit();
+      await new Promise(resolve=>setTimeout(resolve, 30));
+      return {calls:fixtureCalls, open:$("#modal").open, error:$("#folder-operation-form .form-error").textContent};
+    })()`);
+    assert.deepEqual(failure, { calls: [['folderOperation', { action: 'empty', folder: 'deleteditems' }]], open: true, error: 'Lost response' });
+    console.log('PASS: folder protection and empty-trash controls, cancel, recursive demo cleanup and preserved Inbox.');
   } finally { window?.destroy(); await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }); }
 }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });
