@@ -1,6 +1,7 @@
 // Compose windows share the active transport, never credentials or account switching.
 const path = require('node:path');
 const { windowsChrome } = require('./window-chrome.cjs');
+const { enableTextCopy } = require('./text-copy.cjs');
 const allowed = new Set(['setWindowTheme', 'themePreferences', 'composeContext', 'composeReady', 'closeCompose', 'contacts', 'identity', 'signature', 'personPhoto', 'contentImages', 'composeAttachment', 'openLink', 'send', 'draft', 'editDraft', 'quickReplies', 'saveQuickReplies']);
 class ComposeWindows {
   constructor({ BrowserWindow, dialog, page, tr }) {
@@ -27,6 +28,7 @@ class ComposeWindows {
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     const sender = child.webContents;
+    enableTextCopy(child, this.tr);
     const entry = { window: child, sessionId: context.account?.sessionId, context, attachmentSources: new Set([context.snapshot.data.reference?.id, context.snapshot.data.draftReference?.id, context.snapshot.selected?.id].filter(Boolean)), demo: context.demo, draftId, dirty: context.snapshot.dirty, busy: false };
     this.entries.set(child.webContents, entry);
     child.webContents.setZoomFactor(zoom);

@@ -51,6 +51,8 @@ jobs:
         run: npm run test:content-images
       - name: Verify message context menu
         run: npm run test:mail-context
+      - name: Verify native text copying
+        run: npm run test:copy
       - name: Verify local MCP integration
         timeout-minutes: 2
         run: npm run test:mcp

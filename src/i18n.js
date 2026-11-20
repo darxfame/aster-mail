@@ -1,6 +1,7 @@
 // Translate application-owned strings only; never pass mailbox or directory content here.
 (function (root) {
   const english = {
+    "Копировать": "Copy",
     "Очистить корзину": "Empty trash",
     "Очистить корзину…": "Empty trash…",
     "Очистить корзину?": "Empty trash?",

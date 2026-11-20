@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ComposeWindows } = require('./compose-windows.cjs');
 const { windowsChrome } = require('./window-chrome.cjs');
+const { enableTextCopy } = require('./text-copy.cjs');
 let composeWindows, moduleHost, moduleProfile;
 const { Updates, openInstallerFile } = require('./updates.cjs');
 const { AttachmentFiles, safeName } = require('./attachment-files.cjs');
@@ -759,6 +760,7 @@ app.whenReady().then(async () => {
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 22, y: 12 } } : {}),
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
+    enableTextCopy(window, tr);
     window.loadFile(page);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());
