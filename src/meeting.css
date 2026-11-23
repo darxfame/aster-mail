@@ -115,6 +115,7 @@ body.dark .event-card.event-accepted{background:#244637;color:#b2e0c5;border-col
 .highlight-swatch span { width: 16px; height: 16px; border: 1px solid #0003; border-radius: 3px; }
 .format-toolbar input[type="color"] { width: 22px; height: 23px; padding: 1px; }
 .compose-editor { padding: 14px; min-height: 235px; max-height: 45vh; overflow: auto; font: 16px/1.6 Arial, sans-serif; overflow-wrap: anywhere; white-space: pre-wrap; outline: none; }
+.compose-editor img { max-width: 100%; height: auto; }
 .compose-editor :is([style*="color: rgba(13, 37, 91, 0.137)"], [style*="color: canvastext" i]) { color: var(--compose-default-color, var(--text)) !important; }
 .compose-editor p, .compose-editor div { margin: 0; }.compose-editor a { color: var(--accent); text-decoration: underline; }.compose-editor table { max-width: 100%; }.compose-editor ul, .compose-editor ol { white-space: normal; }
 .compose-editor.html-mail-editor { font: 13px/1.8 -apple-system, BlinkMacSystemFont, sans-serif; }

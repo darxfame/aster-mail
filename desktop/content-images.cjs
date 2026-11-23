@@ -15,17 +15,17 @@ function sourceURL(value, origin) {
   if (url.origin !== new URL(origin).origin && (host === 'localhost' || host.endsWith('.localhost') || family && localAddresses.check(host, family === 4 ? 'ipv4' : 'ipv6'))) throw new Error(tr('Неподдерживаемый адрес изображения'));
   return url.href;
 }
-function sources(html) {
-  return [...new Set([...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(m => decodeHTMLAttribute(m[1] ?? m[2] ?? m[3])))].filter(src => !isTrackingImage(src)).slice(0, 12);
+function sources(html, inlineOnly = false) {
+  return [...new Set([...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(m => decodeHTMLAttribute(m[1] ?? m[2] ?? m[3])))].filter(src => inlineOnly ? /^cid:/i.test(src) : !isTrackingImage(src)).slice(0, 12);
 }
 function cid(value) {
   let result = String(value || '').replace(/^cid:/i, '');
   try { result = decodeURIComponent(result); } catch { /* Keep malformed identifiers unmatched. */ }
   return result.replace(/^<|>$/g, '').toLowerCase();
 }
-async function load(current, fetchAttachment, fetchRemote, origin) {
+async function load(current, fetchAttachment, fetchRemote, origin, { inlineOnly = false } = {}) {
   const images = {}, errors = {}; let total = 0, decoded = 0;
-  const queue = sources(current.html);
+  const queue = sources(current.html, inlineOnly);
   async function worker() {
     while (queue.length) {
       const src = queue.shift();

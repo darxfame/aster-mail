@@ -410,25 +410,27 @@ class OWAClient {
       return image;
     }, { ttl: 300000 }), this.imageTransport ? url => this.mailCache.get(`image:remote:${url}`, async () => {
       const image = await this.imageTransport(url); calendarEvents.imageData(image); return image;
-    }, { ttl: 300000 }) : null, this.origin);
+    }, { ttl: 300000 }) : null, this.origin, { inlineOnly: data.inlineOnly === true });
   }
 
   async createEvent(data) { await this.ews('CreateItem', P.eventSOAP(data)); return true; }
   async respond(data) {
     if (!['AcceptItem', 'TentativelyAcceptItem', 'DeclineItem'].includes(data.response)) throw new Error('Invalid RSVP');
+    if (data.sendResponse !== undefined && (typeof data.sendResponse !== 'boolean' || data.sendResponse === false && data.response !== 'AcceptItem')) throw new Error('Invalid RSVP delivery option');
+    const sendResponse = data.sendResponse !== false;
     const current = data.scope === 'series' ? await this.eventDetails({ ...data.ref, scope: 'series' }) : await this.event(data.ref);
     if (current.isOrganizer === true) throw new Error(tr('Организатор не отвечает на собственное приглашение'));
     if (current.cancelled) return { status: 'cancelled' };
     const latest = current.ref;
     const ref = `<t:ReferenceItemId Id="${P.escapeXML(latest.id)}"${latest.changeKey ? ` ChangeKey="${P.escapeXML(latest.changeKey)}"` : ''}/>`;
     try {
-      await this.ews('CreateItem', P.soap(`<m:CreateItem MessageDisposition="SendAndSaveCopy"><m:Items><t:${data.response}>${ref}</t:${data.response}></m:Items></m:CreateItem>`));
+      await this.ews('CreateItem', P.soap(`<m:CreateItem MessageDisposition="${sendResponse ? 'SendAndSaveCopy' : 'SaveOnly'}"><m:Items><t:${data.response}>${ref}</t:${data.response}></m:Items></m:CreateItem>`));
     } catch (error) {
       // Cancellation can race the read above; do not retry or pretend a response was sent.
       if (['ErrorCalendarIsCancelledForAccept', 'ErrorCalendarIsCancelledForDecline', 'ErrorCalendarIsCancelledForTentative'].includes(error.code)) return { status: 'cancelled' };
       throw error;
     }
-    return { status: 'sent' };
+    return { status: sendResponse ? 'sent' : 'accepted' };
   }
   async availability(data) {
     const request = availability.query(data);

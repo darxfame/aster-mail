@@ -183,6 +183,34 @@ test('RSVP uses the current change key and sends exactly once', async () => {
   const { client, calls } = mock(url => url.includes('service.svc') ? ok({ Items: [{ ItemId: { Id: 'event', ChangeKey: 'fresh' }, Subject: 'Meeting', IsCancelled: false }] }) : { status: 200, text: soapOK() });
   assert.deepEqual(await client.respond({ ref: { id: 'event', changeKey: 'stale' }, response: 'AcceptItem' }), { status: 'sent' });
   assert.equal(calls.length, 2); assert.match(calls[1].options.body, /ChangeKey="fresh"/);
+  assert.match(calls[1].options.body, /MessageDisposition="SendAndSaveCopy"/);
+});
+test('accepting without sending uses SaveOnly and the selected calendar reference', async () => {
+  for (const scope of ['single', 'series']) {
+    const event = { id: 'occurrence', changeKey: 'fresh-occurrence' };
+    const series = { id: 'series', changeKey: 'fresh-series' };
+    const { client, calls } = mock(() => ({ status: 200, text: soapOK() }));
+    client.event = async ref => { assert.equal(ref.id, event.id); return { ref: event }; };
+    client.eventDetails = async ref => { assert.equal(ref.scope, 'series'); return { ref: series }; };
+    assert.deepEqual(await client.respond({ ref: { id: event.id, changeKey: 'stale' }, response: 'AcceptItem', sendResponse: false, scope }), { status: 'accepted' });
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].options.body, /CreateItem MessageDisposition="SaveOnly"/);
+    const chosen = scope === 'series' ? series : event;
+    assert.ok(calls[0].options.body.includes(`<t:AcceptItem><t:ReferenceItemId Id="${chosen.id}" ChangeKey="${chosen.changeKey}"/>`));
+  }
+});
+test('accepting without sending respects organizer, cancellation and write errors', async () => {
+  const { client, calls } = mock(() => { throw new Error('Fictional lost write'); });
+  const data = { ref: { id: 'event' }, response: 'AcceptItem', sendResponse: false };
+  client.event = async () => ({ isOrganizer: true });
+  await assert.rejects(client.respond(data), /Организатор/);
+  client.event = async () => ({ cancelled: true });
+  assert.deepEqual(await client.respond(data), { status: 'cancelled' });
+  await assert.rejects(client.respond({ ...data, response: 'DeclineItem' }), /Invalid RSVP delivery option/);
+  assert.equal(calls.length, 0);
+  client.event = async () => ({ ref: { id: 'event', changeKey: 'fresh' } });
+  await assert.rejects(client.respond(data), /Fictional lost write/);
+  assert.equal(calls.length, 1);
 });
 test('cancellation racing an RSVP is reported as cancelled without replay', async () => {
   for (const response of ['AcceptItem', 'DeclineItem', 'TentativelyAcceptItem']) {

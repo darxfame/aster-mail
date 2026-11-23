@@ -38,6 +38,17 @@ function composeMessageSnapshot(message) {
   if (!message) return null;
   return Object.fromEntries(['id', 'changeKey', 'parentId', 'from', 'to', 'cc', 'bcc', 'subject', 'html', 'text', 'preview', 'attachments', 'folder', 'isDraft'].filter(key => message[key] !== undefined).map(key => [key, message[key]]));
 }
+function readComposeFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(tr('Не удалось прочитать вложение')));
+    reader.onload = () => resolve({ name: file.name, type: file.type || 'application/octet-stream', content: reader.result.split(',')[1] });
+    reader.readAsDataURL(file);
+  });
+}
+async function readComposeInlineImages(images) {
+  return Promise.all(images.map(async ({ file, contentId }) => ({ ...await readComposeFile(file), inline: true, contentId })));
+}
 // Transfer only the current draft, in memory, after the new editor acknowledges it.
 async function detachCompose(mode) {
   if (modalBusy || !window.aster) return;
@@ -48,14 +59,13 @@ async function detachCompose(mode) {
     const { editor, historyEditor, attachments, sourceMessage, ...data } = composeData;
     closeAttachmentPreview();
     if (data.draftOriginal) data.draftOriginal = composeMessageSnapshot(data.draftOriginal);
-    const files = await Promise.all(attachments.map(file => new Promise((resolve, reject) => {
-      const reader = new FileReader(); reader.onerror = () => reject(new Error(tr('Не удалось прочитать вложение')));
-      reader.onload = () => resolve({ name: file.name, type: file.type, content: reader.result.split(',')[1] });
-      reader.readAsDataURL(file);
-    })));
+    const images = [];
+    const body = editor.read('', images);
+    if ([...attachments, ...images.map(image => image.file)].reduce((size, file) => size + file.size, 0) > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
+    const [files, inlineImages] = await Promise.all([Promise.all(attachments.map(readComposeFile)), readComposeInlineImages(images)]);
     if (generation !== state.generation) throw new Error(tr('Сессия аккаунта завершена'));
     await api('detachCompose', { demo: state.demo, preferences: { theme: state.theme, timeZone, interfaceScale, debugErrors: notificationPreferences.debugErrors === true, undoSendSeconds: undoSendSeconds() }, snapshot: {
-      mode, fields: Object.fromEntries(new FormData(form)), data, files, body: editor.read(), history: historyEditor?.read(),
+      mode, fields: Object.fromEntries(new FormData(form)), data, files, body, inlineImages, history: historyEditor?.read(),
       selected: composeMessageSnapshot(sourceMessage || state.selected), recipientPeople: window.asterRecipients.composePeople(form), dirty: modalDirty, quickReplies: state.demo ? demoQuickReplies : undefined,
     } });
     setModalDirty(false); $('#modal').close();

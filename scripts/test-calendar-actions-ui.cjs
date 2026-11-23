@@ -25,6 +25,7 @@ app.whenReady().then(async () => {
       return result.value;
     };
     await window.loadFile(path.join(root, 'src/index.html'));
+    await js("applyLanguage('ru')");
     await js('document.querySelector("[data-action=demo]").click()');
     await js(`window.fixtureEvent={...structuredClone(window.asterDemo.events[0]),id:'fixture-occurrence',title:'Вымышленная встреча',isOrganizer:true,isMeeting:true,canDelete:true,recurring:true,calendarType:'Occurrence',seriesId:'fixture-series',attachments:[],attendees:[{email:'fictional@example.test',name:'Участник',role:'required'}]};window.asterDemo.events.push(fixtureEvent,{...structuredClone(fixtureEvent),id:'fixture-other'});state.week=new Date(fixtureEvent.start);state.view='calendar';calendarPreference='week';loadView()`);
     const source = await fs.readFile(path.join(root, 'src/app.js'), 'utf8');
@@ -39,7 +40,8 @@ app.whenReady().then(async () => {
       assert.equal(await js('state.week.toISOString()'), await js('new Date(navigationEvent.start).toISOString()'));
       assert.equal(await js('activeMeeting.id'), 'fixture-navigation');
       if (preference === 'week') {
-        await js(`document.querySelector('[data-action=rsvp][data-response=AcceptItem]').click()`);
+        assert.equal(await js(`document.querySelectorAll('[data-action=rsvp][data-response=AcceptItem]').length`), 2);
+        await js(`document.querySelector('[data-action=rsvp][data-send-response=false]').click()`);
         await waitFor(`!document.querySelector('#modal').open && state.events.some(event=>event.id==='fixture-navigation' && event.response==='Accept')`);
         assert.equal(await js('document.querySelector("#calendar-mode").value'), preference, 'Accepting the meeting preserves the calendar view');
       } else await js(`document.querySelector('#modal').close()`);
@@ -74,6 +76,16 @@ app.whenReady().then(async () => {
     await waitFor('!modalBusy && !document.querySelector("#modal").open');
     assert.equal(await js('window.asterDemo.events.some(event=>event.seriesId==="fixture-series")'),false);
     await js(`window.invited={...structuredClone(fixtureEvent),id:'fixture-invited',isOrganizer:false,recurring:false,seriesId:undefined};window.asterDemo.events.push(invited);openMeeting(invited)`);
+    await js(`state.demo=false;state.account={server:'https://mail.example.test',username:'fictional',sessionId:'fictional'};state.view='mail';api=async (operation,data)=>{if(operation==='respond'){window.rsvpWrite=data;return {status:'accepted'};}return [];};`);
+    await js(`document.querySelector('[data-action=rsvp][data-send-response=false]').click()`);
+    await waitFor(`window.rsvpWrite && !document.querySelector('#modal').open`);
+    assert.deepEqual(await js('window.rsvpWrite'), { ref: { id: 'fixture-invited', changeKey: 'demo-version' }, response: 'AcceptItem', sendResponse: false, scope: 'single' });
+    await js(`document.querySelector('#modal-content').insertAdjacentHTML('beforeend', '<select id="meeting-scope"><option>series</option></select>');
+      const invitation = document.createElement('div');
+      invitation.innerHTML = rsvpButtons('fixture-mail-invite', 'invite-version', false, 'Unknown');
+      await handleAction(invitation.querySelector('[data-send-response=false]'));`);
+    assert.deepEqual(await js('window.rsvpWrite'), { ref: { id: 'fixture-mail-invite', changeKey: 'invite-version' }, response: 'AcceptItem', sendResponse: false, scope: 'single' });
+    await js(`state.demo=true;state.account=null;state.view='calendar';openMeeting(invited)`);
     await js('document.querySelector("[data-action=meeting-delete]").click()');
     await waitFor('Boolean(document.querySelector("#meeting-removal-form"))');
     assert.equal(await js('document.querySelector("#modal").textContent.includes("Ответ организатору не отправляется")'),true);

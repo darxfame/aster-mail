@@ -13,11 +13,23 @@
     return `<button type="button" popovertarget="${id}" title="${name}" aria-label="${name}">${caption} ▾</button><div class="highlight-palette" id="${id}" popover role="group" aria-label="${name}"><div class="highlight-swatches">${swatches}</div><button type="button" data-command="${command}" data-value="${reset}">∅ ${tr(resetLabel)}</button><label class="highlight-custom">${custom}<input type="color" aria-label="${custom}" data-command="${command}" value="${presets[0][0]}"></label></div>`;
   }
 
-  function mount(target, text = '', { id = 'compose-body', label = tr('Сообщение'), html, preserveCidImages = false } = {}) {
+  function mount(target, text = '', { id = 'compose-body', label = tr('Сообщение'), html, preserveCidImages = false, pasteImages = false, inlineImages = [] } = {}) {
     const actions = [['bold',tr('Жирный'),'B'],['italic',tr('Курсив'),'I'],['underline',tr('Подчёркнутый'),'U'],['strikeThrough',tr('Зачёркнутый'),'S'],['insertUnorderedList',tr('Маркированный список'),'• ≡'],['insertOrderedList',tr('Нумерованный список'),'1. ≡'],['justifyLeft',tr('По левому краю'),'≡ ←'],['justifyCenter',tr('По центру'),'≡'],['justifyRight',tr('По правому краю'),'→ ≡'],['outdent',tr('Уменьшить отступ'),'←'],['indent',tr('Увеличить отступ'),'→'],['unlink',tr('Удалить ссылку'),'⌫ ↗'],['removeFormat',tr('Убрать форматирование'),'Tx']];
     const actionButton = ([command, label, caption]) => `<button type="button" data-command="${command}" title="${label}" aria-label="${label}">${caption}</button>`;
     target.innerHTML = `<span class="editor-label" id="${id}-label">${label}</span><div class="mail-editor"><div class="format-toolbar" role="toolbar" aria-label="${tr("Форматирование письма")}">${actions.slice(0, 3).map(actionButton).join('')}${colorPalette(`${id}-text-colors`, 'foreColor', 'A', 'Цвет текста', textColors, 'default', 'Цвет текста по умолчанию', 'Свой цвет текста')}${colorPalette(`${id}-highlights`, 'hiliteColor', '▰', 'Цвет выделения', highlights, 'transparent', 'Убрать выделение цветом', 'Свой цвет выделения')}${colorPalette(`${id}-background-colors`, 'bodyBackground', '▧', 'Цвет фона письма', [['#ffffff', 'Белый'], ...highlights], '', 'Без фона', 'Свой цвет фона письма')}<details class="format-more"><summary aria-label="${tr("Форматирование письма")}">${tr("Ещё")}</summary><div class="format-more-tools"><select aria-label="${tr("Шрифт")}" data-command="fontName"><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Courier New">Courier New</option></select><select aria-label="${tr("Размер шрифта")}" data-command="fontSize"><option value="2">13</option><option value="3" selected>16</option><option value="4">18</option><option value="5">24</option><option value="6">32</option></select>${actions.slice(3).map(actionButton).join('')}<button type="button" data-link-toggle aria-label="${tr("Добавить ссылку")}" title="${tr("Добавить ссылку")}">${tr("↗ Ссылка")}</button><button type="button" data-expand aria-pressed="false">${tr("Развернуть редактор")}</button></div></details></div><div class="editor-link" hidden><input type="url" aria-label="${tr("Адрес ссылки")}" placeholder="https://example.com"><button type="button" class="secondary" data-link-apply>${tr("Вставить ссылку")}</button><span class="form-error" role="status"></span></div><div id="${id}" class="compose-editor" role="textbox" aria-labelledby="${id}-label" aria-multiline="true" contenteditable="true" spellcheck="true"></div></div>`;
     const editor = target.querySelector('.compose-editor'), toolbar = target.querySelector('.format-toolbar'), linkForm = target.querySelector('.editor-link');
+    // Keep object URLs valid for native undo and redo until the composer closes.
+    const previews = new Map();
+    const incoming = new Map(inlineImages.map(image => [image.contentId, image]));
+    const raster = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+    function preview(contentId, blob, file = null) {
+      const url = URL.createObjectURL(blob);
+      previews.set(url, { contentId, file });
+      return url;
+    }
+    function inlineBlob(type, content) {
+      return new Blob([Uint8Array.fromBase64(content)], { type });
+    }
     let background = '', bodyForeground = '';
     function setBackground(color) {
       editor.style.backgroundColor = color;
@@ -31,9 +43,10 @@
       else editor.style.removeProperty('--compose-default-color');
     }
     function clean(value, opening = false) {
-      const doc = root.asterRichContent.sanitize(value, { images: preserveCidImages, preserveBodyBackground: opening });
+      const doc = root.asterRichContent.sanitize(value, { images: preserveCidImages || incoming.size > 0 || previews.size > 0, preserveBodyBackground: opening });
       for (const image of doc.querySelectorAll('img')) {
-        if (!/^cid:[a-z0-9@._+%=-]{1,500}$/i.test(image.getAttribute('src') || '')) image.remove();
+        const source = image.getAttribute('src') || '';
+        if (!/^cid:[a-z0-9@._+%=-]{1,500}$/i.test(source) || opening && !preserveCidImages && !incoming.has(source.slice(4))) image.remove();
       }
       if (opening) {
         // The single outer block emitted by read() carries the letter background.
@@ -63,6 +76,13 @@
     }
     if (html !== undefined) editor.innerHTML = clean(html, true);
     else editor.textContent = text;
+    if (incoming.size) for (const img of editor.querySelectorAll('img')) {
+      const image = incoming.get(img.getAttribute('src').slice(4));
+      if (!image) continue;
+      const blob = inlineBlob(image.type, image.content);
+      img.src = preview(image.contentId, blob, new File([blob], image.name, { type: image.type }));
+    }
+    incoming.clear();
     // HTML source indentation must collapse as it does in the script-free reader.
     const whiteSpace = html !== undefined ? 'normal' : 'pre-wrap';
     editor.style.whiteSpace = whiteSpace;
@@ -130,7 +150,25 @@
     editor.addEventListener('paste', event => {
       event.preventDefault(); remember();
       const html = event.clipboardData.getData('text/html');
-      if (html) command('insertHTML', root.asterRichContent.sanitize(html).body.innerHTML);
+      const formatted = html ? root.asterRichContent.sanitize(html).body : null;
+      const files = pasteImages && Array.from(event.clipboardData.files).filter(file => Object.hasOwn(raster, file.type));
+      if (files?.length && !formatted?.textContent.trim()) {
+        const status = editor.closest('form')?.querySelector('.compose-footer .form-error');
+        if (files.some(file => !file.size || file.size > 5 * 1024 * 1024)) {
+          if (status) status.textContent = tr('Изображение из буфера должно быть размером до 5 МБ');
+          return;
+        }
+        const fragment = document.createElement('div');
+        for (const file of files) {
+          const image = document.createElement('img');
+          const contentId = `aster-image-${crypto.randomUUID()}@aster.local`;
+          image.alt = tr('Изображение');
+          image.src = preview(contentId, file, new File([file], `image.${raster[file.type]}`, { type: file.type }));
+          fragment.append(image);
+        }
+        if (status) status.textContent = '';
+        command('insertHTML', fragment.innerHTML);
+      } else if (formatted) command('insertHTML', formatted.innerHTML);
       else { const div = document.createElement('div'); div.textContent = event.clipboardData.getData('text/plain'); command('insertHTML', div.innerHTML.replace(/\r\n?|\n/g, '<br>')); }
     });
     editor.addEventListener('drop', event => event.preventDefault());
@@ -141,8 +179,31 @@
         command('insertHTML', div.innerHTML.replace(/\r\n?|\n/g, '<br>'));
         editor.dispatchEvent(new Event('input', { bubbles: true }));
       },
-      read(appendHtml = '') {
-        const content = `<div style="white-space: ${whiteSpace}">${clean(editor.innerHTML)}</div>${appendHtml}`;
+      showInlineImages(images) {
+        for (const img of editor.querySelectorAll('img')) {
+          const source = img.getAttribute('src');
+          const match = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(images[source] || '');
+          if (match && /^cid:/i.test(source)) img.src = preview(source.slice(4), inlineBlob(match[1], match[2]));
+        }
+      },
+      dispose() {
+        for (const url of previews.keys()) URL.revokeObjectURL(url);
+        previews.clear();
+      },
+      read(appendHtml = '', inlineFiles = []) {
+        // Only images still in the editor are included in the outgoing message.
+        const source = previews.size ? editor.cloneNode(true) : editor;
+        const included = new Set();
+        if (previews.size) for (const img of source.querySelectorAll('img')) {
+          const image = previews.get(img.getAttribute('src'));
+          if (!image) continue;
+          img.setAttribute('src', `cid:${image.contentId}`);
+          if (image.file && !included.has(image.contentId)) {
+            inlineFiles.push(image);
+            included.add(image.contentId);
+          }
+        }
+        const content = `<div style="white-space: ${whiteSpace}">${clean(source.innerHTML)}</div>${appendHtml}`;
         const bodyHtml = background ? `<div style="background-color: ${background}; color: ${bodyForeground}">${content}</div>` : content;
         return { body: editor.innerText, bodyHtml };
       },

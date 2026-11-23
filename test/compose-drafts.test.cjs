@@ -4,6 +4,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const P = require('../desktop/protocol.cjs');
 const source = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
+const composeUI = fs.readFileSync(require.resolve('../src/compose-ui.js'), 'utf8');
+const sendComposeSource = composeUI.slice(composeUI.indexOf('function readComposeFile('), composeUI.indexOf('// Transfer only the current draft')) +
+  source.slice(source.indexOf('async function sendCompose('), source.indexOf('async function handleAction('));
 
 test('resumed compose updates the same draft, preserves untouched original HTML and does not duplicate its signature', async () => {
   for (const save of [true, false]) {
@@ -19,7 +22,7 @@ test('resumed compose updates the same draft, preserves untouched original HTML 
       api: async (operation, payload) => { calls.push({ operation, payload }); },
       toast() {}, loadView: async () => { refreshed = true; },
     });
-    vm.runInContext(source.slice(source.indexOf('async function sendCompose('), source.indexOf('async function handleAction(')), context);
+    vm.runInContext(sendComposeSource, context);
     await context.sendCompose(save);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].operation, 'editDraft');
@@ -42,7 +45,7 @@ test('edited draft sends edited HTML and an uncertain write leaves the compose d
     submitForm: (_form, operation) => operation({ to: 'anna@example.com', subject: 'Edited' }),
     api: async (_operation, data) => { payload = data; throw failure; },
   });
-  vm.runInContext(source.slice(source.indexOf('async function sendCompose('), source.indexOf('async function handleAction(')), context);
+  vm.runInContext(sendComposeSource, context);
   await assert.rejects(context.sendCompose(false), error => error === failure);
   assert.equal(payload.bodyHtml, '<b>Edited</b>');
 });

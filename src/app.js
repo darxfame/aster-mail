@@ -324,6 +324,7 @@ function receiveConnection(snapshot) {
 }
 function modal(title, description, body) {
   if (modalBusy) return;
+  composeData?.editor?.dispose();
   if (typeof unmountModuleViews === 'function') unmountModuleViews();
   if (typeof closeAttachmentPreview === 'function') closeAttachmentPreview();
   modalSequence++;
@@ -572,7 +573,16 @@ function rsvpButtons(id, changeKey, cancelled = false, response, isOrganizer = f
   const status = window.asterEvents.responseState({ response, isOrganizer });
   if (status === 'organizer') return tr('<p class="form-note">Вы организатор встречи.</p>');
   const current = { accepted: 'AcceptItem', tentative: 'TentativelyAcceptItem', declined: 'DeclineItem' }[status];
-  const buttons = [['AcceptItem', tr('Принять')], ['TentativelyAcceptItem', tr('Под вопросом')], ['DeclineItem', tr('Отклонить')]].map(([value, name]) => `<button class="secondary" data-action="rsvp" data-response="${value}" data-id="${esc(id)}" data-key="${esc(changeKey || '')}" ${value === current ? 'disabled aria-current="true"' : ''}>${name}${value === current ? ' ✓' : ''}</button>`).join('');
+  const actions = [
+    ['AcceptItem', tr('Принять и отправить ответ')],
+    ['AcceptItem', tr('Принять без отправки ответа'), false],
+    ['TentativelyAcceptItem', tr('Под вопросом')],
+    ['DeclineItem', tr('Отклонить')],
+  ];
+  const buttons = actions.map(([value, name, sendResponse = true]) => {
+    const selected = value === current, marked = selected && value !== 'AcceptItem';
+    return `<button class="secondary" data-action="rsvp" data-response="${value}"${sendResponse ? '' : ' data-send-response="false"'} data-id="${esc(id)}" data-key="${esc(changeKey || '')}"${selected ? ' disabled' : ''}${marked ? ' aria-current="true"' : ''}>${name}${marked ? ' ✓' : ''}</button>`;
+  }).join('');
   return `<div class="rsvp ${current ? 'rsvp-answered' : ''}">${current ? `<span class="rsvp-status">${esc(responseName(response))}</span><details class="rsvp-change"><summary>${tr("Изменить ответ")}</summary><div class="rsvp-menu">${buttons}</div></details>` : buttons}</div>`;
 }
 
@@ -792,12 +802,13 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
     recipients = window.asterRecipients.reply(m, identity.emails, mode === 'reply-all', sent);
   }
   if (!current()) return;
-  composeData = { kind: draftMode ? 'new' : mode, reference: !draftMode && mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? source : null, draftReference: draftMode ? ref(m) : null, draftOriginal: draftMode ? m : null };
-  if (options.message) composeData.sourceMessage = m;
-  if (snapshot) { composeData = { ...snapshot.data, attachments: snapshot.files.map(file => new File([Uint8Array.from(atob(file.content), c => c.charCodeAt(0))], file.name, { type: file.type })) }; recipients = snapshot.fields; }
+  if (snapshot) recipients = snapshot.fields;
   const prefix = mode === 'forward' ? 'Fwd: ' : 'Re: ';
   modal(draftMode ? tr('Продолжить черновик') : mode === 'forward' ? tr('Переслать письмо') : mode.startsWith('reply') ? tr('Ответить') : tr('Новое письмо'), state.demo ? tr('Деморежим: письмо не будет отправлено на сервер.') : `${tr("Отправка через корпоративный Exchange по")} ${state.account?.server.startsWith('https:') ? 'HTTPS' : 'HTTP'}.`, `<form id="compose-form"><div class="compose-fields">${field('to', tr('Кому · адреса через запятую'), recipients.to)}${field('cc', tr('Копия'), recipients.cc)}${field('bcc', tr('Скрытая копия'), recipients.bcc || '')}${field('subject', tr('Тема'), draftMode ? m.subject : mode === 'new' ? '' : `${prefix}${m.subject.replace(/^(Re|Fwd):\s*/i, '')}`)}<div class="compose-message-area"><div class="compose-editor-field" id="compose-editor-field"></div>${!draftMode && mode !== 'new' && m ? `<details class="compose-history"><summary>${tr("Предыдущая переписка ·")} ${esc(m.from.name || m.from.email)}</summary><button type="button" class="secondary" id="edit-history">${tr("Редактировать")}</button><p class="form-note">${tr("При редактировании сохраняются текст и форматирование; изображения из цитаты не переносятся.")}</p><div id="compose-history-body"></div></details>` : ''}</div>${useServer ? tr('<p class="form-note">Подпись OWA добавится при отправке:</p><div id="compose-signature-preview"></div>') : ''}<label class="attachment-picker">${icon('clip')}<input id="files" type="file" multiple aria-label="${tr("Прикрепить файлы")}"><span>${tr("Или перетащите файлы в окно письма")}</span></label><div id="picked-files" class="picked-files"></div><p class="form-note">${tr("Вложения до 20 МБ суммарно. Предыдущая переписка будет включена в письмо; пересылка сохраняет исходные вложения.")}</p></div><div class="compose-footer">${formError()}<div class="modal-footer"><button type="button" class="secondary" data-action="save-draft">${tr("Сохранить черновик")}</button><button class="primary" type="submit">${icon('send')}${tr("Отправить")}</button></div></div></form>`);
   $('#modal').classList.add('compose-dialog');
+  composeData = { kind: draftMode ? 'new' : mode, reference: !draftMode && mode !== 'new' && m ? ref(m) : null, attachments: [], signature: useServer ? source : null, draftReference: draftMode ? ref(m) : null, draftOriginal: draftMode ? m : null };
+  if (options.message) composeData.sourceMessage = m;
+  if (snapshot) composeData = { ...snapshot.data, attachments: snapshot.files.map(file => new File([Uint8Array.from(atob(file.content), c => c.charCodeAt(0))], file.name, { type: file.type })) };
 
   const expand = document.createElement('button');
   expand.type = 'button'; expand.className = 'secondary'; expand.textContent = tr('Развернуть окно');
@@ -827,7 +838,9 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
     if (!modalBusy) addComposeFiles(event.dataTransfer.files);
   };
 
-  composeData.editor = window.asterMailEditor.mount($('#compose-editor-field'), draftMode ? m.text || '' : `${options.text || ''}${signatureText ? `\n\n${signatureText}` : ''}`, draftMode ? { html: m.html || undefined, preserveCidImages: true } : {});
+  composeData.editor = window.asterMailEditor.mount($('#compose-editor-field'), draftMode ? m.text || '' : `${options.text || ''}${signatureText ? `\n\n${signatureText}` : ''}`, {
+    html: draftMode ? m.html || undefined : undefined, preserveCidImages: draftMode, pasteImages: true,
+  });
   if (draftMode) {
     composeData.draftInitial = composeData.editor.read().bodyHtml;
     const note = document.createElement('p'); note.className = 'form-note';
@@ -853,13 +866,20 @@ async function compose(mode = 'new', contact = null, snapshot = null, options = 
   }
   if (snapshot) {
     for (const name of ['to', 'cc', 'bcc', 'subject']) $('#compose-form').elements[name].value = snapshot.fields[name] || '';
-    composeData.editor = window.asterMailEditor.mount($('#compose-editor-field'), '', { html: snapshot.body.bodyHtml, preserveCidImages: draftMode });
+    composeData.editor = window.asterMailEditor.mount($('#compose-editor-field'), '', { html: snapshot.body.bodyHtml, preserveCidImages: draftMode, pasteImages: true, inlineImages: snapshot.inlineImages });
     if (snapshot.history && $('#edit-history')) {
       $('#edit-history').closest('details').open = true;
       $('#edit-history').click();
       composeData.historyEditor = window.asterMailEditor.mount($('#compose-history-body'), '', { id: 'compose-history-editor', label: tr('Предыдущая переписка'), html: snapshot.history.bodyHtml });
     }
     addComposeFiles([]);
+  }
+  if (draftMode && document.querySelector('#compose-body img[src^="cid:" i]')) {
+    const editor = composeData.editor;
+    const images = state.demo ? Promise.resolve(m.contentImages) : api('contentImages', { ref: ref(m), kind: 'message', inlineOnly: true });
+    void images.then(result => {
+      if (result?.images && composeData?.editor === editor && dialog.open) editor.showInlineImages(result.images);
+    }).catch(() => {}); // The original CID remains in the draft if its preview is unavailable.
   }
   // File drops inside the script-free preview frame do not bubble to the dialog.
   window.asterRecipients.decorate($('#compose-form'), [...(snapshot?.recipientPeople || []), contact, m?.from, ...(m?.to || []), ...(m?.cc || []), ...(m?.bcc || [])]);
@@ -1133,15 +1153,17 @@ async function sendCompose(save) {
       const original = state.selected.html || `<div style="white-space:pre-wrap">${esc(state.selected.text || '')}</div>`;
       extraHtml += `<blockquote>${window.asterRichContent.sanitize(original).body.innerHTML}</blockquote>`;
     }
-    Object.assign(data, composeData.editor.read(extraHtml));
+    const pasted = [];
+    Object.assign(data, composeData.editor.read(extraHtml, pasted));
     const draft = composeData.draftOriginal;
     if (draft && data.bodyHtml === composeData.draftInitial) {
       data.bodyHtml = draft.html || ''; data.body = draft.text || '';
     }
     data.body += extraText;
     const files = composeData.attachments;
-    if (files.reduce((n, f) => n + f.size, 0) + (draft?.attachments || []).reduce((n, file) => n + file.size, 0) > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
-    const attachments = inline.concat(await Promise.all(files.map(async file => ({ name: file.name, type: file.type || 'application/octet-stream', content: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }) }))));
+    if ([...files, ...pasted.map(image => image.file), ...(draft?.attachments || [])].reduce((size, file) => size + file.size, 0) > 20 * 1024 * 1024) throw new Error(tr('Суммарный размер вложений превышает 20 МБ'));
+    inline.push(...await readComposeInlineImages(pasted));
+    const attachments = inline.concat(await Promise.all(files.map(readComposeFile)));
     if (!current()) return;
     if (!save && !await waitForComposeSend(form)) return;
     if (!current()) return;
@@ -1347,12 +1369,15 @@ async function handleAction(button) {
   }
   if (action === 'write-contact') return compose('new', state.contacts.find(c => c.id === button.dataset.id));
   if (action === 'rsvp') {
+    const dialog = $('#modal');
+    const fromMeetingCard = () => dialog.open && dialog.dataset.meetingCard === 'true' && dialog.contains(button);
     const buttons = [...button.closest('.rsvp').querySelectorAll('button')];
     const disabled = buttons.map(b => b.disabled);
     buttons.forEach(b => { b.disabled = true; });
     try {
-      const scope = $('#modal').dataset.meetingCard === 'true' ? meetingScope() : 'single';
-      const result = state.demo ? { status: 'sent' } : await api('respond', { ref: { id: button.dataset.id, changeKey: button.dataset.key }, response: button.dataset.response, scope });
+      const scope = fromMeetingCard() ? meetingScope() : 'single';
+      const sendResponse = button.dataset.sendResponse !== 'false';
+      const result = state.demo ? { status: sendResponse ? 'sent' : 'accepted' } : await api('respond', { ref: { id: button.dataset.id, changeKey: button.dataset.key }, response: button.dataset.response, sendResponse, scope });
       if (result.status === 'cancelled') {
         const event = state.events.find(e => e.id === button.dataset.id); if (event) event.cancelled = true;
         if (state.selected?.meeting?.id === button.dataset.id) state.selected.meeting.cancelled = true;
@@ -1364,12 +1389,13 @@ async function handleAction(button) {
         if (selected) selected.response = response;
         if (state.selected?.meeting?.id === button.dataset.id) { state.selected.meeting.response = response; renderReader(); }
         if (state.demo) for (const e of window.asterDemo.events.filter(e => scope === 'series' && selected?.seriesId ? e.seriesId === selected.seriesId : e.id === button.dataset.id)) e.response = response;
-        if ($('#modal').open) $('#modal').close();
+        if (fromMeetingCard()) dialog.close();
         if (state.view === 'calendar') await loadView();
-        toast(state.demo ? tr('Демо: ответ на приглашение принят') : tr('Ответ отправлен организатору'));
+        toast(result.status === 'accepted' ? tr('Встреча принята без отправки ответа') : state.demo ? tr('Демо: ответ на приглашение принят') : tr('Ответ отправлен организатору'));
       }
     } catch (error) {
-      if ($('#modal').open && $('#modal .form-error')) $('#modal .form-error').textContent = errorText(error);
+      const errorBox = fromMeetingCard() && dialog.querySelector('.form-error');
+      if (errorBox) errorBox.textContent = errorText(error);
       else throw error;
     } finally { buttons.forEach((b, i) => { b.disabled = disabled[i]; }); } return;
   }
@@ -1616,6 +1642,7 @@ function applyAccount(value) {
   syncSignature = localPreferences.getItem('aster-signature-sync') === 'true';
   sidebarCollapsed = localPreferences.getItem('aster-sidebar-collapsed') === 'true';
   closeAttachmentPreview();
+  composeData?.editor?.dispose();
   serverSignature = null; composeData = null; activeMeeting = null; meetingEdit = null; meetingRequest++;
   moveRuleContext = null; mailDrag = null; mailPeopleChoices = []; contactCardContext = null; state.searchObjects = null;
   restoreMailListWidth();
@@ -1724,6 +1751,7 @@ for (const name of ['input', 'change']) document.addEventListener(name, event =>
 });
 $('#modal').addEventListener('close', () => {
   if ($('#modal').open) return;
+  composeData?.editor?.dispose();
   if (typeof unmountModuleViews === 'function') unmountModuleViews(); closeAttachmentPreview(); setModalDirty(false); resumeConnectionReads();
   if (pendingMcpPreferences) {
     const request = pendingMcpPreferences; pendingMcpPreferences = null;

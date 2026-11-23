@@ -13,6 +13,19 @@ test('encoded CID references resolve locally and missing CIDs never become remot
   assert.match(result.images['cid:logo%40example.com'], /^data:image\/png/);
   assert.match(result.errors['cid:missing'], /не найдено во вложениях/);
 });
+test('draft previews load only inline attachments, even after external images in the original HTML', async () => {
+  const remote = Array.from({ length: 13 }, (_, index) => `<img src="https://images.example.com/${index}">`).join('');
+  const current = {
+    html: remote + '<img src="cid:picture">',
+    attachments: [{ id: 'inline-file', contentId: 'picture', size: 8 }],
+  };
+  const result = await I.load(current, async id => {
+    assert.equal(id, 'inline-file');
+    return image;
+  }, () => assert.fail('Draft preview requested a remote image'), 'https://mail.example.com', { inlineOnly: true });
+  assert.deepEqual(Object.keys(result.images), ['cid:picture']);
+  assert.deepEqual(result.errors, {});
+});
 test('inline and external images render as validated raster data with explicit load failures', async () => {
   const current = { html: '<img src="cid:logo"><img src="https://images.example.com/banner?a=1&amp;b=2"><img src="javascript:bad"><img src="https://images.example.com/missing">', attachments: [{ id: 'attachment', contentId: '<logo>', size: 8 }] };
   const calls = [];
