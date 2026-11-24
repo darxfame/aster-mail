@@ -5,8 +5,7 @@ const javascriptLiteral = require('./javascript-literal.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const profile = require('node:fs').mkdtempSync(path.join(require('node:os').tmpdir(), 'aster-calendar-actions-'));
-app.setPath('userData', profile); app.on('window-all-closed', () => {});
+app.setPath('userData', process.argv[2]);
 let window;
 async function waitFor(expression) {
   for (let i = 0; i < 150; i++) {
@@ -16,6 +15,7 @@ async function waitFor(expression) {
   throw new Error(`Calendar did not become ready: ${expression}`);
 }
 app.whenReady().then(async () => {
+  let code = 0;
   try {
     window = new BrowserWindow({ width: 1280, height: 900, show: true, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     const js = async code => {
@@ -103,5 +103,9 @@ app.whenReady().then(async () => {
     await js('document.querySelector("#meeting-removal-form").requestSubmit()');
     assert.equal(await js('removeCalls'),1);
     console.log('PASS: meeting navigation preserves week/quarter/day/auto and accepting preserves week; calendar context menu, Escape/focus, card removal, occurrence/series distinction, organizer/invitee messaging, denied rights and no replay after a lost response.');
-  } finally { window?.destroy(); await fs.rm(profile,{recursive:true,force:true,maxRetries:3}); }
-}).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});
+  } catch (error) {
+    console.error(error);
+    code = 1;
+  }
+  process.send(code, () => process.exit(code));
+});
