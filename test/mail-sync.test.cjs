@@ -9,7 +9,7 @@ function renderer(api = async () => assert.fail('Unexpected request')) {
   const selected = {id:'old',html:'<b>Open message</b>'}, state = {account:{sessionId:'session'},generation:1,view:'mail',folder:'inbox',filter:'all',query:'',folders:[{id:'inbox-id',wellKnown:'inbox',unread:1}],messages:[{id:'old',read:true}],selected,more:false};
   const list = {scrollTop:0,querySelectorAll:()=>[],insertAdjacentHTML(){}}, status = {};
   let renders = 0;
-  const context = vm.createContext({ tr: value => value,state,api,mailWrites:0,mailWriteEpoch:0,$:selector=>selector==='#messages'?list:status,document:{querySelector:()=>null},renderSidebar(){},renderMessages(){renders++;},time:()=> '10:00'});
+  const context = vm.createContext({ tr: value => value,state,api,mailWrites:0,mailWriteEpoch:0,$:selector=>selector==='#messages'?list:selector==='.reader-attachment-preview'?null:status,document:{querySelector:()=>null},renderSidebar(){},renderMessages(){renders++;},renderReader(){},loadReaderMeeting(){},time:()=> '10:00'});
   context.agentMailSession = null;
   const appSource = fs.readFileSync(require.resolve('../src/app.js'), 'utf8');
   vm.runInContext(appSource.slice(appSource.indexOf('function mailboxWriting()'), appSource.indexOf('async function api(')), context);
@@ -24,10 +24,57 @@ test('background inbox snapshot updates list and count while keeping the open re
   await r.context.receiveInbox(snapshot); assert.equal(r.renders,1);
 });
 test('old accounts, another folder, search, mailbox writes and pending page loads do not replace current mail',async()=>{
-  for(const change of [{account:{sessionId:'other'}},{folder:'sentitems'},{query:'search'},{mailLoading:1},{view:'contacts'}]) {
+  for(const change of [{account:{sessionId:'other'}},{query:'search'},{mailLoading:1},{view:'contacts'}]) {
     const r=renderer(); Object.assign(r.state,change); await r.context.receiveInbox(snapshot); assert.equal(r.renders,0);
   }
   const r=renderer(); r.context.mailWrites=1; await r.context.receiveInbox(snapshot); assert.equal(r.renders,0); assert.equal(r.state.folders[0].unread,1);
+});
+test('a poll refreshes the active folder and changed open message without a mailbox write', async () => {
+  const calls = [];
+  const updated = { id: 'old', changeKey: 'v2', read: false, flagged: true };
+  const r = renderer(async (operation, data) => {
+    calls.push({ operation, data: { ...data } });
+    if (operation === 'messages') return { items: [updated], more: false };
+    if (operation === 'message') return { ...updated, html: '<b>Updated</b>' };
+    assert.fail('Unexpected request');
+  });
+  r.state.folder = 'sentitems';
+  r.selected.changeKey = 'v1';
+  await r.context.receiveInbox(snapshot);
+  assert.deepEqual(calls, [
+    { operation: 'messages', data: { folder: 'sentitems', filter: 'all', offset: 0, refresh: true } },
+    { operation: 'message', data: { id: 'old', changeKey: 'v2', refresh: true } },
+  ]);
+  assert.equal(r.state.messages[0].flagged, true);
+  assert.equal(r.state.selected.html, '<b>Updated</b>');
+  assert.equal(r.state.selected.read, false);
+  await r.context.receiveInbox(snapshot);
+  assert.equal(calls.length, 3);
+  assert.equal(r.renders, 1);
+});
+test('an open message outside the current page is refreshed by ID and stale details are discarded', async () => {
+  for (const invalidate of [
+    () => {},
+    r => { r.state.generation++; },
+    r => { r.context.mailWriteEpoch++; },
+    r => { r.state.selected = { id: 'other' }; },
+  ]) {
+    let finish;
+    const r = renderer(async (operation, data) => {
+      assert.equal(operation, 'message');
+      assert.deepEqual({ ...data }, { id: 'older', refresh: true });
+      return new Promise(resolve => { finish = resolve; });
+    });
+    Object.assign(r.selected, { id: 'older', changeKey: 'v1' });
+    const pending = r.context.receiveInbox(snapshot);
+    assert.equal(typeof finish, 'function');
+    invalidate(r);
+    finish({ id: 'older', changeKey: 'v2', html: 'Updated' });
+    await pending;
+    if (r.state.selected.id === 'other') assert.equal(r.state.selected.changeKey, undefined);
+    else if (r.state.generation !== 1 || r.context.mailWriteEpoch) assert.equal(r.state.selected.changeKey, 'v1');
+    else assert.equal(r.state.selected.changeKey, 'v2');
+  }
 });
 test('unread refresh uses a server filter and discards reads overtaken by navigation or mutation',async()=>{
   let finish; const r=renderer((operation,data)=>{assert.equal(operation,'messages'); assert.equal(data.filter,'unread'); assert.equal(data.refresh,true); return new Promise(resolve=>{finish=resolve;});});

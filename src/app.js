@@ -542,26 +542,27 @@ async function openMessage(id, generation = state.generation, { markRead = true,
     catch (error) { showError(Object.assign(new Error(`${tr("Письмо открыто, но не удалось отметить его прочитанным:")} ${errorText(error)}`), { connectionError: error.connectionError === true, userFacing: true })); }
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     renderMessages(); renderSidebar(); renderReader();
-    if (selected.meeting?.id && !selected.meeting.cancelled) {
-      try {
-        const meeting = state.demo ? window.asterDemo.events.find(e => e.id === selected.meeting.id) : await api('event', ref(selected.meeting));
-        if (meeting) {
-          const originalStart = selected.meeting.start, originalEnd = selected.meeting.end;
-          Object.assign(selected.meeting, { ...meeting, statusLoaded: true, invitationUpdated: originalStart !== meeting.start || originalEnd !== meeting.end });
-        }
-      } catch (error) { selected.meeting.statusError = errorText(error); }
-      if (state.selected === selected && generation === state.generation) {
-        renderReader();
-        const result = await loadMeetingConflicts(selected.meeting);
-        if (state.selected === selected && generation === state.generation && sequence === messageOpenSequence) { selected.meeting.conflicts = result; renderReader(); }
-      }
-    }
+    await loadReaderMeeting(selected, () => state.selected === selected && generation === state.generation && sequence === messageOpenSequence);
   } catch (error) {
     if (generation !== state.generation || sequence !== messageOpenSequence) return;
     showError(error);
     if (error.connectionError) { state.recoverMessage = { id, generation, ...(fromConversation ? { fromConversation } : {}) }; setReaderMarkup(readerNotice(`<div class="loading">${tr("Ожидаем соединения с OWA…")}</div>`)); return; }
     setReaderMarkup(readerNotice(`<div class="empty-state"><h2>${tr("Не удалось открыть письмо")}</h2><p>${esc(errorText(error))}</p><button class="secondary" data-action="retry-message" data-id="${esc(id)}">${tr("Повторить загрузку")}</button></div>`));
   }
+}
+async function loadReaderMeeting(selected, current, paint = renderReader) {
+  if (!selected.meeting?.id || selected.meeting.cancelled) return;
+  try {
+    const meeting = state.demo ? window.asterDemo.events.find(e => e.id === selected.meeting.id) : await api('event', ref(selected.meeting));
+    if (meeting) {
+      const originalStart = selected.meeting.start, originalEnd = selected.meeting.end;
+      Object.assign(selected.meeting, { ...meeting, statusLoaded: true, invitationUpdated: originalStart !== meeting.start || originalEnd !== meeting.end });
+    }
+  } catch (error) { selected.meeting.statusError = errorText(error); }
+  if (!current()) return;
+  paint();
+  const result = await loadMeetingConflicts(selected.meeting);
+  if (current()) { selected.meeting.conflicts = result; paint(); }
 }
 function isDraftMessage(message) {
   return message?.isDraft === true || message?.folder === 'drafts' || state.folder === 'drafts' && !state.query || state.folders.some(folder => folder.wellKnown === 'drafts' && (folder.id === message?.parentId || !state.query && folder.id === state.folder));

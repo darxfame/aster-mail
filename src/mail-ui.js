@@ -381,6 +381,7 @@ async function receiveMailboxChange(snapshot) {
     // The reader and any open compose dialog remain mounted, even after a move.
   } catch { /* Keep the current list usable; ordinary reads can refresh it later. */ }
 }
+let mailRefreshPending = false;
 async function receiveInbox(snapshot) {
   if (state.demo || !state.account?.sessionId || snapshot.sessionId !== state.account.sessionId || mailboxWriting()) return;
   if (typeof receiveDayInbox === 'function') receiveDayInbox(snapshot);
@@ -390,26 +391,49 @@ async function receiveInbox(snapshot) {
   if (inbox && snapshot.inbox && (inbox.unread !== snapshot.inbox.unread || inbox.total !== snapshot.inbox.total)) {
     Object.assign(inbox, snapshot.inbox); renderSidebar();
   }
-  if (state.mailLoading || state.view !== 'mail' || state.query || !['inbox', inbox?.id].includes(state.folder) || !$('#messages')) return;
+  if (mailRefreshPending || state.mailLoading || state.view !== 'mail' || state.query || !$('#messages')) return;
+  const current = () => account === state.account && generation === state.generation && epoch === mailWriteEpoch && !mailboxWriting();
+  mailRefreshPending = true;
   try {
-    const page = state.filter === 'all' ? snapshot.page : await api('messages', { folder: state.folder, filter: state.filter, offset: 0, refresh: true });
-    if (account !== state.account || generation !== state.generation || epoch !== mailWriteEpoch || mailboxWriting() || !$('#messages')) return;
+    const inboxOpen = ['inbox', inbox?.id].includes(state.folder);
+    const page = inboxOpen && state.filter === 'all' ? snapshot.page : await api('messages', { folder: state.folder, filter: state.filter, offset: 0, refresh: true });
+    if (!current() || !$('#messages')) return;
     const next = mergeInboxPage(state.messages, page);
-    if (JSON.stringify(next) === JSON.stringify(state.messages) && state.more === page.more) return;
-    const list = $('#messages'), atTop = list.scrollTop < 2;
-    const anchor = [...list.querySelectorAll('.message-row')].find(row => row.getBoundingClientRect().bottom > list.getBoundingClientRect().top);
-    const anchorId = anchor?.dataset.id, top = anchor?.getBoundingClientRect().top;
-    state.messages = next; state.offset = next.length; state.more = page.more;
-    // Keep the reader, selected message and any compose dialog mounted.
-    renderMessages();
-    const remaining = [...list.querySelectorAll('.message-row')].find(row => row.dataset.id === anchorId);
-    if (atTop) list.scrollTop = 0;
-    else if (remaining) list.scrollTop += remaining.getBoundingClientRect().top - top;
-    const more = document.querySelector('.mail-list .load-more');
-    if (more) more.hidden = !state.more;
-    else if (state.more) list.insertAdjacentHTML('afterend', tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>'));
-    $('#status').textContent = `${tr("Обновлено")} ${time(new Date())} ${tr("· Прямое подключение к Exchange")}`;
+    if (JSON.stringify(next) !== JSON.stringify(state.messages) || state.more !== page.more) {
+      const list = $('#messages'), atTop = list.scrollTop < 2;
+      const anchor = [...list.querySelectorAll('.message-row')].find(row => row.getBoundingClientRect().bottom > list.getBoundingClientRect().top);
+      const anchorId = anchor?.dataset.id, top = anchor?.getBoundingClientRect().top;
+      state.messages = next; state.offset = next.length; state.more = page.more;
+      renderMessages();
+      const remaining = [...list.querySelectorAll('.message-row')].find(row => row.dataset.id === anchorId);
+      if (atTop) list.scrollTop = 0;
+      else if (remaining) list.scrollTop += remaining.getBoundingClientRect().top - top;
+      const more = document.querySelector('.mail-list .load-more');
+      if (more) more.hidden = !state.more;
+      else if (state.more) list.insertAdjacentHTML('afterend', tr('<button class="secondary load-more" data-action="more">Загрузить ещё</button>'));
+      $('#status').textContent = `${tr("Обновлено")} ${time(new Date())} ${tr("· Прямое подключение к Exchange")}`;
+    }
+    const selected = state.selected;
+    const summary = page.items.find(item => item.id === selected?.id) || (inboxOpen ? snapshot.page.items.find(item => item.id === selected?.id) : null);
+    if (selected && (!summary || summary.changeKey !== selected.changeKey)) await refreshOpenMessage(selected, summary, current);
   } catch { /* Keep readable mail on a transient refresh error; the next poll retries the read. */ }
+  finally { mailRefreshPending = false; }
+}
+
+async function refreshOpenMessage(selected, summary, current) {
+  const readerReady = () => $('#message-body') && !$('.reader-attachment-preview');
+  if (!readerReady() || (!selected.changeKey && !summary?.changeKey)) return;
+  // An older or filtered-out message may be absent from the polled page.
+  const detail = await api('message', { id: selected.id, ...(summary?.changeKey ? { changeKey: summary.changeKey } : {}), refresh: true });
+  if (!current() || state.selected !== selected || !readerReady() || detail.id !== selected.id || !detail.changeKey || detail.changeKey === selected.changeKey) return;
+  const updated = state.selected = { ...summary, ...detail };
+  const paint = () => {
+    const scrollTop = $('.reader-scroll')?.scrollTop;
+    renderReader();
+    if (scrollTop && $('.reader-scroll')) $('.reader-scroll').scrollTop = scrollTop;
+  };
+  paint();
+  await loadReaderMeeting(updated, () => current() && state.selected === updated && readerReady(), paint);
 }
 
 async function refreshMailFolders(generation) {

@@ -165,6 +165,27 @@ app.whenReady().then(async () => {
     assert.equal(await js('document.querySelector("#reader")===fixtureReader && document.querySelector("#compose-form")===fixtureForm && fixtureEditor.textContent==="Keep this draft"'), true);
     await js(`(async()=>{state.demo=false;state.account={sessionId:'air-inbox',server:'https://mail.example.test',username:'fictional@example.test'};try{await receiveInbox({sessionId:'air-inbox',page:{items:[{...fixtureMessages[1],id:'fictional-new'},...fixtureMessages],more:false}});}finally{state.account=null;state.demo=true;}})()`);
     assert.equal(await js('state.messages[0].id==="fictional-new" && document.querySelector("#reader")===fixtureReader && document.querySelector("#compose-form")===fixtureForm && fixtureEditor.textContent==="Keep this draft" && !document.querySelector(".loading-placeholder")'), true);
+    await js(`(async () => {
+      const folder = state.folder;
+      window.beforeSync = { messages: state.messages, selected: state.selected, offset: state.offset, more: state.more };
+      state.demo = false;
+      state.account = { sessionId: 'air-inbox', server: 'https://mail.example.test', username: 'fictional@example.test' };
+      state.folder = 'sentitems';
+      state.selected = { ...state.selected, changeKey: 'old-version' };
+      const updated = { ...state.selected, changeKey: 'new-version', subject: 'Updated by another client', html: '', text: 'Updated body', meeting: null };
+      api = async (operation, data) => {
+        if (operation === 'messages' && data.folder === 'sentitems' && data.refresh) return { items: [updated], more: false };
+        if (operation === 'message' && data.id === updated.id && data.changeKey === 'new-version') return updated;
+        throw new Error('Unexpected operation: ' + operation);
+      };
+      try { await receiveInbox({ sessionId: 'air-inbox', page: { items: [], more: false } }); }
+      finally { api = fixtureApi; state.account = null; state.demo = true; state.folder = folder; }
+    })()`);
+    assert.equal(await js(`state.messages[0].subject === 'Updated by another client'
+      && document.querySelector('#message-body').textContent === 'Updated body'
+      && document.querySelector('#reader') === fixtureReader
+      && document.querySelector('#compose-form') === fixtureForm && fixtureEditor.textContent === 'Keep this draft'`), true);
+    await js('Object.assign(state, beforeSync); delete window.beforeSync; renderMessages(); renderReader()');
     await screenshot('compose-light');
     await js('setModalDirty(false);document.querySelector("#modal").close()');
     // Respect reduced motion in the actual Chromium runtime.
