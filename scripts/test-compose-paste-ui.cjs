@@ -1,13 +1,8 @@
 // Exercise clipboard payloads in the Electron editor without changing the system clipboard.
 const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
-const fs = require('node:fs/promises');
-const os = require('node:os');
-const path = require('node:path');
 
-const profile = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'aster-compose-paste-'));
-app.setPath('userData', profile);
-app.on('window-all-closed', () => {});
+app.setPath('userData', process.argv[2]);
 require('../desktop/main.cjs');
 
 async function waitFor(check) {
@@ -101,10 +96,9 @@ app.whenReady().then(async () => {
     assert.ok((await js(read)).html.includes(`src="cid:${pasted.ids[0]}"`));
     assert.deepEqual((await js(read)).ids, [], 'Reopening an existing draft keeps its attachment without uploading it again');
     console.log('Clipboard image passed for insertion, undo/redo, text and HTML paste, size limit, detach, draft serialization and reopening.');
-  } finally {
-    app.removeAllListeners('window-all-closed');
-    for (const window of BrowserWindow.getAllWindows()) window.destroy();
-    try { await fs.rm(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
-    catch (error) { if (process.platform !== 'win32' || !['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code)) throw error; }
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
   }
-}).then(() => app.exit(0), error => { console.error(error); app.exit(1); });
+  process.exit(0);
+});

@@ -1289,8 +1289,14 @@ async function handleAction(button) {
     }
     return;
   }
-  if (action === 'mail-star' || action === 'mail-important') { button.disabled = true; try { await toggleMailProperty(button.dataset.id, action === 'mail-star' ? 'Flag' : 'Importance'); } finally { button.disabled = false; } return; }
-  if (action === 'important') return toggleMailProperty(state.selected.id, 'Importance');
+  if (action === 'mail-star' || action === 'mail-important' || action === 'important') {
+    const id = action === 'important' ? state.selected?.id : button.dataset.id;
+    if (!id || button.disabled) return;
+    button.disabled = true;
+    try { await toggleMailProperty(id, action === 'mail-star' ? 'Flag' : 'Importance'); }
+    finally { button.disabled = false; }
+    return;
+  }
   if (action === 'message') return openMessage(button.dataset.id, state.generation, { focusBack: true });
   if (action === 'day-overview') { ++messageOpenSequence; state.selected = null; state.dayOverviewOpen = true; renderMail(); return; }
   if (action === 'day-message') return openDayMessage(button.dataset.id);

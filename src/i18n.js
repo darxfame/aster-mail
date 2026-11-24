@@ -738,6 +738,7 @@
     "В архив": "Archive",
     "В корзину": "Move to Deleted Items",
     "Важность": "Importance",
+    "Exchange не вернул версию письма": "Exchange did not return the message version",
     "Отметить непрочитанным": "Mark as unread",
     "Действия с письмом": "Message actions",
     "Пометить прочитанным": "Mark as read",

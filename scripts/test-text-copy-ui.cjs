@@ -1,12 +1,7 @@
 // Run the real app with a fictional message and an isolated profile.
 const { app, BrowserWindow, Menu } = require('electron');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'aster-copy-'));
-app.setPath('userData', profile);
+app.setPath('userData', process.argv[2]);
 require('../desktop/main.cjs');
 
 async function waitFor(check, description) {
@@ -44,7 +39,6 @@ async function renderer(contents, source) {
 
 app.whenReady().then(async () => {
   let code = 0;
-  const originalPopup = Menu.prototype.popup;
   try {
     const window = await waitFor(() => BrowserWindow.getAllWindows().find(candidate =>
       candidate.webContents.getURL().endsWith('/src/index.html') && !candidate.webContents.isLoading()), 'the main window');
@@ -103,16 +97,7 @@ app.whenReady().then(async () => {
     console.error(error);
     code = 1;
   } finally {
-    Menu.prototype.popup = originalPopup;
-    app.removeAllListeners('window-all-closed');
-    for (const window of BrowserWindow.getAllWindows()) window.destroy();
-    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
-    catch (error) {
-      if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(error.code)) {
-        console.error(error);
-        code = 1;
-      }
-    }
-    app.exit(code);
+    // The fixture owns no real account. End it without running native window teardown.
+    process.exit(code);
   }
 });

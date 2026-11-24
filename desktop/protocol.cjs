@@ -38,8 +38,8 @@ function getItems(refs) {
   }, 'V2017_08_18');
 }
 function update(ref, field, value) {
-  if (!['IsRead', 'Flag', 'Importance'].includes(field)) throw new Error('Unsupported message update');
-  if (field === 'Importance' ? !['High', 'Normal'].includes(value) : typeof value !== 'boolean') throw new Error('Invalid message value');
+  if (!['IsRead', 'Flag'].includes(field)) throw new Error('Unsupported message update');
+  if (typeof value !== 'boolean') throw new Error('Invalid message value');
   return request('UpdateItem', {
     ItemChanges: [typed('ItemChange', { ItemId: item(ref), Updates: [typed('SetItemField', {
       Path: property(field), Item: typed(field === 'IsRead' ? 'Message' : 'Item', { [field]: field === 'Flag' ? typed('FlagType', { FlagStatus: value ? 'Flagged' : 'NotFlagged' }) : value }),
@@ -102,6 +102,9 @@ const escapeXML = value => String(value ?? '').replace(/[<>&"']/g, c => ({ '<': 
 function soap(body) {
   return `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/><t:TimeZoneContext><t:TimeZoneDefinition Id="UTC"/></t:TimeZoneContext></soap:Header><soap:Body>${body}</soap:Body></soap:Envelope>`;
 }
+function importanceSOAP(ref, value) {
+  return soap(`<m:UpdateItem ConflictResolution="AutoResolve" MessageDisposition="SaveOnly" SendMeetingInvitationsOrCancellations="SendToNone" SuppressReadReceipts="true"><m:ItemChanges><t:ItemChange><t:ItemId Id="${escapeXML(ref.id)}" ChangeKey="${escapeXML(ref.changeKey)}"/><t:Updates><t:SetItemField><t:FieldURI FieldURI="item:Importance"/><t:Message><t:Importance>${escapeXML(value)}</t:Importance></t:Message></t:SetItemField></t:Updates></t:ItemChange></m:ItemChanges></m:UpdateItem>`);
+}
 function parseSOAP(text, action = '') {
   if (/<!DOCTYPE/i.test(text) || XMLValidator.validate(text) !== true) throw new Error('Invalid EWS XML response');
   const data = new XMLParser({ removeNSPrefix: true, ignoreAttributes: false, processEntities: true, parseTagValue: false, trimValues: false }).parse(text);
@@ -152,4 +155,4 @@ function eventSOAP(data) {
 }
 const normalizeServer = require('../src/server.js').normalize;
 
-module.exports = { contact, typed, folder, synchronizationFolders, item, target, property, request, paging, findItems, getItems, update, walk, checkJSON, address, message, decodeHTMLAttribute, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };
+module.exports = { contact, typed, folder, synchronizationFolders, item, target, property, request, paging, findItems, getItems, update, importanceSOAP, walk, checkJSON, address, message, decodeHTMLAttribute, escapeXML, soap, parseSOAP, signatureFromConfiguration, emails, sendSOAP, eventSOAP, normalizeServer, mailPreview };

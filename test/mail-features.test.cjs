@@ -11,14 +11,44 @@ function client(handler, remote) {
   const instance = new OWAClient(account, async (url, options) => { calls.push({ url, options }); return handler(url, options, calls); }, async () => 'canary', async () => {}, remote);
   instance.canary = 'canary'; return { instance, calls };
 }
-test('message importance and favorites update only allowed values, with receipts suppressed', () => {
-  const request = P.update({ id: 'mail', changeKey: 'key' }, 'Importance', 'High');
-  assert.equal(request.Body.ItemChanges[0].Updates[0].Item.Importance, 'High');
+test('read status and favorites still use OWA JSON with receipts suppressed', () => {
+  const request = P.update({ id: 'mail', changeKey: 'key' }, 'Flag', true);
+  assert.equal(request.Body.ItemChanges[0].Updates[0].Item.Flag.FlagStatus, 'Flagged');
   assert.equal(request.Body.SuppressReadReceipts, true);
   assert.equal(request.Body.SendCalendarInvitationsOrCancellations, 'SendToNone');
-  assert.throws(() => P.update({ id: 'mail' }, 'Importance', true));
+  assert.equal(P.update({ id: 'mail' }, 'IsRead', false).Body.ItemChanges[0].Updates[0].Item.IsRead, false);
   assert.throws(() => P.update({ id: 'mail' }, 'IsRead', 'false'));
   assert.equal(P.message({ ItemId: { Id: 'mail' }, Importance: 'High' }).importance, 'High');
+});
+test('importance uses the current item version and updates only the EWS importance field', async () => {
+  for (const value of ['High', 'Normal']) {
+    const { instance, calls } = client((_url, options) => {
+      if (options.headers.Action === 'GetItem') {
+        return { status: 200, text: JSON.stringify({ Body: { Items: [{ ItemId: { Id: 'mail&id', ChangeKey: 'fresh&key' } }] } }) };
+      }
+      assert.match(options.headers.SOAPAction || '', /\/UpdateItem"/);
+      assert.match(options.body, /MessageDisposition="SaveOnly".*SuppressReadReceipts="true"/);
+      assert.match(options.body, /Id="mail&amp;id" ChangeKey="fresh&amp;key"/);
+      assert.ok(options.body.includes(`<t:FieldURI FieldURI="item:Importance"/><t:Message><t:Importance>${value}</t:Importance></t:Message>`));
+      return { status: 200, text: soap('<ItemId Id="mail&amp;id" ChangeKey="next-key"/>') };
+    });
+    assert.deepEqual(await instance.change({ ref: { id: 'mail&id', changeKey: 'stale' }, field: 'Importance', value }), { id: 'mail&id', changeKey: 'next-key' });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(JSON.parse(calls[0].options.body).Body.ItemIds.map(item => item.Id), ['mail&id']);
+  }
+});
+test('importance rejects invalid values before reading and never retries an uncertain write', async () => {
+  const { instance, calls } = client((_url, options) => {
+    if (options.headers.Action === 'GetItem') {
+      return { status: 200, text: JSON.stringify({ Body: { Items: [{ ItemId: { Id: 'mail', ChangeKey: 'fresh' } }] } }) };
+    }
+    throw new Error('Lost reply');
+  });
+  const operation = { ref: { id: 'mail' }, field: 'Importance' };
+  await assert.rejects(instance.change({ ...operation, value: true }), /Invalid message value/);
+  assert.equal(calls.length, 0);
+  await assert.rejects(instance.change({ ...operation, value: 'High' }), /Lost reply/);
+  assert.equal(calls.length, 2);
 });
 test('a move rule is appended and does not replace existing rules or run on old messages', async () => {
   const requests = [];

@@ -135,6 +135,20 @@ app.whenReady().then(async () => {
     assert.equal(await js('mailSelection.has(otherId)'),true);
     await new Promise(resolve=>setTimeout(resolve,80));
     assert.equal(await js('calls.length'),3,'Uncertain mutations are never retried');
+    await js(`state.selected.importance='Normal';state.messages.find(m=>m.id===selectedBefore).importance='Normal';
+      window.importanceWrites=[];
+      api=async(operation,data)=>{
+        if(operation==='personPhoto') return null;
+        if(operation!=='change') throw new Error('Unexpected operation');
+        importanceWrites.push(data);return {changeKey:'importance-key'};
+      };renderMessages();renderReader();
+      document.querySelector('[data-action=mail-important][data-id="'+selectedBefore+'"]').click();void 0;`);
+    await waitFor("state.selected.importance==='High'");
+    assert.equal(await js("state.messages.find(m=>m.id===selectedBefore).importance"),'High');
+    assert.deepEqual(await js('importanceWrites.map(write=>[write.field,write.value])'),[['Importance','High']]);
+    await js("document.querySelector('[data-action=important]').click()");
+    await waitFor("state.selected.importance==='Normal'");
+    assert.deepEqual(await js('importanceWrites.map(write=>[write.field,write.value])'),[['Importance','High'],['Importance','Normal']]);
     console.log('PASS: modifier-click and Shift selection, right-click/keyboard menus, fresh read/unread keys, preserved reader, viewport placement, stale navigation and no uncertain-write retry.');
   } finally {
     window?.destroy();

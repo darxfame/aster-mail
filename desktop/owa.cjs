@@ -210,6 +210,20 @@ class OWAClient {
     return P.message(o);
   }
   async change(data) {
+    if (data.field === 'Importance') {
+      if (!['High', 'Normal'].includes(data.value)) throw new Error('Invalid message value');
+      const id = data.ref?.id;
+      if (typeof id !== 'string' || !id || id.length > 16000) throw new Error('Invalid item reference');
+      const current = await this.call('GetItem', P.request('GetItem', {
+        ItemShape: P.typed('ItemResponseShape', { BaseShape: 'IdOnly' }),
+        ItemIds: [P.item({ id })],
+      }));
+      const changeKey = P.walk(current, item => item.ItemId?.Id === id)[0]?.ItemId.ChangeKey;
+      if (!changeKey) throw new Error(tr('Exchange не вернул версию письма'));
+      const result = await this.ews('UpdateItem', P.importanceSOAP({ id, changeKey }, data.value));
+      const updated = P.walk(result, item => item.ItemId?.['@_Id'] === id)[0]?.ItemId;
+      return { id, changeKey: updated?.['@_ChangeKey'] || changeKey };
+    }
     const json = await this.call('UpdateItem', P.update(data.ref, data.field, data.value), { retry: false });
     const updated = P.walk(json, o => o.ItemId?.Id)[0]?.ItemId;
     return updated ? { id: updated.Id, changeKey: updated.ChangeKey } : data.ref;
