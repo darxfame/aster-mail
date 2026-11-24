@@ -25,7 +25,7 @@
   if (typeof module !== 'undefined') { module.exports = { styleAllowed, isTrackingImage }; return; }
   const darkSurface = [41, 42, 46];
   const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
-  function sanitize(html, { dark = false, images = false, preserveBackgrounds = false, preserveBodyBackground = false } = {}) {
+  function sanitize(html, { dark = false, images = false, preserveBackgrounds = false, preserveBodyBackground = false, themeSurface = '' } = {}) {
     const wholeDocument = preserveBackgrounds || preserveBodyBackground;
     const safe = DOMPurify.sanitize(html, {
       WHOLE_DOCUMENT: wholeDocument,
@@ -49,6 +49,7 @@
       colors.clearRect(0, 0, 1, 1); colors.fillStyle = '#000'; colors.fillStyle = value; colors.fillRect(0, 0, 1, 1);
       return colors.getImageData(0, 0, 1, 1).data;
     };
+    const previewSurface = dark && themeSurface ? Array.from(rgba(themeSurface)).slice(0, 3) : darkSurface;
     const isNearWhiteBackground = value => {
       if (!dark || !preserveBackgrounds || !value) return false;
       const [red, green, blue, alpha] = rgba(value);
@@ -89,7 +90,7 @@
         const value = node.style.getPropertyValue(name).trim();
         if (/^(?:auto|[1-9]\d{0,3}(?:px|pt)|(?:100|[1-9]\d?)(?:\.\d+)?%)$/.test(value)) allowed.push([name, value]);
       }
-      const surface = preserveBackgrounds ? surfaceFor(node) : darkSurface;
+      const surface = preserveBackgrounds ? surfaceFor(node) : previewSurface;
       if (node.tagName === 'IMG') {
         const width = node.getAttribute('width') || node.style.width.replace(/px$/, '');
         if (/^[1-9]\d{0,3}$/.test(width) && Number(width) <= 1200) node.setAttribute('width', width);
@@ -112,7 +113,13 @@
     return doc;
   }
   function render(target, html, { dark, adaptToTheme = false, title, loadImages, openLink }) {
-    const doc = sanitize(html, { dark, images: true, preserveBackgrounds: !adaptToTheme });
+    const theme = adaptToTheme ? getComputedStyle(target) : null;
+    const themeColor = (token, fallback) => {
+      const value = theme?.getPropertyValue(token).trim();
+      return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value : fallback;
+    };
+    const themeSurface = adaptToTheme ? themeColor('--surface', dark ? '#292a2e' : '#ffffff') : '';
+    const doc = sanitize(html, { dark, images: true, preserveBackgrounds: !adaptToTheme, themeSurface });
     if (!doc.body.textContent.trim() && !doc.querySelector('img,hr')) { target.replaceChildren(); return; }
     doc.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';
@@ -169,8 +176,8 @@
         resize();
       } catch (error) { if (frame.isConnected) body.querySelectorAll('img').forEach(img => unavailable(img, error.message)); }
     });
-    const background = adaptToTheme ? dark ? `rgb(${darkSurface.join(',')})` : '#ffffff' : doc.body.style.backgroundColor || 'transparent';
-    const text = doc.body.style.color || (dark ? '#eceef2' : '#4d5063'), line = dark ? '#49494d' : '#e4e4eb';
+    const background = themeSurface || doc.body.style.backgroundColor || 'transparent';
+    const text = doc.body.style.color || themeColor('--text', dark ? '#eceef2' : '#4d5063'), line = dark ? '#49494d' : '#e4e4eb';
     frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>:root{color-scheme:${scheme};background:transparent}body{background:${background};color:${text};margin:0}body{display:flow-root;font:13px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}body *{box-sizing:border-box;max-width:100%}a[href]{color:inherit!important;text-decoration:underline;cursor:pointer}img{max-width:100%;height:auto;object-fit:contain}.aster-image-unavailable{display:inline-block!important;font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif!important;letter-spacing:normal!important;word-spacing:normal!important;white-space:normal!important;color:${text}!important;background:${background}!important;padding:4px 8px!important;border:1px solid ${line}!important;border-radius:4px;max-width:100%}table{border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}td,th{padding:5px;border-color:${line}!important}p{margin:0 0 16px}pre{white-space:pre-wrap}blockquote{border-left:2px solid ${line};padding-left:14px}ul,ol{padding-left:24px}</style></head><body>${doc.body.innerHTML}</body></html>`;
     target.replaceChildren(frame);
   }

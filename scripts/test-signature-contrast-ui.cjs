@@ -26,7 +26,8 @@ app.whenReady().then(async () => {
     const html = '<div style="background-color:white;color:#1f1f1f"><p title="nested">С уважением, Команда Aster</p>'
       + '<p><span title="hex" style="color:#202020">Тёмный текст</span><br><font title="legacy" color="#333333">Подпись из Outlook</font></p>'
       + '<p><span title="alpha" style="color:rgba(0,0,0,.87)">Полупрозрачный чёрный</span><br><span title="hsl" style="color:hsl(0,0%,12%)">HSL</span><br><span title="named" style="color:darkslategray">Именованный цвет</span></p>'
-      + '<p><b title="accent" style="color:#f5b0d0">Акцент</b><a href="https://example.test">Ссылка</a><span title="transparent" style="color:transparent">Hidden</span></p></div>';
+      + '<p><b title="accent" style="color:#f5b0d0">Акцент</b><a href="https://example.test">Ссылка</a><span title="transparent" style="color:transparent">Hidden</span></p>'
+      + '<p title="contrast" style="color:#969696">Fictional gray text</p></div>';
     await js(`window.fixtureSignature={html:${JSON.stringify(html)},text:'Fictional signature',images:{},errors:{}};state.theme='dark';document.body.classList.add('dark');syncSignature=true;serverSignature=fixtureSignature;settingsModal()`);
     await js('document.querySelector("#settings-tab-signature").click()');
     await waitFor('Boolean(document.querySelector("#signature-preview iframe")?.contentDocument?.querySelector("[title=hex]"))');
@@ -39,6 +40,20 @@ app.whenReady().then(async () => {
     const output=path.join(root,'release/signature-contrast-ui');await fs.mkdir(output,{recursive:true});
     await new Promise(resolve=>setTimeout(resolve,100));
     await fs.writeFile(path.join(output,'dark.png'),(await window.webContents.capturePage()).toPNG());
+    await js(`document.body.style.setProperty('--surface', '#3a4450');document.body.style.setProperty('--text', '#eaf5f3');renderSignaturePreview(document.querySelector('#signature-preview'),fixtureSignature)`);
+    await waitFor('Boolean(document.querySelector("#signature-preview iframe")?.contentDocument?.querySelector("[title=contrast]"))');
+    assert.deepEqual(await js(`(() => {
+      const frame = document.querySelector('#signature-preview iframe'), view = frame.contentWindow;
+      return [view.getComputedStyle(frame.contentDocument.body).backgroundColor,
+        view.getComputedStyle(frame.contentDocument.querySelector('[title=contrast]')).color];
+    })()`), ['rgb(58, 68, 80)', 'rgb(234, 245, 243)'], 'Signature preview and text contrast follow the active palette');
+    await fs.writeFile(path.join(output, 'custom-palette.png'), (await window.webContents.capturePage()).toPNG());
+    await js(`document.body.style.removeProperty('--surface');document.body.style.removeProperty('--text')`);
+    assert.equal(await js(`(() => {
+      const button = document.querySelector('#settings-tab-signature');
+      button.disabled = true;
+      try { return getComputedStyle(button).cursor; } finally { button.disabled = false; }
+    })()`), 'default', 'A disabled action does not show a loading cursor');
     await js(`state.theme='light';document.body.classList.remove('dark');renderSignaturePreview(document.querySelector('#signature-preview'),fixtureSignature)`);
     await waitFor('Boolean(document.querySelector("#signature-preview iframe")?.contentDocument?.querySelector("[title=hex]"))');
     assert.equal(await js(`document.querySelector('#signature-preview iframe').contentDocument.querySelector('[title=hex]').style.color`), 'rgb(32, 32, 32)', 'Light mode retains the original color');
