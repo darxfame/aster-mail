@@ -97,7 +97,6 @@ app.whenReady().then(async () => {
     console.error(error);
     code = 1;
   } finally {
-    // The fixture owns no real account. End it without running native window teardown.
-    process.exit(code);
+    process.send(code, () => process.exit(code));
   }
 });

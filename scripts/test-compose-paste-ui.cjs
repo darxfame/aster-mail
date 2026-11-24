@@ -15,6 +15,7 @@ async function waitFor(check) {
 }
 
 app.whenReady().then(async () => {
+  let code = 0;
   try {
     const window = await waitFor(() => BrowserWindow.getAllWindows().find(candidate =>
       candidate.webContents.getURL().endsWith('/src/index.html') && !candidate.webContents.isLoading()));
@@ -98,7 +99,7 @@ app.whenReady().then(async () => {
     console.log('Clipboard image passed for insertion, undo/redo, text and HTML paste, size limit, detach, draft serialization and reopening.');
   } catch (error) {
     console.error(error);
-    process.exit(1);
+    code = 1;
   }
-  process.exit(0);
+  process.send(code, () => process.exit(code));
 });
