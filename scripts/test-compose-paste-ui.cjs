@@ -1,6 +1,7 @@
 // Exercise clipboard payloads in the Electron editor without changing the system clipboard.
 const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
+const { sendSOAP } = require('../desktop/protocol.cjs');
 
 app.setPath('userData', process.argv[2]);
 require('../desktop/main.cjs');
@@ -96,7 +97,44 @@ app.whenReady().then(async () => {
     await waitFor(() => js("document.querySelector('#compose-body img')?.naturalWidth === 20"));
     assert.ok((await js(read)).html.includes(`src="cid:${pasted.ids[0]}"`));
     assert.deepEqual((await js(read)).ids, [], 'Reopening an existing draft keeps its attachment without uploading it again');
-    console.log('Clipboard image passed for insertion, undo/redo, text and HTML paste, size limit, detach, draft serialization and reopening.');
+    const replySource = { id: 'fictional-original', changeKey: 'fixture-key', subject: 'Example', from: { email: 'sender@example.test' }, text: 'Original message', to: [], cc: [] };
+    const formattedReply = '<p>Hello!</p>\n<p>Example paragraph.</p>\n<p><strong>Details</strong><br>Manual line break</p>\n<ul>\n<li>First item</li>\n<li>Second item</li>\n</ul>';
+    const expectedReply = 'Hello!\n\nExample paragraph.\n\nDetails\nManual line break\n\nFirst item\nSecond item';
+    await js(`(async () => {
+      await compose('reply', null, null, { message: ${JSON.stringify(replySource)} });
+      window.bodyEditor = document.querySelector('#compose-body');
+      bodyEditor.focus();
+      const formatted = new DataTransfer();
+      formatted.setData('text/html', ${JSON.stringify(formattedReply)});
+      paste(formatted);
+    })()`);
+    assert.equal(await js('bodyEditor.innerText'), expectedReply);
+    await js(`state.demo = false;
+      state.account = { server: 'https://mail.example.test', sessionId: 'fictional' };
+      waitForComposeSend = async () => true;
+      api = async (operation, data) => { window.replyPayload = { operation, data }; throw new Error('Fictional reply write'); };
+      sendCompose(false);`);
+    const reply = await js('window.replyPayload');
+    assert.equal(reply.operation, 'send');
+    assert.equal(reply.data.kind, 'reply');
+    assert.deepEqual(reply.data.reference, { id: replySource.id, changeKey: replySource.changeKey });
+    assert.equal(reply.data.replaceBody, undefined);
+    assert.equal(reply.data.body, expectedReply);
+    assert.match(sendSOAP(reply.data), /<t:NewBodyContent BodyType="HTML">.*&lt;strong&gt;Details&lt;\/strong&gt;/s);
+    const renderedReply = await js(`(() => {
+      const external = document.createElement('div');
+      external.innerHTML = window.replyPayload.data.bodyHtml;
+      document.body.append(external);
+      try { return external.innerText; } finally { external.remove(); }
+    })()`);
+    assert.equal(renderedReply, expectedReply);
+    await js(`state.demo = true; state.account = null;
+      compose('new'); window.bodyEditor = document.querySelector('#compose-body'); bodyEditor.focus();
+      const plain = new DataTransfer();
+      plain.setData('text/plain', 'First line\\r\\n\\r\\nSecond line\\nThird line');
+      paste(plain); void 0;`);
+    assert.equal(await js('composeData.editor.read().body'), 'First line\n\nSecond line\nThird line');
+    console.log('Clipboard images, formatted reply spacing and plain-text line breaks passed.');
   } catch (error) {
     console.error(error);
     code = 1;

@@ -168,7 +168,11 @@
         }
         if (status) status.textContent = '';
         command('insertHTML', fragment.innerHTML);
-      } else if (formatted) command('insertHTML', formatted.innerHTML);
+      } else if (formatted) {
+        // HTML source line breaks between blocks must not inherit the plain editor's pre-wrap.
+        const blocks = formatted.querySelector('div, p, blockquote, pre, ul, ol, h1, h2, h3, h4, hr, table');
+        command('insertHTML', blocks ? `<div style="white-space: normal">${formatted.innerHTML}</div>` : formatted.innerHTML);
+      }
       else { const div = document.createElement('div'); div.textContent = event.clipboardData.getData('text/plain'); command('insertHTML', div.innerHTML.replace(/\r\n?|\n/g, '<br>')); }
     });
     editor.addEventListener('drop', event => event.preventDefault());
