@@ -104,7 +104,7 @@ async function runMailBatch(action, folder, explicitIds) {
         if (message) { message.changeKey = item.changeKey || message.changeKey; applyMessageRead(message, action === 'read', state.query ? null : state.folder); }
       }
       renderMessages(); renderSidebar();
-    } else await loadView();
+    } else await loadView(false, { preserveMailPosition: ['archive', 'trash', 'move'].includes(action) });
     if (uncertain && account === state.account && scope === mailSelectionKey()) showError(Object.assign(new Error(note), { userFacing: true }));
   } catch (error) {
     if (account === state.account && scope === mailSelectionKey()) {

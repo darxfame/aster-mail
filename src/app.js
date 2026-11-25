@@ -381,7 +381,7 @@ function renderSidebar() {
 function welcome() {
   $('#workspace').innerHTML = `<div class="welcome"><div class="hero-symbol">✳</div><div class="eyebrow">${tr("Пространство для важного")}</div><h1>${tr("Меньше шума.")}<br>${tr("Больше ясности.")}</h1><p>${tr("Почта, встречи и люди — в одном спокойном рабочем пространстве. Подключите корпоративный Exchange и начните свой день с Aster.")}</p><div class="welcome-actions"><button class="primary" data-action="connect">${icon('plus')}${tr("Подключить OWA")}</button><button class="secondary" data-action="demo">${tr("Посмотреть демо")} ${icon('chevron')}</button></div><div class="welcome-foot">${icon('shield')}${tr("Прямое подключение к вашему серверу · Без облака Aster")}</div></div>`;
 }
-async function loadView(append = false) {
+async function loadView(append = false, { preserveMailPosition = false } = {}) {
   if (!append) state.dayOverviewOpen = false;
   if (!append) closeMailAttachmentPreview();
   renderSidebar(); clearError();
@@ -395,19 +395,36 @@ async function loadView(append = false) {
     if (state.view === 'mail') {
       const offset = append ? state.offset : 0;
       const criteria = state.mailSearch?.query === state.query ? state.mailSearch.criteria : null;
+      const keepPosition = keepMail && preserveMailPosition && !append;
       let result;
       if (state.demo) {
         if (criteria && state.query) {
           result = { items: structuredClone(window.asterDemo.messages.filter(message => window.asterMailSearch.matches(message, criteria))), more: false };
           if (!criteria.folder && criteria.text && !criteria.from && !criteria.to && !criteria.start && !criteria.end && criteria.attachments === 'any') result.related = demoMailSearch(criteria.text).related;
         } else result = state.query ? demoMailSearch(state.query) : { items: structuredClone(window.asterDemo.messages.filter(message => message.folder === state.folder)), more: false };
-      } else result = state.query ? await searchMailbox(state.query, state.filter, offset, criteria) : await api('messages', { folder: state.folder, filter: state.filter, offset });
+      } else {
+        const previousOffset = keepPosition ? state.offset : 0;
+        const readPage = pageOffset => state.query ? searchMailbox(state.query, state.filter, pageOffset, criteria) : api('messages', { folder: state.folder, filter: state.filter, offset: pageOffset });
+        result = await readPage(offset);
+        let nextOffset = result.nextOffset ?? offset + result.items.length;
+        while (generation === state.generation && result.more && nextOffset > offset && nextOffset < previousOffset) {
+          const page = await readPage(nextOffset);
+          const end = page.nextOffset ?? nextOffset + page.items.length;
+          result = { ...result, items: [...result.items, ...page.items], more: page.more, nextOffset: end };
+          if (end <= nextOffset) break;
+          nextOffset = end;
+        }
+      }
       if (generation !== state.generation) return;
+      // In the compact layout the list needs to be visible to measure its scroll position.
+      if (keepPosition) document.body.classList.remove('reader-open');
+      const restorePosition = keepPosition ? preserveMailListPosition($('#messages')) : null;
       if (state.filter !== 'all' && result.related) result.related = result.related.mail?.error ? { mail: result.related.mail } : null;
       state.messages = append ? [...state.messages, ...result.items] : result.items; state.more = result.more; state.offset = Number.isSafeInteger(result.nextOffset) ? result.nextOffset : (append ? state.offset : 0) + result.items.length;
       if (!append) { state.selected = null; state.searchObjects = state.query ? result.related || null : null; }
       state.mailViewKey = JSON.stringify([state.folder, state.query, state.filter, state.mailSearch?.criteria.folder]);
       renderMail();
+      restorePosition?.();
       if (!state.demo && !state.query && !append) void refreshMailFolders(generation);
     } else if (state.view === 'calendar') {
       const requestedMode = calendarMode();
@@ -1436,7 +1453,8 @@ async function handleAction(button) {
       } else {
         const folder = action === 'archive' ? 'archive' : 'deleteditems';
         if (!state.demo) await api('move', { ref: ref(m), folder }); else window.asterDemo.messages.find(x => x.id === m.id).folder = folder;
-        toast(action === 'archive' ? tr('Письмо перемещено в архив') : tr('Письмо перемещено в корзину')); await loadView();
+        toast(action === 'archive' ? tr('Письмо перемещено в архив') : tr('Письмо перемещено в корзину'));
+        await loadView(false, { preserveMailPosition: true });
       }
     } finally { button.disabled = false; }
   }

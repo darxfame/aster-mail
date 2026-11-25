@@ -149,7 +149,48 @@ app.whenReady().then(async () => {
     await js("document.querySelector('[data-action=important]').click()");
     await waitFor("state.selected.importance==='Normal'");
     assert.deepEqual(await js('importanceWrites.map(write=>[write.field,write.value])'),[['Importance','High'],['Importance','Normal']]);
-    console.log('PASS: modifier-click and Shift selection, right-click/keyboard menus, fresh read/unread keys, preserved reader, viewport placement, stale navigation and no uncertain-write retry.');
+
+    await js(`(async()=>{loadView=loadBefore;
+      const template=state.messages[0];
+      window.mailbox=Array.from({length:80},(_,index)=>({...template,id:'scroll-'+index,subject:'Message '+index,read:true,conversationId:null,meeting:null}));
+      api=async(operation,data)=>{
+        if(operation==='messages'){
+          return {items:structuredClone(mailbox.slice(data.offset,data.offset+50)),more:data.offset+50<mailbox.length};
+        }
+        if(operation==='message') return structuredClone(mailbox.find(message=>message.id===data.id));
+        if(operation==='move') mailbox=mailbox.filter(message=>message.id!==data.ref.id);
+        if(operation==='mailBatch'){
+          mailbox=mailbox.filter(message=>!data.refs.some(ref=>ref.id===message.id));
+          return {results:data.refs.map(ref=>({id:ref.id,status:'done'}))};
+        }
+        if(operation==='folders'||operation==='calendar') return [];
+        return null;
+      }; await loadView(); await loadView(true);})()`);
+    for (const [target, anchor, action, compact] of [
+      ['scroll-55', 'scroll-56', 'handleAction(document.querySelector("[data-action=delete]"))'],
+      ['scroll-56', 'scroll-57', 'runMailBatch("trash", undefined, [target])'],
+      ['scroll-57', 'scroll-58', 'handleAction(document.querySelector("[data-action=delete]"))', true]
+    ]) {
+      if (compact) {
+        window.setSize(700, 800);
+        await waitFor("document.body.classList.contains('mail-compact')");
+      }
+      const positions = await js(`(async()=>{
+        const target=${JSON.stringify(target)}, anchor=${JSON.stringify(anchor)};
+        const row=id=>document.querySelector('.message-row[data-id="'+id+'"]');
+        const top=()=>row(anchor)?.getBoundingClientRect().top-document.querySelector('#messages').getBoundingClientRect().top;
+        row(target).scrollIntoView({block:'start'});
+        const before=top();
+        await openMessage(target);
+        await ${action};
+        return {before,after:top(),removed:!row(target),scroll:document.querySelector('#messages').scrollTop};
+      })()`);
+      assert.equal(positions.removed,true);
+      assert.ok(positions.scroll>0 && Math.abs(positions.after-positions.before)<2, `${target} ${JSON.stringify(positions)}`);
+    }
+    await js("state.folder='archive'; loadView()");
+    assert.equal(await js("document.querySelector('#messages').scrollTop"),0);
+    console.log('PASS: modifier-click and Shift selection, right-click/keyboard menus, fresh read/unread keys, preserved reader, viewport placement, stale navigation, no uncertain-write retry, and preserved scroll after trash.');
   } finally {
     window?.destroy();
     await fs.rm(profile,{recursive:true,force:true,maxRetries:3}).catch(error=>{

@@ -304,8 +304,24 @@ async function moveDroppedMail(id, destination) {
   if (readingMessages.has(id)) await readingMessages.get(id);
   if (state.demo) window.asterDemo.messages.find(item => item.id === id).folder = destination;
   else await api('move', { ref: ref(message), folder: destination });
-  await loadView();
+  await loadView(false, { preserveMailPosition: true });
   if (!$('#modal').open) ruleAfterMove(snapshot, destination); else toast(tr('Письмо перемещено'));
+}
+
+function preserveMailListPosition(list) {
+  if (!list?.scrollTop) return () => {};
+  const scroll = list.scrollTop, viewport = list.getBoundingClientRect();
+  const visibleRows = new Map();
+  for (const row of list.querySelectorAll('.message-row')) {
+    const { top, bottom } = row.getBoundingClientRect();
+    if (top >= viewport.bottom) break;
+    if (bottom > viewport.top) visibleRows.set(row.dataset.id, top - viewport.top);
+  }
+  return () => {
+    const next = $('#messages');
+    const anchor = [...next.querySelectorAll('.message-row')].find(row => visibleRows.has(row.dataset.id));
+    next.scrollTop = anchor ? next.scrollTop + anchor.getBoundingClientRect().top - next.getBoundingClientRect().top - visibleRows.get(anchor.dataset.id) : scroll;
+  };
 }
 // Pointer capture also works inside macOS webviews that do not expose HTML drag sessions.
 let mailDrag = null, suppressMailClick = false;
